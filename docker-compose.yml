@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: reklam-postgres
+    environment:
+      POSTGRES_DB: reklam_db
+      POSTGRES_USER: reklam_user
+      POSTGRES_PASSWORD: reklam_pass_123
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - reklam-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: reklam-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - reklam-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: reklam-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - reklam-network
+
+volumes:
+  postgres_data:
+  minio_data:
+  redis_data:
+
+networks:
+  reklam-network:
+    driver: bridge

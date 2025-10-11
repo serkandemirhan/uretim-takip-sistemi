@@ -1,0 +1,27 @@
+node_modules/
+.env
+dist/
+build/
+.DS_Store
+*.log
+
+# Bağımlılıklar
+**/node_modules/
+**/venv/
+**/.next/
+
+# Next.js
+**/.next/
+**/out/
+
+# Derlemeler
+**/dist/
+**/build/
+
+# Env ve loglar
+.env
+.env.*
+*.log
+
+# macOS
+.DS_Store

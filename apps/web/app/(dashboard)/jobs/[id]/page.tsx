@@ -45,23 +45,52 @@ export default function JobDetailPage() {
   }, [params.id])
 
 async function loadJob() {
+  setLoading(true)
   try {
-    setLoading(true)
-    const [jobResponse, revisionsResponse, filesResponse] = await Promise.all([
-      jobsAPI.getById(params.id as string),
-      jobsAPI.getRevisions(params.id as string),
-      filesAPI.getFilesByJob(params.id as string), // ← YENİ
+    // 1) İş (zorunlu)
+    let payload: any = null
+    try {
+      const r = await jobsAPI.getById(params.id as string)
+      payload = r?.data ?? r
+      if (!payload?.id) throw new Error('job missing')
+      setJob(payload)
+    } catch (err) {
+      console.error('Job GET failed:', err)
+      toast.error('İş bilgisi yüklenemedi')
+      setJob(null)
+      return
+    }
+
+    // 2) Revizyon ve Dosyalar (opsiyonel, ayrı try/catch)
+    await Promise.all([
+      (async () => {
+        try {
+          const rr = await jobsAPI.getRevisions(params.id as string)
+          setRevisions(rr?.data ?? rr ?? [])
+        } catch (e) {
+          console.warn('Revisions GET failed:', e)
+          setRevisions([])
+        }
+      })(),
+      (async () => {
+        try {
+          const fr = await filesAPI.getFilesByJob(params.id as string)
+          const d = fr?.data ?? fr ?? {}
+          setJobFiles({
+            job_files: Array.isArray(d.job_files) ? d.job_files : [],
+            process_files: Array.isArray(d.process_files) ? d.process_files : [],
+          })
+        } catch (e) {
+          console.warn('Files GET failed:', e)
+          setJobFiles({ job_files: [], process_files: [] })
+        }
+      })(),
     ])
-    setJob(jobResponse.data)
-    setRevisions(revisionsResponse.data || [])
-    setJobFiles(filesResponse.data || { job_files: [], process_files: [] }) // ← YENİ
-  } catch (error) {
-    console.error('Job load error:', error)
-    toast.error('İş yüklenirken hata oluştu')
   } finally {
     setLoading(false)
   }
 }
+
 
 async function handleCreateRevision(e: React.FormEvent) {
   e.preventDefault()

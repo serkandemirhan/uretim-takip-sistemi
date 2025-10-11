@@ -1,15 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { toast } from 'sonner'
+import { GripVertical, Save, Plus, X ,Trash2} from 'lucide-react'
+
 import { processesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { GripVertical, Save, X, Plus, Edit2, Trash2 } from 'lucide-react'
-import Link from 'next/link'
-import { toast } from 'sonner'
 
-interface Process {
+type Process = {
   id: string
   name: string
   code: string
@@ -21,77 +22,145 @@ interface Process {
 }
 
 export default function ProcessesPage() {
-  const [processes, setProcesses] = useState<Process[]>([])
   const [loading, setLoading] = useState(true)
+  const [processes, setProcesses] = useState<Process[]>([])
+
+  // DnD
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [orderDirty, setOrderDirty] = useState(false)
+
+  // Inline edit
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState({
-    name: '',
-    code: '',
-    is_machine_based: false,
-    is_production: false,
-  })
+  const [editForm, setEditForm] = useState<Partial<Process>>({})
+  const [savingRow, setSavingRow] = useState<string | null>(null)
 
   useEffect(() => {
-    loadProcesses()
+    ;(async () => {
+      setLoading(true)
+      try {
+        const res = await processesAPI.getAll()
+        const list: Process[] = (res?.data ?? res ?? []).slice()
+        list.sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+        setProcesses(list)
+      } catch (e) {
+        console.error(e)
+        toast.error('Süreçler yüklenemedi')
+      } finally {
+        setLoading(false)
+      }
+    })()
   }, [])
 
-  async function loadProcesses() {
+  // ---- Drag & Drop (native) ----
+  const handleDragStart = (id: string) => setDraggingId(id)
+
+  const handleDragOver = (e: React.DragEvent<HTMLTableRowElement>, overId: string) => {
+    e.preventDefault()
+    if (!draggingId || draggingId === overId) return
+    const from = processes.findIndex(p => p.id === draggingId)
+    const to = processes.findIndex(p => p.id === overId)
+    if (from === -1 || to === -1) return
+    const next = processes.slice()
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setProcesses(next)
+    setOrderDirty(true)
+  }
+
+  const handleDragEnd = () => setDraggingId(null)
+
+  const deleteProcess = async (id: string) => {
+  const target = processes.find(p => p.id === id)
+  if (!target) return
+  if (!confirm(`“${target.name}” sürecini silmek istiyor musun?`)) return
+  try {
+    // optimistik: ekrandan çıkar
+    setProcesses(prev => prev.filter(p => p.id !== id))
+    await processesAPI.delete(id)
+    toast.success('Süreç silindi')
+  } catch (e) {
+    console.error(e)
+    toast.error('Süreç silinemedi')
+    // geri al (isteğe bağlı)
+    setProcesses(prev => {
+      if (prev.some(p => p.id === id)) return prev
+      return [...prev, target].sort((a,b)=>(a.order_index??0)-(b.order_index??0))
+    })
+  }
+}
+
+
+  const saveOrder = async () => {
     try {
-      setLoading(true)
-      const response = await processesAPI.getAll()
-      setProcesses(response.data || [])
-    } catch (error) {
-      console.error('Processes load error:', error)
-      toast.error('Süreçler yüklenirken hata oluştu')
-    } finally {
-      setLoading(false)
+      await Promise.all(
+        processes.map((p, idx) =>
+          processesAPI.update(p.id, { order_index: idx + 1 })
+        )
+      )
+      toast.success('Sıralama kaydedildi')
+      setOrderDirty(false)
+    } catch (e) {
+      console.error(e)
+      toast.error('Sıralama kaydedilemedi')
     }
   }
 
-  function startEdit(process: Process) {
-    setEditingId(process.id)
+  // ---- Inline edit ----
+  const startEdit = (p: Process) => {
+    setEditingId(p.id)
     setEditForm({
-      name: process.name,
-      code: process.code,
-      is_machine_based: process.is_machine_based,
-      is_production: process.is_production,
+      name: p.name,
+      code: p.code,
+      description: p.description ?? '',
+      is_machine_based: p.is_machine_based,
+      is_production: p.is_production,
     })
   }
 
-  function cancelEdit() {
+  const cancelEdit = () => {
     setEditingId(null)
+    setEditForm({})
   }
 
-  async function saveEdit(id: string) {
-    try {
-      await processesAPI.update(id, editForm)
-      toast.success('Süreç güncellendi')
-      setEditingId(null)
-      loadProcesses()
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Güncelleme başarısız')
-    }
-  }
-
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`"${name}" sürecini silmek istediğinizden emin misiniz?`)) {
+  const saveEdit = async (id: string) => {
+    if (!editForm.name?.trim() || !editForm.code?.trim()) {
+      toast.error('Süreç adı ve kodu zorunludur')
       return
     }
-
     try {
-      // Silme API'si eklenecek
-      toast.info('Silme özelliği yakında eklenecek')
-    } catch (error: any) {
-      toast.error('Silme işlemi başarısız')
+      setSavingRow(id)
+      await processesAPI.update(id, {
+        name: editForm.name.trim(),
+        code: editForm.code.trim(),
+        description: (editForm.description ?? '').trim(),
+        is_machine_based: !!editForm.is_machine_based,
+        is_production: !!editForm.is_production,
+      })
+      // UI’yi güncelle
+      setProcesses(prev =>
+        prev.map(p =>
+          p.id === id
+            ? {
+                ...p,
+                name: editForm.name!.trim(),
+                code: editForm.code!.trim(),
+                description: (editForm.description ?? '').trim(),
+                is_machine_based: !!editForm.is_machine_based,
+                is_production: !!editForm.is_production,
+              }
+            : p
+        )
+      )
+      toast.success('Süreç güncellendi')
+      cancelEdit()
+    } catch (e: any) {
+      console.error(e)
+      // Unique code ihlalinde 409 beklenir
+      const msg = e?.response?.data?.error ?? 'Güncelleme başarısız'
+      toast.error(msg)
+    } finally {
+      setSavingRow(null)
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    )
   }
 
   return (
@@ -100,9 +169,7 @@ export default function ProcessesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Süreç Yönetimi</h1>
-          <p className="text-gray-600 mt-1">
-            Süreçleri tanımlayın, sıralayın ve makinelerle ilişkilendirin
-          </p>
+          <p className="text-gray-600 mt-1">Süreçleri tanımlayın, sıralayın ve makinelerle ilişkilendirin</p>
         </div>
         <Link href="/processes/new">
           <Button>
@@ -112,184 +179,155 @@ export default function ProcessesPage() {
         </Link>
       </div>
 
-      {/* Info */}
-      <Card className="bg-blue-50 border-blue-200">
-        <CardContent className="pt-6">
-          <p className="text-sm text-blue-800">
-            💡 <strong>İpucu:</strong> Süreçleri sürükleyerek sırasını değiştirebilirsiniz. 
-            Satır üzerinde düzenle butonuna tıklayarak hızlı güncelleme yapabilirsiniz.
-          </p>
-        </CardContent>
-      </Card>
+      {orderDirty && (
+        <div className="flex justify-end">
+          <Button onClick={saveOrder} className="gap-2">
+            <Save className="w-4 h-4" />
+            Sıralamayı Kaydet
+          </Button>
+        </div>
+      )}
 
-      {/* Table */}
       <Card>
         <CardHeader>
           <CardTitle>Süreç Listesi ({processes.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          {processes.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-500 mb-4">Henüz süreç tanımlanmamış</p>
-              <Link href="/processes/new">
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  İlk Süreci Ekle
-                </Button>
-              </Link>
-            </div>
+          {loading ? (
+            <div className="p-8 text-center text-gray-500">Yükleniyor…</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-700 w-12">#</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-700">Süreç Adı</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-700">Kod</th>
-                    <th className="text-center py-3 px-4 font-semibold text-sm text-gray-700 w-32">
-                      Makine<br/>Bazlı
-                    </th>
-                    <th className="text-center py-3 px-4 font-semibold text-sm text-gray-700 w-32">
-                      Üretim<br/>Süreci
-                    </th>
-                    <th className="text-center py-3 px-4 font-semibold text-sm text-gray-700 w-32">
-                      Bağlı<br/>Makine
-                    </th>
-                    <th className="text-right py-3 px-4 font-semibold text-sm text-gray-700 w-48">İşlem</th>
+                  <tr className="border-b">
+                    <th className="py-3 px-4 w-20">#</th>
+                    <th className="py-3 px-4">Süreç Adı</th>
+                    <th className="py-3 px-4">Kod</th>
+                    <th className="py-3 px-4">Makine Bazlı</th>
+                    <th className="py-3 px-4">Üretim Süreci</th>
+                    <th className="py-3 px-4">Bağlı Makine</th>
+                    <th className="py-3 px-4 w-48">İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {processes.map((process, index) => (
-                    <tr key={process.id} className="border-b hover:bg-gray-50 transition-colors">
-                      {/* Sıra No & Drag Handle */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <GripVertical className="w-4 h-4 text-gray-400 cursor-move" />
-                          <span className="text-sm text-gray-500">{index + 1}</span>
-                        </div>
-                      </td>
+                  {processes.map((p, index) => {
+                    const isEditing = editingId === p.id
+                    return (
+                      <tr
+                        key={p.id}
+                        className="border-b hover:bg-gray-50 transition-colors"
+                        draggable
+                        onDragStart={() => handleDragStart(p.id)}
+                        onDragOver={(e) => handleDragOver(e, p.id)}
+                        onDragEnd={handleDragEnd}
+                      >
+                        {/* sıra & drag handle */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <GripVertical className="w-4 h-4 text-gray-400 cursor-move" />
+                            <span className="text-sm text-gray-500">{index + 1}</span>
+                          </div>
+                        </td>
 
-                      {/* Süreç Adı */}
-                      <td className="py-3 px-4">
-                        {editingId === process.id ? (
-                          <Input
-                            value={editForm.name}
-                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                            className="h-8"
-                          />
-                        ) : (
-                          <span className="font-medium text-gray-900">{process.name}</span>
-                        )}
-                      </td>
+                        {/* ad */}
+                        <td className="py-3 px-4">
+                          {isEditing ? (
+                            <Input
+                              value={editForm.name ?? ''}
+                              onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
+                            />
+                          ) : (
+                            p.name
+                          )}
+                        </td>
 
-                      {/* Kod */}
-                      <td className="py-3 px-4">
-                        {editingId === process.id ? (
-                          <Input
-                            value={editForm.code}
-                            onChange={(e) => setEditForm({ ...editForm, code: e.target.value.toUpperCase() })}
-                            className="h-8 font-mono"
-                          />
-                        ) : (
-                          <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
-                            {process.code}
-                          </code>
-                        )}
-                      </td>
+                        {/* kod */}
+                        <td className="py-3 px-4">
+                          {isEditing ? (
+                            <Input
+                              value={editForm.code ?? ''}
+                              onChange={(e) => setEditForm(f => ({ ...f, code: e.target.value }))}
+                            />
+                          ) : (
+                            <span className="bg-gray-100 px-2 py-1 rounded text-xs">{p.code}</span>
+                          )}
+                        </td>
 
-                      {/* Makine Bazlı */}
-                      <td className="py-3 px-4 text-center">
-                        {editingId === process.id ? (
-                          <input
-                            type="checkbox"
-                            checked={editForm.is_machine_based}
-                            onChange={(e) => setEditForm({ ...editForm, is_machine_based: e.target.checked })}
-                            className="w-4 h-4 rounded border-gray-300"
-                          />
-                        ) : (
-                          <div className="flex justify-center">
-                            {process.is_machine_based ? (
-                              <span className="text-green-600">✓</span>
+                        {/* makine bazlı */}
+                        <td className="py-3 px-4">
+                          {isEditing ? (
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={!!editForm.is_machine_based}
+                              onChange={(e) => setEditForm(f => ({ ...f, is_machine_based: e.target.checked }))}
+                            />
+                          ) : p.is_machine_based ? '✓' : '✗'}
+                        </td>
+
+                        {/* üretim */}
+                        <td className="py-3 px-4">
+                          {isEditing ? (
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={!!editForm.is_production}
+                              onChange={(e) => setEditForm(f => ({ ...f, is_production: e.target.checked }))}
+                            />
+                          ) : p.is_production ? '✓' : '✗'}
+                        </td>
+
+                        {/* bağlı makine */}
+                        <td className="py-3 px-4">{p.machine_count ?? 0}</td>
+
+                        {/* işlem */}
+                        <td className="py-3 px-4">
+                          <div className="flex gap-2">
+                            {isEditing ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() => saveEdit(p.id)}
+                                  disabled={savingRow === p.id}
+                                >
+                                  {savingRow === p.id ? 'Kaydediliyor…' : 'Kaydet'}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={cancelEdit}
+                                  className="gap-1"
+                                >
+                                  <X className="w-4 h-4" />
+                                  İptal
+                                </Button>
+                              </>
                             ) : (
-                              <span className="text-gray-300">✗</span>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => startEdit(p)}
+                                >
+                                  Güncelle
+                                </Button>
+                              <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => deleteProcess(p.id)}
+                                    className="inline-flex items-center gap-1"
+                                    >
+                                    <Trash2 className="w-4 h-4" />
+                                    Sil
+                                    </Button>
+
+                              </>
                             )}
                           </div>
-                        )}
-                      </td>
-
-                      {/* Üretim */}
-                      <td className="py-3 px-4 text-center">
-                        {editingId === process.id ? (
-                          <input
-                            type="checkbox"
-                            checked={editForm.is_production}
-                            onChange={(e) => setEditForm({ ...editForm, is_production: e.target.checked })}
-                            className="w-4 h-4 rounded border-gray-300"
-                          />
-                        ) : (
-                          <div className="flex justify-center">
-                            {process.is_production ? (
-                              <span className="text-green-600">✓</span>
-                            ) : (
-                              <span className="text-gray-300">✗</span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Makine Sayısı */}
-                      <td className="py-3 px-4 text-center">
-                        <span className="text-sm font-medium text-gray-700">
-                          {process.machine_count || 0}
-                        </span>
-                      </td>
-
-                      {/* İşlemler */}
-                      <td className="py-3 px-4">
-                        {editingId === process.id ? (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => saveEdit(process.id)}
-                              className="h-8"
-                            >
-                              <Save className="w-3 h-3 mr-1" />
-                              Kaydet
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={cancelEdit}
-                              className="h-8"
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => startEdit(process)}
-                              className="h-8"
-                            >
-                              <Edit2 className="w-3 h-3 mr-1" />
-                              Güncelle
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDelete(process.id, process.name)}
-                              className="h-8 text-red-600 hover:bg-red-50 hover:text-red-700"
-                            >
-                              <Trash2 className="w-3 h-3 mr-1" />
-                              Sil
-                            </Button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

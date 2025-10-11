@@ -15,7 +15,7 @@ def get_processes():
                 COUNT(DISTINCT mp.machine_id) as machine_count
             FROM processes p
             LEFT JOIN machine_processes mp ON p.id = mp.process_id
-            WHERE p.is_active = true
+            WHERE deleted_at IS NULL AND p.is_active = true
             GROUP BY p.id
             ORDER BY p.order_index, p.name
         """
@@ -59,7 +59,7 @@ def get_process(process_id):
             SELECT m.id, m.name, m.code
             FROM machines m
             JOIN machine_processes mp ON m.id = mp.machine_id
-            WHERE mp.process_id = %s AND m.is_active = true
+            WHERE deleted_at IS NULL AND mp.process_id = %s AND m.is_active = true
         """
         machines = execute_query(machines_query, (process_id,))
         
@@ -82,6 +82,44 @@ def get_process(process_id):
         
     except Exception as e:
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@processes_bp.route('/<uuid:process_id>', methods=['DELETE'])
+@token_required
+@role_required(['admin', 'yonetici'])
+def delete_process(process_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 1) Süreci soft-delete et
+        cursor.execute("""
+            UPDATE processes
+               SET deleted_at = NOW()
+             WHERE id = %s
+             RETURNING id
+        """, (str(process_id),))
+        deleted = cursor.fetchone()
+        if not deleted:
+            conn.rollback()
+            conn.close()
+            return jsonify({'error': 'Süreç bulunamadı'}), 404
+
+        # 2) Makine–süreç ilişkilerini temizle
+        cursor.execute("""
+            DELETE FROM machine_processes
+             WHERE process_id = %s
+        """, (str(process_id),))
+
+        conn.commit()
+        conn.close()
+        return jsonify({'message': 'Süreç arşivlendi ve makine ilişkileri temizlendi',
+                        'data': {'id': str(process_id)}}), 200
+    except Exception as e:
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+
 
 @processes_bp.route('', methods=['POST'])
 @token_required

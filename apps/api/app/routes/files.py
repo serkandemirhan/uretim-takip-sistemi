@@ -399,3 +399,53 @@ def delete_file(file_id):
     except Exception as e:
         print(f"Error deleting file: {str(e)}")
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+    
+    
+@files_bp.route('', methods=['GET'])
+@token_required
+def list_files():
+    ref_type = request.args.get('refType')  # 'job' | 'job_step' vb.
+    ref_id   = request.args.get('refId')    # job uuid
+    if not ref_type or not ref_id:
+        return jsonify({'error': 'refType ve refId gerekli'}), 400
+
+    # job'a ait dosyalar
+    job_files = execute_query("""
+      SELECT id, filename AS name, url, created_at
+      FROM files
+      WHERE ref_type = 'job' AND ref_id = %s
+      ORDER BY created_at DESC
+    """, (str(ref_id),))
+
+    # job_step dosyalarını proses bazında grupla
+    rows = execute_query("""
+      SELECT js.process_id,
+             f.id, f.filename AS name, f.url, f.created_at
+      FROM job_steps js
+      JOIN files f ON f.ref_type = 'job_step' AND f.ref_id = js.id
+      WHERE js.job_id = %s
+      ORDER BY f.created_at DESC
+    """, (str(ref_id),))
+
+    grouped = {}
+    for r in rows:
+        pid = str(r['process_id'])
+        grouped.setdefault(pid, []).append({
+            'id': str(r['id']),
+            'name': r['name'],
+            'url': r['url'],
+            'created_at': r['created_at'].isoformat() if r.get('created_at') else None
+        })
+
+    process_files = [{'process_id': k, 'files': v} for k, v in grouped.items()]
+
+    return jsonify({
+        'data': {
+            'job_files': [
+              { 'id': str(x['id']), 'name': x['name'], 'url': x['url'],
+                'created_at': x['created_at'].isoformat() if x.get('created_at') else None
+              } for x in job_files
+            ],
+            'process_files': process_files
+        }
+    }), 200

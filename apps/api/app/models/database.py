@@ -58,3 +58,24 @@ def execute_query_one(query, params=None):
     except Exception as e:
         conn.close()
         raise e
+    
+
+
+def execute_write(sql, params=None):
+    """
+    INSERT/UPDATE/DELETE + RETURNING için helper.
+    - Transaction'ı COMMIT eder.
+    - RETURNING varsa satırları döndürür.
+    """
+    conn = get_db_connection()  # projendeki mevcut fonksiyon
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(sql, params or ())
+        rows = cur.fetchall() if cur.description is not None else []
+        conn.commit()
+        return rows
+    finally:
+        try:
+            cur.close()
+        finally:
+            conn.close()

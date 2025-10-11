@@ -190,6 +190,16 @@ export const customersAPI = {
     const response = await apiClient.post('/api/customers', data)
     return response.data
   },
+
+  delete: async (id: string) => {
+    const response = await apiClient.delete(`/api/customers/${id}`)
+    return response.data
+  },
+
+   update: async (id: string, data: any) => {
+    const response = await apiClient.patch(`/api/customers/${id}`, data)
+    return response.data
+  },
 }
 
 // Processes API
@@ -203,15 +213,26 @@ export const processesAPI = {
     const response = await apiClient.get(`/api/processes/${id}`)
     return response.data
   },
-  
-  create: async (data: any) => {
-    const response = await apiClient.post('/api/processes', data)
-    return response.data
+
+  delete: async (id: string) => {
+  const res = await apiClient.delete(`/api/processes/${id}`)
+  return res.data
+},
+
+ create: async (data: {
+    name: string; code: string; description?: string;
+    is_machine_based?: boolean; is_production?: boolean; order_index?: number
+  }) => {
+    const res = await apiClient.post('/api/processes', data)
+    return res.data
   },
-  
-  update: async (id: string, data: any) => {
-    const response = await apiClient.patch(`/api/processes/${id}`, data)
-    return response.data
+
+  update: async (id: string, data: Partial<{
+    name: string; code: string; description: string;
+    is_machine_based: boolean; is_production: boolean; order_index: number;
+  }>) => {
+    const res = await apiClient.patch(`/api/processes/${id}`, data)
+    return res.data
   },
 }
 

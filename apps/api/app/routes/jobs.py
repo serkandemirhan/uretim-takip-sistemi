@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from app.models.database import execute_query, execute_query_one
-from app.middleware.auth_middleware import token_required, role_required
+from app.middleware.auth_middleware import token_required, role_required, permission_required
 from datetime import datetime
 import uuid
 from app.models.database import execute_query, execute_query_one, get_db_connection
@@ -11,6 +11,7 @@ jobs_bp = Blueprint('jobs', __name__, url_prefix='/api/jobs')
 
 @jobs_bp.route('', methods=['GET'])
 @token_required
+@permission_required('jobs', 'view')
 def get_jobs():
     """İşleri listele (arama ve filtreleme ile)"""
     try:
@@ -211,7 +212,7 @@ def get_job(job_id):
 
 @jobs_bp.route('', methods=['POST'])
 @token_required
-@role_required(['yonetici', 'musteri_temsilcisi'])
+@permission_required('jobs', 'create')
 def create_job():
     """Yeni iş oluştur"""
     try:
@@ -363,14 +364,17 @@ def complete_step(step_id):
         cursor = conn.cursor()
         
         # Step bilgilerini al
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT js.id, js.job_id, js.order_index, js.assigned_to,
                    j.job_number, j.title, p.name as process_name
             FROM job_steps js
             JOIN jobs j ON js.job_id = j.id
             JOIN processes p ON js.process_id = p.id
             WHERE js.id = %s
-        """, (step_id,))
+        """,
+            (step_id,),
+        )
         
         step = cursor.fetchone()
         
@@ -378,6 +382,18 @@ def complete_step(step_id):
             conn.close()
             return jsonify({'error': 'Adım bulunamadı'}), 404
         
+        current_user = getattr(request, 'current_user', None)
+        current_role = current_user.get('role') if current_user else None
+        current_user_id = current_user.get('user_id') if current_user else None
+
+        if (
+            step.get('assigned_to')
+            and str(step['assigned_to']) != str(current_user_id)
+            and current_role != 'yonetici'
+        ):
+            conn.close()
+            return jsonify({'error': 'Bu adımı tamamlama yetkiniz yok'}), 403
+
         # Adımı tamamla
         cursor.execute("""
             UPDATE job_steps 
@@ -455,21 +471,36 @@ def start_step(step_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # Step bilgilerini al
-        cursor.execute("""
-            SELECT js.id, js.assigned_to, j.job_number, j.title, p.name as process_name
+
+        cursor.execute(
+            """
+            SELECT js.id, js.job_id, js.assigned_to, j.job_number, j.title,
+                   p.name AS process_name
             FROM job_steps js
             JOIN jobs j ON js.job_id = j.id
             JOIN processes p ON js.process_id = p.id
             WHERE js.id = %s AND js.status = 'ready'
-        """, (step_id,))
+            """,
+            (step_id,),
+        )
         
         step = cursor.fetchone()
         
         if not step:
             conn.close()
             return jsonify({'error': 'Adım bulunamadı veya başlatılamaz'}), 400
+        
+        current_user = getattr(request, 'current_user', None)
+        current_role = current_user.get('role') if current_user else None
+        current_user_id = current_user.get('user_id') if current_user else None
+
+        if (
+            step.get('assigned_to')
+            and str(step['assigned_to']) != str(current_user_id)
+            and current_role != 'yonetici'
+        ):
+            conn.close()
+            return jsonify({'error': 'Bu adımı başlatma yetkiniz yok'}), 403
         
         cursor.execute("""
             UPDATE job_steps 
@@ -516,10 +547,17 @@ def get_job_revisions(job_id):
         
         revisions_list = []
         for rev in revisions:
+            payload = rev['changes'] or {}
+            revision_no = payload.get('revision_no')
+            revision_reason = payload.get('revision_reason')
+            field_changes = payload.get('changes') or {}
+
             revisions_list.append({
                 'id': str(rev['id']),
                 'action': rev['action'],
-                'changes': rev['changes'],
+                'revision_no': revision_no,
+                'revision_reason': revision_reason,
+                'changes': field_changes,
                 'created_at': rev['created_at'].isoformat() if rev['created_at'] else None,
                 'user_name': rev['user_name']
             })
@@ -536,18 +574,36 @@ def get_job_revisions(job_id):
 def create_job_revision(job_id):
     """Yeni revizyon oluştur"""
     try:
-        data = request.get_json()
+        data = request.get_json(force=True) or {}
         user_id = request.current_user['user_id']
-        
-        if not data.get('description'):
+
+        revision_reason = (
+            data.get('revision_reason')
+            or data.get('revision_description')
+            or data.get('reason')
+        )
+        raw_description = data.get('description')
+
+        if not revision_reason and raw_description:
+            revision_reason = raw_description
+
+        if not revision_reason:
             return jsonify({'error': 'Revizyon açıklaması gerekli'}), 400
-        
+
+        job_description = data.get('job_description')
+        if job_description is None and raw_description and raw_description != revision_reason:
+            job_description = raw_description
+
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Mevcut revision_no'yu al
+        # Mevcut revision_no ve alanları al
         cursor.execute(
-            "SELECT revision_no FROM jobs WHERE id = %s",
+            """
+            SELECT revision_no, title, description, due_date, priority
+            FROM jobs
+            WHERE id = %s
+            """,
             (job_id,)
         )
         result = cursor.fetchone()
@@ -563,41 +619,63 @@ def create_job_revision(job_id):
         params = []
         changes = {}
         
+        current_title = result['title'] or ''
+        current_description = result['description'] or ''
+        current_due_date = (
+            result['due_date'].strftime('%Y-%m-%d') if result['due_date'] else None
+        )
+        current_priority = result['priority'] or 'normal'
+
         # Revision no'yu her zaman artır
         update_fields.append("revision_no = %s")
         params.append(new_revision_no)
-        changes['revision_no'] = {'old': result['revision_no'], 'new': new_revision_no}
         
         # Değişen alanları kontrol et
-        if 'title' in data:
-            update_fields.append("title = %s")
-            params.append(data['title'])
-            changes['title'] = {'new': data['title']}
+        if 'title' in data and data['title'] is not None:
+            new_title = data['title']
+            if new_title != current_title:
+                update_fields.append("title = %s")
+                params.append(new_title)
+                changes['title'] = {'old': current_title, 'new': new_title}
         
-        if 'description' in data:
+        if job_description is not None and job_description != current_description:
             update_fields.append("description = %s")
-            params.append(data['description'])
-            changes['description'] = {'new': data['description']}
+            params.append(job_description)
+            changes['description'] = {
+                'old': current_description,
+                'new': job_description
+            }
         
         if 'due_date' in data:
-            update_fields.append("due_date = %s")
-            params.append(data['due_date'])
-            changes['due_date'] = {'new': data['due_date']}
+            new_due = data['due_date']
+            if new_due in ('', None):
+                new_due = None
+            if new_due != current_due_date:
+                update_fields.append("due_date = %s")
+                params.append(new_due)
+                changes['due_date'] = {
+                    'old': current_due_date,
+                    'new': new_due
+                }
         
-        if 'priority' in data:
-            update_fields.append("priority = %s")
-            params.append(data['priority'])
-            changes['priority'] = {'new': data['priority']}
+        if 'priority' in data and data['priority'] is not None:
+            new_priority = data['priority']
+            if new_priority != current_priority:
+                update_fields.append("priority = %s")
+                params.append(new_priority)
+                changes['priority'] = {
+                    'old': current_priority,
+                    'new': new_priority
+                }
         
-        params.append(job_id)
-        
-        update_query = f"""
-            UPDATE jobs
-            SET {', '.join(update_fields)}
-            WHERE id = %s
-        """
-        
-        cursor.execute(update_query, tuple(params))
+        if update_fields:
+            params.append(job_id)
+            update_query = f"""
+                UPDATE jobs
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+            """
+            cursor.execute(update_query, tuple(params))
         
         # Audit log'a kaydet
         cursor.execute("""
@@ -610,7 +688,7 @@ def create_job_revision(job_id):
             job_id,
             import_json.dumps({
                 'revision_no': new_revision_no,
-                'description': data.get('description'),
+                'revision_reason': revision_reason,
                 'changes': changes
             })
         ))
@@ -916,6 +994,114 @@ def cancel_job(job_id):
         
     except Exception as e:
         print(f"Error canceling job: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@jobs_bp.route('/steps/<step_id>', methods=['PATCH'])
+@token_required
+@role_required(['yonetici'])
+def update_job_step(step_id):
+    """Süreç adımını güncelle (atanan kişi, makine, paralellik vb.)"""
+    try:
+        data = request.get_json(force=True) or {}
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT status FROM job_steps WHERE id = %s",
+            (step_id,)
+        )
+        step = cursor.fetchone()
+
+        if not step:
+            conn.close()
+            return jsonify({'error': 'Süreç adımı bulunamadı'}), 404
+
+        if step['status'] in ('completed', 'canceled'):
+            conn.close()
+            return jsonify({'error': 'Bu süreç adımı güncellenemez'}), 400
+
+        def _nullable(value):
+            if value is None:
+                return None
+            if isinstance(value, str) and value.strip() == '':
+                return None
+            return value
+
+        def _to_bool(value):
+            if isinstance(value, bool):
+                return value
+            if value is None:
+                return None
+            return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+        update_fields = []
+        params = []
+
+        if 'process_id' in data and data.get('process_id'):
+            update_fields.append("process_id = %s")
+            params.append(data.get('process_id'))
+
+        if 'assigned_to' in data:
+            update_fields.append("assigned_to = %s")
+            params.append(_nullable(data.get('assigned_to')))
+
+        if 'machine_id' in data:
+            update_fields.append("machine_id = %s")
+            params.append(_nullable(data.get('machine_id')))
+
+        if 'is_parallel' in data:
+            is_parallel = _to_bool(data.get('is_parallel'))
+            if is_parallel is not None:
+                update_fields.append("is_parallel = %s")
+                params.append(is_parallel)
+
+        if 'estimated_duration' in data:
+            duration = data.get('estimated_duration')
+            if duration in (None, '', 'null'):
+                update_fields.append("estimated_duration = %s")
+                params.append(None)
+            else:
+                try:
+                    duration_int = int(duration)
+                except (TypeError, ValueError):
+                    conn.close()
+                    return jsonify({'error': 'estimated_duration geçersiz'}), 400
+                update_fields.append("estimated_duration = %s")
+                params.append(duration_int)
+
+        if not update_fields:
+            conn.close()
+            return jsonify({'error': 'Güncellenecek alan bulunamadı'}), 400
+
+        update_fields.append("updated_at = NOW()")
+        params.append(step_id)
+
+        cursor.execute(
+            f"""
+            UPDATE job_steps
+               SET {', '.join(update_fields)}
+             WHERE id = %s
+             RETURNING id
+            """,
+            tuple(params)
+        )
+
+        result = cursor.fetchone()
+        conn.commit()
+        conn.close()
+
+        if not result:
+            return jsonify({'error': 'Süreç adımı güncellenemedi'}), 404
+
+        return jsonify({
+            'message': 'Süreç adımı güncellendi',
+            'data': {'id': str(result['id'])}
+        }), 200
+
+    except Exception as e:
+        print(f"Error updating step: {str(e)}")
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
 
 

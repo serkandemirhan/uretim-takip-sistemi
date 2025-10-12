@@ -9,6 +9,7 @@ import { processesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { handleError, handleApiError, debugLog } from '@/lib/utils/error-handler'
 
 type Process = {
   id: string
@@ -43,7 +44,7 @@ export default function ProcessesPage() {
         list.sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
         setProcesses(list)
       } catch (e) {
-        console.error(e)
+        handleError(e)
         toast.error('Süreçler yüklenemedi')
       } finally {
         setLoading(false)
@@ -79,7 +80,7 @@ export default function ProcessesPage() {
     await processesAPI.delete(id)
     toast.success('Süreç silindi')
   } catch (e) {
-    console.error(e)
+    handleError(e)
     toast.error('Süreç silinemedi')
     // geri al (isteğe bağlı)
     setProcesses(prev => {
@@ -100,7 +101,7 @@ export default function ProcessesPage() {
       toast.success('Sıralama kaydedildi')
       setOrderDirty(false)
     } catch (e) {
-      console.error(e)
+      handleError(e)
       toast.error('Sıralama kaydedilemedi')
     }
   }
@@ -154,7 +155,7 @@ export default function ProcessesPage() {
       toast.success('Süreç güncellendi')
       cancelEdit()
     } catch (e: any) {
-      console.error(e)
+      handleError(e)
       // Unique code ihlalinde 409 beklenir
       const msg = e?.response?.data?.error ?? 'Güncelleme başarısız'
       toast.error(msg)

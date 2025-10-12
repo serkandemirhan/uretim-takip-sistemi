@@ -49,7 +49,7 @@ export default function TaskDetailPage() {
         })
       }
     } catch (error) {
-      console.error('Task load error:', error)
+      handleApiError(error, 'Task load')
       toast.error('Görev yüklenirken hata oluştu')
     } finally {
       setLoading(false)

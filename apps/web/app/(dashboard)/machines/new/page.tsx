@@ -36,7 +36,7 @@ export default function NewMachinePage() {
       const response = await processesAPI.getAll()
       setProcesses(response.data || [])
     } catch (error) {
-      console.error('Processes load error:', error)
+      handleApiError(error, 'Processes load')
     }
   }
 
@@ -58,7 +58,7 @@ export default function NewMachinePage() {
       toast.success('Makine başarıyla oluşturuldu!')
       router.push('/machines')
     } catch (error: any) {
-      console.error('Machine create error:', error)
+      handleApiError(error, 'Machine create')
       toast.error(error.response?.data?.error || 'Makine oluşturulurken hata oluştu')
     } finally {
       setLoading(false)

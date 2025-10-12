@@ -85,11 +85,15 @@ def get_my_tasks():
 @tasks_bp.route('/<task_id>', methods=['GET'])
 @token_required
 def get_task(task_id):
-    """Tek görev detayı"""
+    """Tek görev detayı:
+       - admin/yonetici: kısıtsız
+       - diğerleri: assigned_to = user
+    """
     try:
         user_id = request.current_user['user_id']
-        
-        query = """
+        role    = request.current_user.get('role')
+
+        base_sql = """
             SELECT 
                 js.*,
                 j.id as job_id,
@@ -110,14 +114,20 @@ def get_task(task_id):
             JOIN processes p ON js.process_id = p.id
             LEFT JOIN machines m ON js.machine_id = m.id
             LEFT JOIN customers c ON j.customer_id = c.id
-            WHERE js.id = %s AND js.assigned_to = %s
+            WHERE js.id = %s
         """
-        
-        task = execute_query_one(query, (task_id, user_id))
-        
+
+        params = [task_id]
+
+        if role not in ('admin', 'yonetici'):
+            base_sql += " AND js.assigned_to = %s"
+            params.append(user_id)
+
+        task = execute_query_one(base_sql, tuple(params))
+
         if not task:
             return jsonify({'error': 'Görev bulunamadı'}), 404
-        
+
         return jsonify({
             'data': {
                 'id': str(task['id']),
@@ -150,10 +160,12 @@ def get_task(task_id):
                 } if task['machine_id'] else None
             }
         }), 200
-        
+
     except Exception as e:
         print(f"Error getting task: {str(e)}")
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
     
 @tasks_bp.route('/history', methods=['GET'])
 @token_required
@@ -294,4 +306,112 @@ def get_production_stats():
         }), 200
         
     except Exception as e:
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+@tasks_bp.route('', methods=['GET'])
+@token_required
+def list_tasks():
+    """Görevleri listele:
+       - admin/yonetici: tüm görevler
+       - diğerleri: sadece kendisine atanmış
+       Filtreler: status, job_id, customer_id
+    """
+    try:
+        user_id = request.current_user['user_id']
+        role    = request.current_user.get('role')  # auth_middleware bunu set etmeli
+
+        status       = request.args.get('status')        # 'ready','in_progress','completed' vb.
+        job_id       = request.args.get('job_id')
+        customer_id  = request.args.get('customer_id')
+
+        where = []
+        params = []
+
+        # Rol tabanlı görünürlük
+        if role not in ('admin', 'yonetici'):
+            where.append("js.assigned_to = %s")
+            params.append(user_id)
+
+        # Eski kısıt: sadece bu statüler
+        where.append("js.status IN ('ready','in_progress','completed')")
+
+        # Filtreler
+        if status:
+            where.append("js.status = %s")
+            params.append(status)
+        if job_id:
+            where.append("js.job_id = %s")
+            params.append(job_id)
+        if customer_id:
+            where.append("j.customer_id = %s")
+            params.append(customer_id)
+
+        where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+        query = f"""
+            SELECT 
+                js.*,
+                j.id as job_id,
+                j.job_number,
+                j.title as job_title,
+                j.status as job_status,
+                j.due_date,
+                p.id as process_id,
+                p.name as process_name,
+                p.code as process_code,
+                m.id as machine_id,
+                m.name as machine_name,
+                c.name as customer_name
+            FROM job_steps js
+            JOIN jobs j ON js.job_id = j.id
+            JOIN processes p ON js.process_id = p.id
+            LEFT JOIN machines m ON js.machine_id = m.id
+            LEFT JOIN customers c ON j.customer_id = c.id
+            {where_sql}
+            ORDER BY 
+                CASE js.status
+                    WHEN 'in_progress' THEN 1
+                    WHEN 'ready' THEN 2
+                    WHEN 'completed' THEN 3
+                END,
+                j.due_date ASC NULLS LAST,
+                js.order_index
+        """
+
+        tasks = execute_query(query, tuple(params))
+
+        tasks_list = []
+        for task in tasks:
+            tasks_list.append({
+                'id': str(task['id']),
+                'status': task['status'],
+                'order_index': task['order_index'],
+                'started_at': task['started_at'].isoformat() if task['started_at'] else None,
+                'completed_at': task['completed_at'].isoformat() if task['completed_at'] else None,
+                'estimated_duration': task['estimated_duration'],
+                'production_quantity': float(task['production_quantity']) if task['production_quantity'] else None,
+                'production_unit': task['production_unit'],
+                'production_notes': task['production_notes'],
+                'job': {
+                    'id': str(task['job_id']),
+                    'job_number': task['job_number'],
+                    'title': task['job_title'],
+                    'status': task['job_status'],
+                    'due_date': task['due_date'].isoformat() if task['due_date'] else None,
+                    'customer_name': task['customer_name']
+                },
+                'process': {
+                    'id': str(task['process_id']),
+                    'name': task['process_name'],
+                    'code': task['process_code']
+                },
+                'machine': {
+                    'id': str(task['machine_id']) if task['machine_id'] else None,
+                    'name': task['machine_name']
+                } if task['machine_id'] else None
+            })
+
+        return jsonify({'data': tasks_list}), 200
+
+    except Exception as e:
+        print(f"Error getting tasks: {str(e)}")
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500

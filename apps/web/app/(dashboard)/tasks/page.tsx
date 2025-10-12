@@ -9,6 +9,7 @@ import { CheckSquare, Clock, Play, CheckCircle, AlertCircle } from 'lucide-react
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils/formatters'
+import { handleError, handleApiError, debugLog } from '@/lib/utils/error-handler'
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<any[]>([])
@@ -24,7 +25,7 @@ export default function TasksPage() {
       const response = await tasksAPI.getMyTasks()
       setTasks(response.data || [])
     } catch (error) {
-      console.error('Tasks load error:', error)
+      handleApiError(error, 'Tasks load')
       toast.error('Görevler yüklenirken hata oluştu')
     } finally {
       setLoading(false)

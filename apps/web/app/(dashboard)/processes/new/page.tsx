@@ -52,7 +52,7 @@ export default function NewProcessPage() {
       toast.success('Süreç oluşturuldu')
       router.push('/processes')
     } catch (e: any) {
-      console.error(e)
+      handleError(e)
       toast.error(e?.response?.data?.error ?? 'Süreç oluşturulamadı')
     } finally {
       setSaving(false)

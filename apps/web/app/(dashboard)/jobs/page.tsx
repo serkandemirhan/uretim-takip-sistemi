@@ -6,17 +6,22 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Search, Filter, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { getStatusLabel, getStatusColor, formatDate } from '@/lib/utils/formatters'
+import { JobsStatsCards } from '@/components/features/jobs/JobsStatsCards'
+import { ViewModeToggle, ViewMode } from '@/components/features/jobs/ViewModeToggle'
+import { CompactJobsTable } from '@/components/features/jobs/CompactJobsTable'
+import { ProcessJobsTable } from '@/components/features/jobs/ProcessJobsTable'
+import { DetailedJobsTable } from '@/components/features/jobs/DetailedJobsTable'
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<any[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
-  
+  const [viewMode, setViewMode] = useState<ViewMode>('process')
+
   const [filters, setFilters] = useState({
     search: '',
     status: '',
@@ -25,12 +30,21 @@ export default function JobsPage() {
     date_from: '',
     date_to: '',
   })
-  
+
   const [pagination, setPagination] = useState({
     page: 1,
-    per_page: 20,
+    per_page: 50, // Increased for table views
     total: 0,
     total_pages: 0,
+  })
+
+  // Mock stats - in production, get from API
+  const [stats, setStats] = useState({
+    active: 24,
+    at_risk: 5,
+    delayed: 3,
+    on_hold: 2,
+    completed: 156,
   })
 
   useEffect(() => {
@@ -58,10 +72,10 @@ export default function JobsPage() {
         page: pagination.page,
         per_page: pagination.per_page,
       }
-      
+
       const response = await jobsAPI.getAll(params)
       setJobs(response.data || [])
-      
+
       if (response.meta) {
         setPagination(prev => ({
           ...prev,
@@ -69,6 +83,18 @@ export default function JobsPage() {
           total_pages: response.meta.total_pages,
         }))
       }
+
+      // Calculate stats from jobs (mock)
+      const activeJobs = (response.data || []).filter((j: any) =>
+        j.status === 'active' || j.status === 'in_progress'
+      )
+      setStats({
+        active: activeJobs.length,
+        at_risk: activeJobs.filter((j: any) => j.progress < 50).length,
+        delayed: activeJobs.filter((j: any) => j.progress < 25).length,
+        on_hold: (response.data || []).filter((j: any) => j.status === 'on_hold').length,
+        completed: 156, // Mock value
+      })
     } catch (error) {
       console.error('Jobs load error:', error)
       toast.error('İşler yüklenirken hata oluştu')
@@ -79,7 +105,7 @@ export default function JobsPage() {
 
   function handleFilterChange(key: string, value: string) {
     setFilters(prev => ({ ...prev, [key]: value }))
-    setPagination(prev => ({ ...prev, page: 1 })) // Reset to page 1
+    setPagination(prev => ({ ...prev, page: 1 }))
   }
 
   function clearFilters() {
@@ -108,20 +134,29 @@ export default function JobsPage() {
             Toplam {pagination.total} iş
           </p>
         </div>
-        <Link href="/jobs/new">
-          <Button>
-            <Plus className="w-4 h-4 mr-2" />
-            Yeni İş
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={loadJobs} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Yenile
           </Button>
-        </Link>
+          <Link href="/jobs/new">
+            <Button>
+              <Plus className="w-4 h-4 mr-2" />
+              Yeni İş
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      {/* Stats Cards */}
+      <JobsStatsCards stats={stats} />
 
       {/* Search & Filter Bar */}
       <Card>
         <CardContent className="pt-6">
           <div className="space-y-4">
-            {/* Search & Filter Toggle */}
-            <div className="flex gap-3">
+            {/* Search & Filter Toggle & View Mode */}
+            <div className="flex items-center gap-3">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
@@ -144,6 +179,7 @@ export default function JobsPage() {
                   </Badge>
                 )}
               </Button>
+              <ViewModeToggle mode={viewMode} onChange={setViewMode} />
             </div>
 
             {/* Filters */}
@@ -259,83 +295,16 @@ export default function JobsPage() {
         </Card>
       ) : (
         <>
-          <div className="grid gap-4">
-            {jobs.map((job) => (
-              <Link key={job.id} href={`/jobs/${job.id}`}>
-                <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="font-semibold text-gray-900 text-lg">
-                            {job.title}
-                          </h3>
-                          <Badge className={getStatusColor(job.status)}>
-                            {getStatusLabel(job.status)}
-                          </Badge>
-                          {job.priority !== 'normal' && (
-                            <Badge variant="outline" className={
-                              job.priority === 'urgent' ? 'text-red-600 border-red-300' :
-                              job.priority === 'high' ? 'text-orange-600 border-orange-300' :
-                              'text-gray-600'
-                            }>
-                              {job.priority === 'urgent' ? 'Acil' :
-                               job.priority === 'high' ? 'Yüksek' : 'Düşük'}
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                          <span className="font-mono">{job.job_number}</span>
-                          {job.customer_name && (
-                            <>
-                              <span>•</span>
-                              <span>🏢 {job.customer_name}</span>
-                            </>
-                          )}
-                          {job.due_date && (
-                            <>
-                              <span>•</span>
-                              <span>📅 {formatDate(job.due_date)}</span>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Progress */}
-                        {job.total_steps > 0 && (
-                          <div className="mt-3">
-                            <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                              <span>İlerleme</span>
-                              <span>{job.progress}% ({job.completed_steps}/{job.total_steps})</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className="bg-blue-600 h-2 rounded-full transition-all"
-                                style={{ width: `${job.progress}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="text-right text-sm text-gray-500">
-                        <div>Rev.{job.revision_no}</div>
-                        <div className="text-xs mt-1">
-                          {new Date(job.created_at).toLocaleDateString('tr-TR')}
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
+          {/* Render appropriate view based on viewMode */}
+          {viewMode === 'compact' && <CompactJobsTable jobs={jobs} />}
+          {viewMode === 'process' && <ProcessJobsTable jobs={jobs} />}
+          {viewMode === 'detailed' && <DetailedJobsTable jobs={jobs} />}
 
           {/* Pagination */}
           {pagination.total_pages > 1 && (
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-600">
-                Sayfa {pagination.page} / {pagination.total_pages}
+                Sayfa {pagination.page} / {pagination.total_pages} - Toplam {pagination.total} iş
               </div>
               <div className="flex gap-2">
                 <Button

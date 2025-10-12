@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { rolesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,72 +10,91 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft, Save } from 'lucide-react'
-import Link from 'next/link'
 import { toast } from 'sonner'
 
-export default function EditRolePage() {
-  const params = useParams()
+type Resource = {
+  code: string
+  name: string
+  description?: string
+}
+
+type ProcessMeta = {
+  id: string
+  name: string
+  code: string | null
+}
+
+type Permissions = Record<
+  string,
+  {
+    can_view: boolean
+    can_create: boolean
+    can_update: boolean
+    can_delete: boolean
+  }
+>
+
+export default function CreateRolePage() {
   const router = useRouter()
-  const [role, setRole] = useState<any>(null)
-  const [resources, setResources] = useState<any[]>([])
+  const [resources, setResources] = useState<Resource[]>([])
+  const [processes, setProcesses] = useState<ProcessMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  
+
   const [formData, setFormData] = useState({
     name: '',
+    code: '',
     description: '',
-    permissions: {} as Record<string, any>,
+    permissions: {} as Permissions,
+    process_permissions: [] as string[],
   })
 
   useEffect(() => {
-    loadData()
-  }, [params.id])
+    void loadResources()
+  }, [])
 
-  async function loadData() {
+  async function loadResources() {
     try {
       setLoading(true)
-      const [roleRes, resourcesRes] = await Promise.all([
-        rolesAPI.getById(params.id as string),
-        rolesAPI.getResources(),
-      ])
-      
-      const roleData = roleRes.data
-      setRole(roleData)
-      setResources(resourcesRes.data || [])
-      
-      setFormData({
-        name: roleData.name || '',
-        description: roleData.description || '',
-        permissions: roleData.permissions || {},
+      const response = await rolesAPI.getResources()
+      const payload = response?.data || {}
+      const items: Resource[] = payload.resources || []
+      const processesList: ProcessMeta[] = payload.processes || []
+      const permissions: Permissions = {}
+      items.forEach((resource) => {
+        permissions[resource.code] = {
+          can_view: false,
+          can_create: false,
+          can_update: false,
+          can_delete: false,
+        }
       })
+      setResources(items)
+      setProcesses(processesList)
+      setFormData((prev) => ({ ...prev, permissions, process_permissions: [] }))
     } catch (error) {
-      console.error('Load error:', error)
-      toast.error('Rol yüklenirken hata oluştu')
+      handleApiError(error, 'Resources load')
+      toast.error('Yetki kaynakları yüklenemedi')
     } finally {
       setLoading(false)
     }
   }
 
-  function togglePermission(resource: string, permission: string) {
-    setFormData(prev => ({
+  function togglePermission(resource: string, permission: keyof Permissions[string]) {
+    setFormData((prev) => ({
       ...prev,
       permissions: {
         ...prev.permissions,
         [resource]: {
-          ...(prev.permissions[resource] || {
-            can_view: false,
-            can_create: false,
-            can_update: false,
-            can_delete: false,
-          }),
-          [permission]: !(prev.permissions[resource]?.[permission] || false)
-        }
-      }
+          ...prev.permissions[resource],
+          [permission]: !prev.permissions[resource][permission],
+        },
+      },
     }))
   }
 
   function toggleAllForResource(resource: string, value: boolean) {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       permissions: {
         ...prev.permissions,
@@ -83,21 +103,43 @@ export default function EditRolePage() {
           can_create: value,
           can_update: value,
           can_delete: value,
-        }
-      }
+        },
+      },
     }))
+  }
+
+  function toggleProcess(processId: string) {
+    setFormData((prev) => {
+      const has = prev.process_permissions.includes(processId)
+      return {
+        ...prev,
+        process_permissions: has
+          ? prev.process_permissions.filter((id) => id !== processId)
+          : [...prev.process_permissions, processId],
+      }
+    })
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    
+    if (!formData.name.trim() || !formData.code.trim()) {
+      toast.error('Rol adı ve kodu zorunludur')
+      return
+    }
+
     try {
       setSaving(true)
-      await rolesAPI.update(params.id as string, formData)
-      toast.success('Rol başarıyla güncellendi!')
+      await rolesAPI.create({
+        name: formData.name.trim(),
+        code: formData.code.trim(),
+        description: formData.description.trim() || null,
+        permissions: formData.permissions,
+        process_permissions: formData.process_permissions,
+      })
+      toast.success('Rol başarıyla oluşturuldu')
       router.push('/roles')
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Güncelleme başarısız')
+      toast.error(error?.response?.data?.error || 'Rol oluşturulamadı')
     } finally {
       setSaving(false)
     }
@@ -111,44 +153,50 @@ export default function EditRolePage() {
     )
   }
 
-  if (!role) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">Rol bulunamadı</p>
-      </div>
-    )
-  }
-
   return (
     <div className="max-w-4xl space-y-6">
       <Link href="/roles">
         <Button variant="ghost" size="sm">
-          <ArrowLeft className="w-4 h-4 mr-2" />
+          <ArrowLeft className="mr-2 h-4 w-4" />
           Rollere Dön
         </Button>
       </Link>
 
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Rol Düzenle</h1>
-        <p className="text-gray-600 mt-1">{role.code}</p>
+        <h1 className="text-3xl font-bold text-gray-900">Yeni Rol Oluştur</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Kullanıcılar için yeni yetki setleri tanımlayın.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Temel Bilgiler */}
         <Card>
           <CardHeader>
             <CardTitle>Rol Bilgileri</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Rol Adı *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                disabled={saving}
-              />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="name">Rol Adı *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                  disabled={saving}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="code">Kod *</Label>
+                <Input
+                  id="code"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value.toLowerCase() })}
+                  placeholder="örn. yonetici"
+                  required
+                  disabled={saving}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -164,7 +212,6 @@ export default function EditRolePage() {
           </CardContent>
         </Card>
 
-        {/* Yetkiler */}
         <Card>
           <CardHeader>
             <CardTitle>Yetkiler</CardTitle>
@@ -173,93 +220,56 @@ export default function EditRolePage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-700">
-                      Kaynak
-                    </th>
-                    <th className="text-center py-3 px-4 font-semibold text-sm text-gray-700 w-24">
-                      Gör
-                    </th>
-                    <th className="text-center py-3 px-4 font-semibold text-sm text-gray-700 w-24">
-                      Oluştur
-                    </th>
-                    <th className="text-center py-3 px-4 font-semibold text-sm text-gray-700 w-24">
-                      Güncelle
-                    </th>
-                    <th className="text-center py-3 px-4 font-semibold text-sm text-gray-700 w-24">
-                      Sil
-                    </th>
-                    <th className="text-center py-3 px-4 font-semibold text-sm text-gray-700 w-32">
-                      İşlemler
-                    </th>
+                  <tr className="border-b bg-gray-50 text-sm text-gray-700">
+                    <th className="px-4 py-3 text-left">Kaynak</th>
+                    <th className="px-4 py-3 text-center">Gör</th>
+                    <th className="px-4 py-3 text-center">Oluştur</th>
+                    <th className="px-4 py-3 text-center">Güncelle</th>
+                    <th className="px-4 py-3 text-center">Sil</th>
+                    <th className="px-4 py-3 text-center">Tümü</th>
                   </tr>
                 </thead>
                 <tbody>
                   {resources.map((resource) => {
-                    const perms = formData.permissions[resource.code] || {
-                      can_view: false,
-                      can_create: false,
-                      can_update: false,
-                      can_delete: false,
-                    }
-                    
-                    const allChecked = perms.can_view && perms.can_create && perms.can_update && perms.can_delete
-
+                    const perms = formData.permissions[resource.code]
                     return (
-                      <tr key={resource.code} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4">
-                          <div>
-                            <div className="font-medium text-gray-900">{resource.name}</div>
-                            <div className="text-xs text-gray-500">{resource.description}</div>
-                          </div>
+                      <tr key={resource.code} className="border-b text-sm text-gray-600">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">{resource.name}</div>
+                          <div className="text-xs text-gray-500">{resource.description}</div>
                         </td>
-                        <td className="py-3 px-4 text-center">
-                          <input
-                            type="checkbox"
-                            checked={perms.can_view}
-                            onChange={() => togglePermission(resource.code, 'can_view')}
-                            className="w-4 h-4 rounded"
-                            disabled={saving}
-                          />
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <input
-                            type="checkbox"
-                            checked={perms.can_create}
-                            onChange={() => togglePermission(resource.code, 'can_create')}
-                            className="w-4 h-4 rounded"
-                            disabled={saving}
-                          />
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <input
-                            type="checkbox"
-                            checked={perms.can_update}
-                            onChange={() => togglePermission(resource.code, 'can_update')}
-                            className="w-4 h-4 rounded"
-                            disabled={saving}
-                          />
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <input
-                            type="checkbox"
-                            checked={perms.can_delete}
-                            onChange={() => togglePermission(resource.code, 'can_delete')}
-                            className="w-4 h-4 rounded"
-                            disabled={saving}
-                          />
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleAllForResource(resource.code, !allChecked)}
-                            disabled={saving}
-                            className="h-7 text-xs"
-                          >
-                            {allChecked ? 'Tümünü Kaldır' : 'Tümünü Seç'}
-                          </Button>
+                        {(['can_view', 'can_create', 'can_update', 'can_delete'] as const).map((key) => (
+                          <td key={key} className="px-4 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={perms[key]}
+                              onChange={() => togglePermission(resource.code, key)}
+                              disabled={saving}
+                            />
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleAllForResource(resource.code, true)}
+                          className="mr-2 h-8 px-2 text-xs"
+                          disabled={saving}
+                        >
+                          Seç
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleAllForResource(resource.code, false)}
+                          className="h-8 px-2 text-xs"
+                          disabled={saving}
+                        >
+                          Temizle
+                        </Button>
                         </td>
                       </tr>
                     )
@@ -270,17 +280,47 @@ export default function EditRolePage() {
           </CardContent>
         </Card>
 
-        {/* Actions */}
-        <div className="flex gap-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>Süreç Erişimleri</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {processes.length === 0 ? (
+              <p className="text-sm text-gray-500">Sistem üzerinde tanımlı süreç bulunamadı.</p>
+            ) : (
+              <div className="grid gap-2 md:grid-cols-2">
+                {processes.map((process) => {
+                  const checked = formData.process_permissions.includes(process.id)
+                  return (
+                    <label
+                      key={process.id}
+                      className="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 hover:bg-gray-50"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={checked}
+                        onChange={() => toggleProcess(process.id)}
+                        disabled={saving}
+                      />
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 text-sm">
+                          {process.code ? `${process.code} • ${process.name}` : process.name}
+                        </p>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-end">
           <Button type="submit" disabled={saving}>
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+            <Save className="mr-2 h-4 w-4" />
+            {saving ? 'Kaydediliyor...' : 'Rol Oluştur'}
           </Button>
-          <Link href="/roles">
-            <Button type="button" variant="outline" disabled={saving}>
-              İptal
-            </Button>
-          </Link>
         </div>
       </form>
     </div>

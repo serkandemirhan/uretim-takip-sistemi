@@ -42,7 +42,7 @@ export default function MachineDetailPage() {
       setAllProcesses(processesResponse.data || [])
       
     } catch (error) {
-      console.error('Machine load error:', error)
+      handleApiError(error, 'Machine load')
       toast.error('Makine yüklenirken hata oluştu')
     } finally {
       setLoading(false)

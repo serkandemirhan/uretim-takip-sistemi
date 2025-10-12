@@ -42,7 +42,7 @@ export default function MachinesPage() {
       const response = await machinesAPI.getAll()
       setMachines(response.data || [])
     } catch (error) {
-      console.error('Machines load error:', error)
+      handleApiError(error, 'Machines load')
       toast.error('Makineler yüklenirken hata oluştu')
     } finally {
       setLoading(false)

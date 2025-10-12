@@ -97,6 +97,11 @@ export const jobsAPI = {
     const response = await apiClient.post(`/api/jobs/${id}/steps`, data)
     return response.data
   },
+
+  updateStep: async (stepId: string, data: any) => {
+    const response = await apiClient.patch(`/api/jobs/steps/${stepId}`, data)
+    return response.data
+  },
   
   // YENİ: Süreç sil
   deleteStep: async (stepId: string) => {
@@ -299,6 +304,29 @@ export const usersAPI = {
   },
 }
 
+// User Roles API
+export const userRolesAPI = {
+  getUserRoles: async (userId: string) => {
+    const response = await apiClient.get(`/api/user-roles/user/${userId}`)
+    return response.data
+  },
+
+  assignRoles: async (userId: string, data: { role_ids: string[]; primary_role_id?: string }) => {
+    const response = await apiClient.post(`/api/user-roles/user/${userId}`, data)
+    return response.data
+  },
+
+  removeRole: async (userId: string, roleId: string) => {
+    const response = await apiClient.delete(`/api/user-roles/user/${userId}/role/${roleId}`)
+    return response.data
+  },
+
+  setPrimaryRole: async (userId: string, roleId: string) => {
+    const response = await apiClient.patch(`/api/user-roles/user/${userId}/primary/${roleId}`)
+    return response.data
+  },
+}
+
 // Dashboard API
 export const dashboardAPI = {
   getStats: async () => {
@@ -325,18 +353,40 @@ export const dashboardAPI = {
     const response = await apiClient.get('/api/dashboard/chart/jobs-by-month')
     return response.data
   },
+
+  getAllTasks: async () => {
+    const response = await apiClient.get('/api/dashboard/tasks')
+    return response.data
+  },
 }
 
 // Files API
 export const filesAPI = {
-  getUploadUrl: async (data: {
+  // presigned PUT için URL al
+  getUploadUrl: async (payload: {
+    refType: 'job' | 'job_step'
+    refId: string
     filename: string
-    content_type?: string
-    ref_type: string
-    ref_id: string
+    contentType: string
+    size?: number
   }) => {
-    const response = await apiClient.post('/api/files/upload-url', data)
-    return response.data
+    const r = await apiClient.post('/api/files/upload-url', payload)
+    return r.data // { bucket, objectKey, url, publicUrl? }
+  },
+  
+// yüklenen objeyi DB’ye linkle (bucket + objectKey zorunlu)
+  link: async (payload: {
+    refType: 'job' | 'job_step'
+    refId: string
+    bucket: string
+    objectKey: string
+    filename: string
+    size?: number
+    contentType?: string
+    url?: string | null
+  }) => {
+    const r = await apiClient.post('/api/files/link', payload)
+    return r.data
   },
   
   linkFile: async (data: {
@@ -370,6 +420,11 @@ export const filesAPI = {
   
   delete: async (fileId: string) => {
     const response = await apiClient.delete(`/api/files/${fileId}`)
+    return response.data
+  },
+
+  getExplorer: async () => {
+    const response = await apiClient.get('/api/files/explorer')
     return response.data
   },
 }

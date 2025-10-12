@@ -29,7 +29,7 @@ export default function MachineStatusPage() {
       setMachines(machinesRes.data || [])
       setStats(statsRes.data || {})
     } catch (error) {
-      console.error('Load error:', error)
+      handleApiError(error, 'Load')
       toast.error('Veriler yüklenirken hata oluştu')
     } finally {
       setLoading(false)

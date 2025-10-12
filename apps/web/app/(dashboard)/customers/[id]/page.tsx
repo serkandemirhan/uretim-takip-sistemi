@@ -19,7 +19,7 @@ export default function CustomerDetailPage() {
         const res = await customersAPI.getById(String(id))
         setC(res?.data ?? res)
       } catch (e) {
-        console.error(e)
+        handleError(e)
         toast.error('Müşteri getirilemedi')
       } finally {
         setLoading(false)

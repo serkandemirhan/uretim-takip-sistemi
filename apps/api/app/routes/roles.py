@@ -5,6 +5,23 @@ from app.middleware.auth_middleware import token_required, role_required
 roles_bp = Blueprint('roles', __name__, url_prefix='/api/roles')
 
 
+def ensure_role_process_table():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS role_process_permissions (
+            role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+            process_id UUID NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+            can_view BOOLEAN DEFAULT TRUE,
+            PRIMARY KEY (role_id, process_id)
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
 @roles_bp.route('', methods=['GET'])
 @token_required
 def get_roles():
@@ -44,6 +61,8 @@ def get_roles():
 def get_role(role_id):
     """Rol detayı ve yetkileri"""
     try:
+        ensure_role_process_table()
+        
         # Rol bilgisi
         role_query = """
             SELECT id, name, code, description, is_active
@@ -72,7 +91,18 @@ def get_role(role_id):
                 'can_update': perm['can_update'],
                 'can_delete': perm['can_delete']
             }
-        
+
+        process_rows = execute_query(
+            """
+            SELECT rpp.process_id, p.name, p.code
+            FROM role_process_permissions rpp
+            JOIN processes p ON p.id = rpp.process_id
+            WHERE rpp.role_id = %s AND rpp.can_view = TRUE
+            ORDER BY p.name
+            """,
+            (role_id,)
+        )
+
         return jsonify({
             'data': {
                 'id': str(role['id']),
@@ -80,7 +110,8 @@ def get_role(role_id):
                 'code': role['code'],
                 'description': role['description'],
                 'is_active': role['is_active'],
-                'permissions': permissions_dict
+                'permissions': permissions_dict,
+                'process_permissions': [str(row['process_id']) for row in process_rows]
             }
         }), 200
         
@@ -95,9 +126,11 @@ def create_role():
     """Yeni rol oluştur"""
     try:
         data = request.get_json()
-        
+
         if not data.get('name') or not data.get('code'):
             return jsonify({'error': 'Ad ve kod gerekli'}), 400
+
+        ensure_role_process_table()
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -132,7 +165,15 @@ def create_role():
                     perms.get('can_update', False),
                     perms.get('can_delete', False)
                 ))
-        
+
+        process_ids = data.get('process_permissions') or []
+        for process_id in process_ids:
+            cursor.execute("""
+                INSERT INTO role_process_permissions (role_id, process_id, can_view)
+                VALUES (%s, %s, TRUE)
+                ON CONFLICT (role_id, process_id) DO UPDATE SET can_view = EXCLUDED.can_view
+            """, (role_id, process_id))
+
         conn.commit()
         conn.close()
         
@@ -156,7 +197,9 @@ def update_role(role_id):
     """Rol güncelle"""
     try:
         data = request.get_json()
-        
+
+        ensure_role_process_table()
+
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -203,10 +246,22 @@ def update_role(role_id):
                     perms.get('can_update', False),
                     perms.get('can_delete', False)
                 ))
-        
+
+        if 'process_permissions' in data:
+            cursor.execute(
+                "DELETE FROM role_process_permissions WHERE role_id = %s",
+                (role_id,)
+            )
+            for process_id in data.get('process_permissions') or []:
+                cursor.execute("""
+                    INSERT INTO role_process_permissions (role_id, process_id, can_view)
+                    VALUES (%s, %s, TRUE)
+                    ON CONFLICT (role_id, process_id) DO UPDATE SET can_view = EXCLUDED.can_view
+                """, (role_id, process_id))
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({'message': 'Rol başarıyla güncellendi'}), 200
         
     except Exception as e:
@@ -256,6 +311,8 @@ def delete_role(role_id):
 @token_required
 def get_resources():
     """Yetkilendirilebilir kaynaklar"""
+    ensure_role_process_table()
+    
     resources = [
         {'code': 'jobs', 'name': 'İşler', 'description': 'İş talepleri ve yönetimi'},
         {'code': 'customers', 'name': 'Müşteriler', 'description': 'Müşteri bilgileri'},
@@ -265,5 +322,18 @@ def get_resources():
         {'code': 'files', 'name': 'Dosyalar', 'description': 'Dosya yönetimi'},
         {'code': 'reports', 'name': 'Raporlar', 'description': 'Raporlar ve analizler'},
     ]
+
+    process_rows = execute_query("SELECT id, name, code FROM processes ORDER BY name")
+    processes = [
+        {
+            'id': str(row['id']),
+            'name': row['name'],
+            'code': row['code'],
+        }
+        for row in (process_rows or [])
+    ]
     
-    return jsonify({'data': resources}), 200
+    return jsonify({'data': {
+        'resources': resources,
+        'processes': processes,
+    }}), 200

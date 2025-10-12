@@ -1,12 +1,16 @@
-
 from flask import Blueprint, request, jsonify
 from app.models.database import execute_query, execute_write
-from app.middleware.auth_middleware import token_required
+from app.middleware.auth_middleware import token_required, permission_required
+from app.services.storage_paths import get_minio, ensure_bucket, make_folder, customer_prefix
+import os
+import logging
+from app.services.s3_client import get_s3
 
 customers_bp = Blueprint('customers', __name__, url_prefix='/api/customers')
 
 @customers_bp.route('', methods=['GET'])
 @token_required
+@permission_required('customers', 'view')
 def get_customers():
     """Tüm müşterileri listele (yalnızca aktif)"""
     try:
@@ -173,6 +177,26 @@ def create_customer():
         """, (name, contact_person, phone, email, address, tax_office, tax_number, notes, is_active))
 
         new_id = rows[0]['id'] if rows else None
+        
+        # ... INSERT sonrası:
+        new_id = rows[0]['id']
+        # müşteri_kodu yoksa name’i kullanacağız:
+
+        # Klasör oluşturma denemesini hataya düşürmeyelim:
+        try:
+            
+            customer_code_or_name = _s(data.get('code')) or name
+            s3 = get_s3()
+            bucket = os.environ.get("MINIO_BUCKET", "reklampro-files")
+            #ensure_bucket(client, bucket)
+            prefix = customer_prefix(customer_code_or_name, new_id).rstrip('/') + '/'
+           # 0-byte obje ile klasör “simülasyonu”
+            s3.put_object(Bucket=bucket, Key=prefix, Body=b'')            
+            logging.info("[customers.create] MinIO folder created: bucket=%s, prefix=%s", bucket)
+        except Exception as e:          
+            logging.exception("[customers.create] MinIO folder create failed: %s", e)
+            # Kayıt başarıyla oluştu, klasör sonra da oluşturulabilir; 201 döndürmeye devam!
+
         return jsonify({'message': 'Oluşturuldu', 'data': {'id': str(new_id)}}), 201
 
     except Exception as e:

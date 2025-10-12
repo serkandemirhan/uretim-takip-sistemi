@@ -1,11 +1,28 @@
 from flask import Flask
 from flask_cors import CORS
 from app.config import Config
+from app.models.database import get_connection_pool, close_connection_pool
+import atexit
+import logging
+
+logger = logging.getLogger(__name__)
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-    
+
+    # Connection pool'u başlangıçta oluştur
+    try:
+        get_connection_pool()
+        logger.info("✅ Database connection pool initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize connection pool: {e}")
+        raise
+
+    # Uygulama kapanırken pool'u temizle
+    @atexit.register
+    def cleanup():
+        close_connection_pool()
 
     # CORS - Tüm origin'lere izin ver (development için)
     CORS(app, resources={
@@ -24,30 +41,40 @@ def create_app():
     from app.routes.processes import processes_bp
     from app.routes.tasks import tasks_bp
     from app.routes.dashboard import dashboard_bp
-    from app.routes.files import files_bp    
+    from app.routes.files import files_bp
     from app.routes.notifications import notifications_bp
     from app.routes.roles import roles_bp
     from app.routes.users import users_bp
+    from app.routes.user_roles import user_roles_bp
+    from app.routes.permissions import permissions_bp
+    from app.routes.health import health_bp
 
+    app.register_blueprint(health_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(user_roles_bp)
     app.register_blueprint(roles_bp)
     app.register_blueprint(notifications_bp)
-    app.register_blueprint(files_bp)    
-    app.register_blueprint(dashboard_bp)      
-    app.register_blueprint(tasks_bp)    
-    app.register_blueprint(processes_bp)    
+    app.register_blueprint(files_bp)
+    app.register_blueprint(dashboard_bp)
+    app.register_blueprint(tasks_bp)
+    app.register_blueprint(processes_bp)
     app.register_blueprint(customers_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(jobs_bp)
     app.register_blueprint(machines_bp)
-    
-    # Health check
-    @app.route('/health', methods=['GET'])
-    def health_check():
-        return {'status': 'ok', 'message': 'API çalışıyor'}, 200
-    
+    app.register_blueprint(permissions_bp)
+
+    # Root endpoint
     @app.route('/', methods=['GET'])
     def index():
-        return {'message': 'Reklam Yönetim Sistemi API', 'version': '1.0.0'}, 200
-    
+        return {
+            'message': 'Reklam Yönetim Sistemi API',
+            'version': '1.0.0',
+            'endpoints': {
+                'health': '/api/health',
+                'db_health': '/api/health/db',
+                'db_test': '/api/health/db/test'
+            }
+        }, 200
+
     return app

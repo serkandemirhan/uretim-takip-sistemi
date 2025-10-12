@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { usersAPI } from '@/lib/api/client'
+import { usersAPI, userRolesAPI, rolesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MultiRoleSelector } from '@/components/features/users/MultiRoleSelector'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -20,8 +21,15 @@ export default function NewUserPage() {
     password: '',
     password_confirm: '',
     full_name: '',
-    role: 'operator',
+    role: 'operator', // Backward compatibility için
   })
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([])
+  const [primaryRoleId, setPrimaryRoleId] = useState<string | undefined>()
+
+  function handleRolesChange(roleIds: string[], primaryId?: string) {
+    setSelectedRoleIds(roleIds)
+    setPrimaryRoleId(primaryId)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -37,10 +45,28 @@ export default function NewUserPage() {
       return
     }
 
+    if (selectedRoleIds.length === 0) {
+      toast.error('En az bir rol seçmelisiniz')
+      return
+    }
+
     setLoading(true)
 
     try {
-      const response = await usersAPI.create(formData)
+      // 1. Kullanıcıyı oluştur (backward compatibility için role field'ı kullan)
+      const response = await usersAPI.create({
+        ...formData,
+        role: formData.role, // Geçici olarak kullanılacak
+      })
+
+      const newUserId = response.data.id
+
+      // 2. Seçilen rolleri ata
+      await userRolesAPI.assignRoles(newUserId, {
+        role_ids: selectedRoleIds,
+        primary_role_id: primaryRoleId,
+      })
+
       toast.success('Kullanıcı başarıyla oluşturuldu!')
       router.push('/users')
     } catch (error: any) {
@@ -52,7 +78,7 @@ export default function NewUserPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-4xl space-y-6">
       <Link href="/users">
         <Button variant="ghost" size="sm">
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -65,12 +91,13 @@ export default function NewUserPage() {
         <p className="text-gray-600 mt-1">Sisteme yeni kullanıcı ekleyin</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Kullanıcı Bilgileri</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Kullanıcı Bilgileri */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Kullanıcı Bilgileri</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="full_name">Ad Soyad *</Label>
               <Input
@@ -113,28 +140,6 @@ export default function NewUserPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="role">Rol *</Label>
-              <select
-                id="role"
-                value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                disabled={loading}
-              >
-                <option value="operator">Operatör</option>
-                <option value="yonetici">Yönetici</option>
-                <option value="musteri_temsilcisi">Müşteri Temsilcisi</option>
-                <option value="tasarimci">Tasarımcı</option>
-                <option value="kesifci">Keşifçi</option>
-                <option value="depocu">Depocu</option>
-                <option value="satinalma">Satınalma</option>
-              </select>
-              <p className="text-xs text-gray-500">
-                Kullanıcının sistemdeki yetki seviyesini belirler
-              </p>
-            </div>
-
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="password">Şifre *</Label>
@@ -162,20 +167,28 @@ export default function NewUserPage() {
                 />
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="flex gap-3 pt-4">
-              <Button type="submit" disabled={loading}>
-                {loading ? 'Oluşturuluyor...' : 'Kullanıcı Oluştur'}
-              </Button>
-              <Link href="/users">
-                <Button type="button" variant="outline" disabled={loading}>
-                  İptal
-                </Button>
-              </Link>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+        {/* Roller */}
+        <MultiRoleSelector
+          selectedRoleIds={selectedRoleIds}
+          primaryRoleId={primaryRoleId}
+          onChange={handleRolesChange}
+        />
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <Button type="submit" disabled={loading || selectedRoleIds.length === 0}>
+            {loading ? 'Oluşturuluyor...' : 'Kullanıcı Oluştur'}
+          </Button>
+          <Link href="/users">
+            <Button type="button" variant="outline" disabled={loading}>
+              İptal
+            </Button>
+          </Link>
+        </div>
+      </form>
     </div>
   )
 }

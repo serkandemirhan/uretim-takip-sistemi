@@ -10,6 +10,7 @@ import { customersAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { handleError, handleApiError, debugLog } from '@/lib/utils/error-handler'
 
 type Customer = {
   id: string
@@ -39,7 +40,7 @@ export default function CustomersPage() {
         const list: Customer[] = (res?.data ?? res ?? []).slice()
         setCustomers(list)
       } catch (e) {
-        console.error(e)
+        handleError(e)
         toast.error('Müşteriler yüklenemedi')
       } finally {
         setLoading(false)

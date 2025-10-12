@@ -35,7 +35,7 @@ export default function NewCustomerPage() {
       toast.success('Müşteri başarıyla oluşturuldu!')
       router.push('/customers')
     } catch (error: any) {
-      console.error('Customer create error:', error)
+      handleApiError(error, 'Customer create')
       toast.error(error.response?.data?.error || 'Müşteri oluşturulurken hata oluştu')
     } finally {
       setLoading(false)

@@ -62,7 +62,7 @@ export default function NewJobPage() {
     setUsers(usersRes.data || []) // ← GÜNCEL: State'e set et
     setMachines(machinesRes.data?.data || [])
   } catch (error) {
-    console.error('Load data error:', error)
+    handleApiError(error, 'Load data')
   }
 }
 
@@ -116,7 +116,7 @@ export default function NewJobPage() {
       toast.success('İş başarıyla oluşturuldu!')
       router.push(`/jobs/${response.data.id}`)
     } catch (error: any) {
-      console.error('Job create error:', error)
+      handleApiError(error, 'Job create')
       toast.error(error.response?.data?.error || 'İş oluşturulurken hata oluştu')
     } finally {
       setLoading(false)

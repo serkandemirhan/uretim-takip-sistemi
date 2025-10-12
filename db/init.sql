@@ -225,6 +225,14 @@ INSERT INTO machine_processes (machine_id, process_id)
 SELECT m.id, p.id FROM machines m, processes p 
 WHERE m.code = 'CNC-A' AND p.code = 'KESIM';
 
+-- Rol süreç yetkileri tablosu
+CREATE TABLE IF NOT EXISTS role_process_permissions (
+    role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    process_id UUID NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+    can_view BOOLEAN DEFAULT TRUE,
+    PRIMARY KEY (role_id, process_id)
+);
+
 -- Örnek müşteri
 INSERT INTO customers (name, contact_person, phone, email, address) VALUES
 ('ABC Reklam Ajansı', 'Mehmet Karaca', '+90 532 000 1122', 'info@abcreklam.com', 'İstiklal Cad. No:12, Beyoğlu, İstanbul');

@@ -21,16 +21,27 @@ interface FileUploadProps {
   refId: string
   onUploadComplete?: () => void
   maxFiles?: number
+  disabled?: boolean
 }
 
-export function FileUpload({ refType, refId, onUploadComplete, maxFiles = 10 }: FileUploadProps) {
+export function FileUpload({
+  refType,
+  refId,
+  onUploadComplete,
+  maxFiles = 10,
+  disabled = false,
+}: FileUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [queue, setQueue] = useState<QueueItem[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const pickFiles = () => inputRef.current?.click()
+  const pickFiles = () => {
+    if (disabled) return
+    inputRef.current?.click()
+  }
 
   const onSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (disabled) return
     const files = Array.from(e.target.files || [])
     if (!files.length) return
     if (files.length > maxFiles) {
@@ -42,6 +53,7 @@ export function FileUpload({ refType, refId, onUploadComplete, maxFiles = 10 }: 
 
   const onDrop: React.DragEventHandler<HTMLDivElement> = (e) => {
     e.preventDefault()
+    if (disabled) return
     const files = Array.from(e.dataTransfer.files || [])
     if (!files.length) return
     if (files.length > maxFiles) {
@@ -156,8 +168,15 @@ export function FileUpload({ refType, refId, onUploadComplete, maxFiles = 10 }: 
     <div className="space-y-4">
       {/* Drop zone */}
       <div
-        className="w-full border-2 border-dashed rounded-lg p-4 text-center hover:bg-gray-50 transition-colors"
-        onDragOver={(e) => e.preventDefault()}
+        className={`w-full border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+          disabled
+            ? 'cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200'
+            : 'hover:bg-gray-50'
+        }`}
+        onDragOver={(e) => {
+          if (disabled) return
+          e.preventDefault()
+        }}
         onDrop={onDrop}
       >
         <input
@@ -166,11 +185,17 @@ export function FileUpload({ refType, refId, onUploadComplete, maxFiles = 10 }: 
           multiple
           className="hidden"
           onChange={onSelect}
-          disabled={uploading}
+          disabled={uploading || disabled}
         />
-        <Button type="button" variant="outline" onClick={pickFiles} disabled={uploading} className="w-full">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={pickFiles}
+          disabled={uploading || disabled}
+          className="w-full"
+        >
           <Upload className="w-4 h-4 mr-2" />
-          {uploading ? 'Yükleniyor…' : 'Dosya Seç veya Sürükleyip Bırak'}
+          {disabled ? 'Dosya yükleme izniniz yok' : uploading ? 'Yükleniyor…' : 'Dosya Seç veya Sürükleyip Bırak'}
         </Button>
         <p className="text-xs text-gray-500 mt-2">Maksimum {maxFiles} dosya yükleyebilirsiniz</p>
       </div>

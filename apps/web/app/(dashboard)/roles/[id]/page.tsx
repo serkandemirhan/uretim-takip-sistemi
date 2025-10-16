@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft, Save } from 'lucide-react'
 import { toast } from 'sonner'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 type Permissions = Record<
   string,

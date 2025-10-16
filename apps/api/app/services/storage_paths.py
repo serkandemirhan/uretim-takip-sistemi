@@ -1,6 +1,7 @@
 import os, re, uuid
 from io import BytesIO
 from minio import Minio
+from botocore.exceptions import ClientError
 from minio.error import S3Error
 
 def slugify(s: str) -> str:
@@ -17,15 +18,35 @@ def get_minio() -> Minio:
         secure=os.environ.get("MINIO_SECURE", "false").lower() == "true",
     )
 
-def ensure_bucket(client: Minio, bucket: str):
-    if not client.bucket_exists(bucket):
-        client.make_bucket(bucket)
+def ensure_bucket(client, bucket: str):
+    """MinIO veya boto3 client ile bucket oluştur."""
+    if hasattr(client, "bucket_exists"):
+        if not client.bucket_exists(bucket):
+            client.make_bucket(bucket)
+        return
 
-def make_folder(client: Minio, bucket: str, prefix: str):
+    # boto3-style client
+    try:
+        client.head_bucket(Bucket=bucket)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchBucket", "NotFound"):
+            client.create_bucket(Bucket=bucket)
+        elif code == "301":
+            # Bucket farklı bölgede, R2 için sorun olmaz; yok say.
+            return
+        else:
+            raise
+
+def make_folder(client, bucket: str, prefix: str):
     """S3/MinIO 'klasör'ü: trailing slash ile 0-byte obje."""
     key = prefix.rstrip("/") + "/"
     # varsa tekrar koymak sorun değil
-    client.put_object(bucket, key, data=BytesIO(b""), length=0)
+    if hasattr(client, "put_object") and not isinstance(client, Minio):
+        # boto3 client
+        client.put_object(Bucket=bucket, Key=key, Body=b"")
+    else:
+        client.put_object(bucket, key, data=BytesIO(b""), length=0)
 
 # ---- path kuralları ----
 

@@ -161,6 +161,26 @@ def get_job(job_id):
             ORDER BY js.order_index
         """
         steps = execute_query(steps_query, (job_id,))
+
+        step_ids = [str(step['id']) for step in steps or []]
+        notes_by_step = {}
+        if step_ids:
+            notes_query = """
+                SELECT n.id, n.job_step_id, n.note, n.created_at, u.full_name AS author_name
+                FROM job_step_notes n
+                LEFT JOIN users u ON n.user_id = u.id
+                WHERE n.job_step_id = ANY(%s::uuid[])
+                ORDER BY n.created_at ASC
+            """
+            notes_rows = execute_query(notes_query, (step_ids,))
+            for note in notes_rows or []:
+                key = str(note['job_step_id'])
+                notes_by_step.setdefault(key, []).append({
+                    'id': str(note['id']),
+                    'note': note['note'],
+                    'created_at': note['created_at'].isoformat() if note.get('created_at') else None,
+                    'author_name': note.get('author_name')
+                })
         
         return jsonify({
             'data': {
@@ -202,7 +222,11 @@ def get_job(job_id):
                     'completed_at': step['completed_at'].isoformat() if step['completed_at'] else None,
                     'production_quantity': float(step['production_quantity']) if step['production_quantity'] else None,
                     'production_unit': step['production_unit'],
-                    'production_notes': step['production_notes']
+                    'production_notes': step['production_notes'],
+                    'block_reason': step.get('block_reason'),
+                    'blocked_at': step['blocked_at'].isoformat() if step.get('blocked_at') else None,
+                    'status_before_block': step.get('status_before_block'),
+                    'notes': notes_by_step.get(str(step['id']), [])
                 } for step in steps]
             }
         }), 200
@@ -479,7 +503,7 @@ def start_step(step_id):
             FROM job_steps js
             JOIN jobs j ON js.job_id = j.id
             JOIN processes p ON js.process_id = p.id
-            WHERE js.id = %s AND js.status = 'ready'
+            WHERE js.id = %s AND js.status IN ('ready', 'pending')
             """,
             (step_id,),
         )
@@ -521,6 +545,226 @@ def start_step(step_id):
         
     except Exception as e:
         print(f"Error starting step: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@jobs_bp.route('/steps/<step_id>/pause', methods=['POST'])
+@token_required
+def pause_step(step_id):
+    """Süreci durdur (blocked)"""
+    try:
+        data = request.get_json() or {}
+        reason = (data.get('reason') or '').strip()
+
+        if not reason:
+            return jsonify({'error': 'Durdurma sebebi gerekli'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT js.id, js.status, js.assigned_to, js.status_before_block
+            FROM job_steps js
+            WHERE js.id = %s
+            """,
+            (step_id,),
+        )
+
+        step = cursor.fetchone()
+
+        if not step:
+            conn.close()
+            return jsonify({'error': 'Adım bulunamadı'}), 404
+
+        if step['status'] == 'blocked':
+            conn.close()
+            return jsonify({'error': 'Süreç zaten durdurulmuş'}), 400
+
+        if step['status'] in ('completed', 'canceled'):
+            conn.close()
+            return jsonify({'error': 'Tamamlanan veya iptal edilen süreç durdurulamaz'}), 400
+
+        current_user = getattr(request, 'current_user', None)
+        current_role = current_user.get('role') if current_user else None
+        current_user_id = current_user.get('user_id') if current_user else None
+
+        if (
+            step.get('assigned_to')
+            and str(step['assigned_to']) != str(current_user_id)
+            and current_role != 'yonetici'
+        ):
+            conn.close()
+            return jsonify({'error': 'Bu adımı durdurma yetkiniz yok'}), 403
+
+        previous_status = step['status_before_block'] if step.get('status_before_block') else step['status']
+
+        cursor.execute(
+            """
+            UPDATE job_steps
+            SET status = 'blocked',
+                status_before_block = %s,
+                block_reason = %s,
+                blocked_at = NOW(),
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING job_id
+            """,
+            (previous_status, reason, step_id),
+        )
+
+        updated = cursor.fetchone()
+        conn.commit()
+        conn.close()
+
+        if not updated:
+            return jsonify({'error': 'Süreç durdurulamadı'}), 500
+
+        return jsonify({'message': 'Süreç durduruldu'}), 200
+
+    except Exception as e:
+        print(f"Error pausing step: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@jobs_bp.route('/steps/<step_id>/resume', methods=['POST'])
+@token_required
+def resume_step(step_id):
+    """Durdurulan süreci devam ettir"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT js.id, js.status, js.assigned_to, js.status_before_block
+            FROM job_steps js
+            WHERE js.id = %s
+            """,
+            (step_id,),
+        )
+
+        step = cursor.fetchone()
+
+        if not step:
+            conn.close()
+            return jsonify({'error': 'Adım bulunamadı'}), 404
+
+        if step['status'] != 'blocked':
+            conn.close()
+            return jsonify({'error': 'Süreç durdurulmuş değil'}), 400
+
+        current_user = getattr(request, 'current_user', None)
+        current_role = current_user.get('role') if current_user else None
+        current_user_id = current_user.get('user_id') if current_user else None
+
+        if (
+            step.get('assigned_to')
+            and str(step['assigned_to']) != str(current_user_id)
+            and current_role != 'yonetici'
+        ):
+            conn.close()
+            return jsonify({'error': 'Bu adımı devam ettirme yetkiniz yok'}), 403
+
+        new_status = step.get('status_before_block') or 'ready'
+        if new_status == 'blocked':
+            new_status = 'ready'
+
+        cursor.execute(
+            """
+            UPDATE job_steps
+            SET status = %s,
+                status_before_block = NULL,
+                block_reason = NULL,
+                blocked_at = NULL,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING job_id
+            """,
+            (new_status, step_id),
+        )
+
+        updated = cursor.fetchone()
+        conn.commit()
+        conn.close()
+
+        if not updated:
+            return jsonify({'error': 'Süreç güncellenemedi'}), 500
+
+        return jsonify({'message': 'Süreç devam ettirildi'}), 200
+
+    except Exception as e:
+        print(f"Error resuming step: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@jobs_bp.route('/steps/<step_id>/notes', methods=['GET'])
+@token_required
+def list_step_notes(step_id):
+    """Süreç notlarını listele"""
+    try:
+        notes_query = """
+            SELECT n.id, n.note, n.created_at, u.full_name AS author_name
+            FROM job_step_notes n
+            LEFT JOIN users u ON n.user_id = u.id
+            WHERE n.job_step_id = %s
+            ORDER BY n.created_at ASC
+        """
+        notes = execute_query(notes_query, (step_id,))
+        return jsonify({
+            'data': [
+                {
+                    'id': str(note['id']),
+                    'note': note['note'],
+                    'created_at': note['created_at'].isoformat() if note.get('created_at') else None,
+                    'author_name': note.get('author_name'),
+                }
+                for note in notes or []
+            ]
+        }), 200
+    except Exception as e:
+        print(f"Error listing step notes: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@jobs_bp.route('/steps/<step_id>/notes', methods=['POST'])
+@token_required
+def add_step_note(step_id):
+    """Süreç notu ekle"""
+    try:
+        data = request.get_json() or {}
+        note = (data.get('note') or '').strip()
+        if not note:
+            return jsonify({'error': 'Not içeriği gerekli'}), 400
+
+        current_user = getattr(request, 'current_user', None)
+        user_id = current_user.get('user_id') if current_user else None
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO job_step_notes (job_step_id, user_id, note)
+            VALUES (%s, %s, %s)
+            RETURNING id, created_at
+            """,
+            (step_id, user_id, note),
+        )
+        note_row = cursor.fetchone()
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'message': 'Not eklendi',
+            'data': {
+                'id': str(note_row['id']),
+                'note': note,
+                'created_at': note_row['created_at'].isoformat() if note_row.get('created_at') else None,
+                'author_name': current_user.get('username') if current_user else None,
+            }
+        }), 201
+    except Exception as e:
+        print(f"Error adding step note: {str(e)}")
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
 
 

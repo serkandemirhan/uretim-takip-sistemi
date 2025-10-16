@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Plus, X, GripVertical, Workflow } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 interface ProcessStep {
   process_id: string
@@ -58,7 +59,12 @@ export default function NewJobPage() {
     ])
     
     setCustomers(customersRes.data || [])
-    setProcesses(processesRes.data || [])
+    const processPayload = processesRes?.data ?? processesRes ?? {}
+    const processList = [
+      ...((processPayload.groups ?? []).flatMap((g: any) => g.processes ?? [])),
+      ...(processPayload.ungrouped ?? []),
+    ]
+    setProcesses(processList)
     setUsers(usersRes.data || []) // ← GÜNCEL: State'e set et
     setMachines(machinesRes.data?.data || [])
   } catch (error) {

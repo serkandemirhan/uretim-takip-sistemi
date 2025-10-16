@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Cpu, CheckCircle, AlertCircle, Wrench, Clock, User, Briefcase } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 export default function MachineStatusPage() {
   const [machines, setMachines] = useState<any[]>([])

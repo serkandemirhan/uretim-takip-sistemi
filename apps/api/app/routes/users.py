@@ -5,20 +5,67 @@ from app.middleware.auth_middleware import token_required, role_required
 
 users_bp = Blueprint('users', __name__, url_prefix='/api/users')
 
+def _get_user_avatar_column_flags():
+    """Determine whether legacy avatar columns are available."""
+    avatar_columns_query = """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'users'
+        AND column_name IN ('avatar_url', 'avatar_file_id')
+    """
+    columns = execute_query(avatar_columns_query)
+    has_avatar_url = any(col['column_name'] == 'avatar_url' for col in columns or [])
+    has_avatar_file_id = any(col['column_name'] == 'avatar_file_id' for col in columns or [])
+    return has_avatar_url, has_avatar_file_id
+
 @users_bp.route('', methods=['GET'])
 @token_required
 def get_users():
     """Kullanıcıları listele"""
     try:
-        query = """
+        # Legacy role kolonunun varlığını kontrol et
+        role_column_exists_query = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'users'
+                AND column_name = 'role'
+            ) AS role_exists
+        """
+        role_column_exists = execute_query_one(role_column_exists_query)
+        legacy_role_map = {}
+
+        if role_column_exists and role_column_exists.get('role_exists'):
+            legacy_roles = execute_query("""
+                SELECT id, role
+                FROM users
+                WHERE role IS NOT NULL
+            """)
+            legacy_role_map = {
+                str(row['id']): row['role']
+                for row in legacy_roles or []
+                if row.get('role')
+            }
+
+        has_avatar_url, has_avatar_file_id = _get_user_avatar_column_flags()
+        avatar_select_parts = []
+        if has_avatar_url:
+            avatar_select_parts.append("u.avatar_url")
+        if has_avatar_file_id:
+            avatar_select_parts.append("u.avatar_file_id")
+        avatar_select_sql = ""
+        if avatar_select_parts:
+            avatar_select_sql = ", " + ", ".join(avatar_select_parts)
+
+        query = f"""
             SELECT
                 u.id,
                 u.username,
                 u.email,
                 u.full_name,
-                u.role AS legacy_role,
                 u.is_active,
-                u.created_at,
+                u.created_at
+                {avatar_select_sql},
                 primary_role.primary_role_id,
                 primary_role.primary_role_code,
                 primary_role.primary_role_name,
@@ -57,23 +104,58 @@ def get_users():
 
         users = execute_query(query)
 
+        fallback_avatars = {}
+        if not has_avatar_file_id:
+            user_ids = [str(user['id']) for user in users] if users else []
+            if user_ids:
+                fallback_rows = execute_query(
+                    """
+                    SELECT DISTINCT ON (ref_id)
+                        ref_id,
+                        id AS file_id,
+                        object_key
+                    FROM files
+                    WHERE ref_type = 'user' AND ref_id = ANY(%s::uuid[])
+                    ORDER BY ref_id, created_at DESC
+                    """,
+                    (user_ids,)
+                ) or []
+                for row in fallback_rows:
+                    fallback_avatars[row['ref_id']] = {
+                        'file_id': row['file_id'],
+                        'object_key': row.get('object_key')
+                    }
+
         users_list = []
         for user in users:
             roles = user.get('roles') or []
             if isinstance(roles, str):
                 roles = json.loads(roles)
 
+            legacy_role_code = legacy_role_map.get(str(user['id']))
+            primary_role_code = user.get('primary_role_code') or legacy_role_code
+
+            avatar_url = user.get('avatar_url') if has_avatar_url else None
+            avatar_file_id_value = user.get('avatar_file_id') if has_avatar_file_id else None
+            if not avatar_file_id_value:
+                fallback = fallback_avatars.get(str(user['id']))
+                if fallback:
+                    avatar_file_id_value = fallback.get('file_id')
+                    if not avatar_url:
+                        avatar_url = fallback.get('object_key')
             users_list.append({
                 'id': str(user['id']),
                 'username': user['username'],
                 'email': user['email'],
                 'full_name': user['full_name'],
-                'role': user.get('primary_role_code') or user['legacy_role'],
+                'role': primary_role_code,
                 'is_active': user['is_active'],
                 'created_at': user['created_at'].isoformat() if user['created_at'] else None,
+                'avatar_url': avatar_url,
+                'avatar_file_id': str(avatar_file_id_value) if avatar_file_id_value else None,
                 'primary_role': {
                     'id': str(user['primary_role_id']) if user.get('primary_role_id') else None,
-                    'code': user.get('primary_role_code') or user['legacy_role'],
+                    'code': primary_role_code,
                     'name': user.get('primary_role_name')
                 },
                 'roles': [
@@ -99,9 +181,26 @@ def get_users():
 def get_user(user_id):
     """Tek kullanıcı detayı"""
     try:
-        query = """
+        # Avatar kolonları schema'da yoksa NULL dönecek şekilde handle et
+        has_avatar_url, has_avatar_file_id = _get_user_avatar_column_flags()
+
+        select_fields = [
+            "id",
+            "username",
+            "email",
+            "full_name",
+            "is_active",
+            "created_at"
+        ]
+
+        if has_avatar_url:
+            select_fields.append("avatar_url")
+        if has_avatar_file_id:
+            select_fields.append("avatar_file_id")
+
+        query = f"""
             SELECT 
-                id, username, email, full_name, role, is_active, created_at
+                {', '.join(select_fields)}
             FROM users
             WHERE id = %s
         """
@@ -153,14 +252,32 @@ def get_user(user_id):
                 primary_role = role_item
 
         # Legacy support: primary role yoksa users.role kolonu ile doldur
-        if not primary_role and user.get('role'):
+        legacy_role_code = None
+        role_column_exists_query = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'users'
+                AND column_name = 'role'
+            ) AS role_exists
+        """
+        role_column_exists = execute_query_one(role_column_exists_query)
+
+        if role_column_exists and role_column_exists.get('role_exists'):
+            legacy_role_result = execute_query_one(
+                "SELECT role FROM users WHERE id = %s",
+                (user_id,)
+            )
+            legacy_role_code = legacy_role_result.get('role') if legacy_role_result else None
+
+        if not primary_role and legacy_role_code:
             legacy_query = """
                 SELECT id, code, name, description
                 FROM roles
                 WHERE code = %s
                 LIMIT 1
             """
-            legacy_role = execute_query_one(legacy_query, (user['role'],))
+            legacy_role = execute_query_one(legacy_query, (legacy_role_code,))
             if legacy_role:
                 legacy_item = {
                     'role_id': str(legacy_role['id']),
@@ -173,15 +290,37 @@ def get_user(user_id):
                 role_list.insert(0, legacy_item)
                 primary_role = legacy_item
 
+        user_role_code = primary_role['role_code'] if primary_role else legacy_role_code
+        
+        avatar_url = user.get('avatar_url') if has_avatar_url else None
+        avatar_file_id = str(user.get('avatar_file_id')) if has_avatar_file_id and user.get('avatar_file_id') else None
+        if not avatar_file_id:
+            fallback_avatar = execute_query_one(
+                """
+                SELECT id, object_key
+                FROM files
+                WHERE ref_type = 'user' AND ref_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (str(user_id),)
+            )
+            if fallback_avatar:
+                avatar_file_id = str(fallback_avatar['id'])
+                if not avatar_url:
+                    avatar_url = fallback_avatar.get('object_key')
+
         return jsonify({
             'data': {
                 'id': str(user['id']),
                 'username': user['username'],
                 'email': user['email'],
                 'full_name': user['full_name'],
-                'role': user['role'],
+                'role': user_role_code,
                 'is_active': user['is_active'],
                 'created_at': user['created_at'].isoformat() if user['created_at'] else None,
+                'avatar_url': avatar_url,
+                'avatar_file_id': avatar_file_id,
                 'primary_role': primary_role,
                 'roles': role_list,
                 'stats': {
@@ -202,6 +341,7 @@ def get_user(user_id):
 def create_user():
     """Yeni kullanıcı oluştur"""
     try:
+        has_avatar_url, has_avatar_file_id = _get_user_avatar_column_flags()
         data = request.get_json()
         
         if not data.get('username') or not data.get('email') or not data.get('password'):
@@ -217,10 +357,16 @@ def create_user():
         if existing:
             return jsonify({'error': 'Bu kullanıcı adı veya email zaten kullanılıyor'}), 400
         
-        insert_query = """
+        returning_fields = ['id', 'username', 'full_name']
+        if has_avatar_url:
+            returning_fields.append('avatar_url')
+        if has_avatar_file_id:
+            returning_fields.append('avatar_file_id')
+
+        insert_query = f"""
             INSERT INTO users (username, email, password_hash, full_name, role)
             VALUES (%s, %s, crypt(%s, gen_salt('bf')), %s, %s)
-            RETURNING id, username, full_name
+            RETURNING {', '.join(returning_fields)}
         """
         
         params = (
@@ -238,12 +384,17 @@ def create_user():
         conn.commit()
         conn.close()
         
+        avatar_url = result.get('avatar_url') if has_avatar_url else None
+        avatar_file_id = result.get('avatar_file_id') if has_avatar_file_id else None
+
         return jsonify({
             'message': 'Kullanıcı başarıyla oluşturuldu',
             'data': {
                 'id': str(result['id']),
                 'username': result['username'],
-                'full_name': result['full_name']
+                'full_name': result['full_name'],
+                'avatar_url': avatar_url,
+                'avatar_file_id': str(avatar_file_id) if avatar_file_id else None
             }
         }), 201
         
@@ -259,6 +410,7 @@ def update_user(user_id):
     """Kullanıcıyı güncelle"""
     try:
         data = request.get_json()
+        has_avatar_url, has_avatar_file_id = _get_user_avatar_column_flags()
         
         update_fields = []
         params = []
@@ -278,6 +430,14 @@ def update_user(user_id):
         if 'is_active' in data:
             update_fields.append("is_active = %s")
             params.append(data['is_active'])
+        
+        if has_avatar_url and 'avatar_url' in data:
+            update_fields.append("avatar_url = %s")
+            params.append(data['avatar_url'])
+
+        if has_avatar_file_id and 'avatar_file_id' in data:
+            update_fields.append("avatar_file_id = %s")
+            params.append(data['avatar_file_id'])
         
         # Şifre güncellemesi (opsiyonel)
         if data.get('password'):

@@ -11,9 +11,15 @@ interface FileListProps {
   files: any[]
   onDelete?: () => void
   showFolder?: boolean
+  allowDelete?: boolean
 }
 
-export function FileList({ files, onDelete, showFolder = true }: FileListProps) {
+export function FileList({
+  files,
+  onDelete,
+  showFolder = true,
+  allowDelete = true,
+}: FileListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   async function handleDownload(fileId: string, filename: string) {
@@ -129,15 +135,17 @@ export function FileList({ files, onDelete, showFolder = true }: FileListProps) 
                 >
                   <Download className="w-4 h-4" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(file.id, file.filename)}
-                  disabled={deletingId === file.id}
-                  className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                {allowDelete && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(file.id, file.filename)}
+                    disabled={deletingId === file.id}
+                    className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>

@@ -4,7 +4,7 @@
  */
 
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 
 export type Priority = 'low' | 'normal' | 'high' | 'urgent'
 

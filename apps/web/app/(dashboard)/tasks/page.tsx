@@ -160,12 +160,19 @@ export default function TasksPage() {
 }
 
 // Task Card Component
+type TaskStatus = 'ready' | 'in_progress' | 'completed'
+
 function TaskCard({ task, onUpdate }: { task: any; onUpdate: () => void }) {
-  const statusBadge = {
+  const statusMap: Record<TaskStatus, { label: string; class: string }> = {
     ready: { label: 'Hazır', class: 'bg-blue-100 text-blue-700' },
     in_progress: { label: 'Devam Ediyor', class: 'bg-yellow-100 text-yellow-700' },
     completed: { label: 'Tamamlandı', class: 'bg-green-100 text-green-700' },
-  }[task.status]
+  }
+
+  const statusKey = (typeof task.status === 'string' && task.status in statusMap
+    ? task.status
+    : 'ready') as TaskStatus
+  const statusBadge = statusMap[statusKey]
 
   return (
     <Link href={`/tasks/${task.id}`}>

@@ -127,6 +127,21 @@ export const jobsAPI = {
     return response.data
   },
 
+  pauseStep: async (stepId: string, data: { reason: string }) => {
+    const response = await apiClient.post(`/api/jobs/steps/${stepId}/pause`, data)
+    return response.data
+  },
+
+  resumeStep: async (stepId: string) => {
+    const response = await apiClient.post(`/api/jobs/steps/${stepId}/resume`)
+    return response.data
+  },
+
+  addStepNote: async (stepId: string, data: { note: string }) => {
+    const response = await apiClient.post(`/api/jobs/steps/${stepId}/notes`, data)
+    return response.data
+  },
+
 
   // YENİ: Revizyon geçmişi
   getRevisions: async (id: string) => {
@@ -201,8 +216,28 @@ export const customersAPI = {
     return response.data
   },
 
-   update: async (id: string, data: any) => {
+  update: async (id: string, data: any) => {
     const response = await apiClient.patch(`/api/customers/${id}`, data)
+    return response.data
+  },
+
+  getDealers: async (customerId: string) => {
+    const response = await apiClient.get(`/api/customers/${customerId}/dealers`)
+    return response.data
+  },
+
+  createDealer: async (customerId: string, data: any) => {
+    const response = await apiClient.post(`/api/customers/${customerId}/dealers`, data)
+    return response.data
+  },
+
+  updateDealer: async (customerId: string, dealerId: string, data: any) => {
+    const response = await apiClient.patch(`/api/customers/${customerId}/dealers/${dealerId}`, data)
+    return response.data
+  },
+
+  deleteDealer: async (customerId: string, dealerId: string) => {
+    const response = await apiClient.delete(`/api/customers/${customerId}/dealers/${dealerId}`)
     return response.data
   },
 }
@@ -220,23 +255,59 @@ export const processesAPI = {
   },
 
   delete: async (id: string) => {
-  const res = await apiClient.delete(`/api/processes/${id}`)
-  return res.data
-},
+    const res = await apiClient.delete(`/api/processes/${id}`)
+    return res.data
+  },
 
- create: async (data: {
-    name: string; code: string; description?: string;
-    is_machine_based?: boolean; is_production?: boolean; order_index?: number
+  create: async (data: {
+    name: string
+    code: string
+    description?: string
+    is_machine_based?: boolean
+    is_production?: boolean
+    order_index?: number
+    group_id?: string | null
   }) => {
     const res = await apiClient.post('/api/processes', data)
     return res.data
   },
 
-  update: async (id: string, data: Partial<{
-    name: string; code: string; description: string;
-    is_machine_based: boolean; is_production: boolean; order_index: number;
-  }>) => {
+  update: async (
+    id: string,
+    data: Partial<{
+      name: string
+      code: string
+      description: string
+      is_machine_based: boolean
+      is_production: boolean
+      order_index: number
+      group_id: string | null
+    }>,
+  ) => {
     const res = await apiClient.patch(`/api/processes/${id}`, data)
+    return res.data
+  },
+
+  getGroups: async () => {
+    const res = await apiClient.get('/api/processes/groups')
+    return res.data
+  },
+
+  createGroup: async (data: { name: string; description?: string; color?: string; order_index?: number }) => {
+    const res = await apiClient.post('/api/processes/groups', data)
+    return res.data
+  },
+
+  updateGroup: async (
+    id: string,
+    data: Partial<{ name: string; description: string; color: string; order_index: number }>,
+  ) => {
+    const res = await apiClient.patch(`/api/processes/groups/${id}`, data)
+    return res.data
+  },
+
+  deleteGroup: async (id: string) => {
+    const res = await apiClient.delete(`/api/processes/groups/${id}`)
     return res.data
   },
 }
@@ -364,25 +435,25 @@ export const dashboardAPI = {
 export const filesAPI = {
   // presigned PUT için URL al
   getUploadUrl: async (payload: {
-    refType: 'job' | 'job_step'
-    refId: string
+    ref_type: 'job' | 'job_step' | 'user'
+    ref_id: string
     filename: string
-    contentType: string
+    content_type: string
     size?: number
   }) => {
     const r = await apiClient.post('/api/files/upload-url', payload)
-    return r.data // { bucket, objectKey, url, publicUrl? }
+    return r.data // { bucket, object_key, url, publicUrl? }
   },
   
-// yüklenen objeyi DB’ye linkle (bucket + objectKey zorunlu)
+// yüklenen objeyi DB’ye linkle (bucket + object_key zorunlu)
   link: async (payload: {
-    refType: 'job' | 'job_step'
-    refId: string
+    ref_type: 'job' | 'job_step' | 'user'
+    ref_id: string
     bucket: string
-    objectKey: string
+    object_key: string
     filename: string
     size?: number
-    contentType?: string
+    content_type?: string
     url?: string | null
   }) => {
     const r = await apiClient.post('/api/files/link', payload)
@@ -394,7 +465,7 @@ export const filesAPI = {
     filename: string
     file_size?: number
     content_type?: string
-    ref_type: string
+    ref_type: 'job' | 'job_step' | 'user'
     ref_id: string
     folder_path?: string
   }) => {

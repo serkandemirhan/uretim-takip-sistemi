@@ -34,7 +34,7 @@ import {
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { getStatusLabel, getStatusColor, getPriorityLabel, getPriorityColor, formatDate } from '@/lib/utils/formatters'
-import { handleError, handleApiError, debugLog } from '@/lib/utils/error-handler'
+import { handleApiError, debugLog } from '@/lib/utils/error-handler'
 
 import { FileUpload } from '@/components/features/files/FileUpload'
 import { FileList } from '@/components/features/files/FileList'
@@ -52,7 +52,6 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [activating, setActivating] = useState(false)
-  const [revisions, setRevisions] = useState<any[]>([]) 
   const [isEditing, setIsEditing] = useState(false)
   const [jobForm, setJobForm] = useState({
     title: '',
@@ -69,6 +68,10 @@ export default function JobDetailPage() {
     estimated_duration: '',
     is_parallel: false,
   })
+  const [completionForms, setCompletionForms] = useState<
+    Record<string, { quantity: string; unit: string; notes: string }>
+  >({})
+  const [stepActionLoading, setStepActionLoading] = useState<Record<string, boolean>>({})
   const [savingJob, setSavingJob] = useState(false)
   const [savingStepId, setSavingStepId] = useState<string | null>(null)
   const [addingStep, setAddingStep] = useState(false)
@@ -77,6 +80,7 @@ export default function JobDetailPage() {
   const [machines, setMachines] = useState<any[]>([])
   const [referenceLoaded, setReferenceLoaded] = useState(false)
   const [customers, setCustomers] = useState<any[]>([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
 
   useEffect(() => {
     if (params.id) {
@@ -84,6 +88,16 @@ export default function JobDetailPage() {
     }
   }, [params.id])
 
+  useEffect(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('user') : null
+    if (stored) {
+      try {
+        setCurrentUser(JSON.parse(stored))
+      } catch {
+        setCurrentUser(null)
+      }
+    }
+  }, [])
   useEffect(() => {
     if (isEditing) {
       void ensureReferences()
@@ -104,6 +118,7 @@ async function loadJob() {
       payload = r?.data ?? r
       if (!payload?.id) throw new Error('job missing')
       setJob(payload)
+      setCompletionForms(normalizeCompletionForms(payload.steps || []))
       if (isEditing) {
         initializeJobForm(payload)
       }
@@ -114,17 +129,8 @@ async function loadJob() {
       return
     }
 
-    // 2) Revizyon ve Dosyalar (opsiyonel, ayrı try/catch)
+    // 2) Dosyalar (opsiyonel, ayrı try/catch)
     await Promise.all([
-      (async () => {
-        try {
-          const rr = await jobsAPI.getRevisions(params.id as string)
-          setRevisions(rr?.data ?? rr ?? [])
-        } catch (e) {
-          debugLog('Warning: Revisions GET failed:', e)
-          setRevisions([])
-        }
-      })(),
       (async () => {
         try {
           const fr = await filesAPI.getFilesByJob(params.id as string)
@@ -142,6 +148,21 @@ async function loadJob() {
   } finally {
     setLoading(false)
   }
+}
+
+function normalizeCompletionForms(steps: any[]) {
+  const forms: Record<string, { quantity: string; unit: string; notes: string }> = {}
+  for (const step of steps || []) {
+    forms[step.id] = {
+      quantity:
+        step.production_quantity !== undefined && step.production_quantity !== null
+          ? String(step.production_quantity)
+          : '',
+      unit: step.production_unit || '',
+      notes: step.production_notes || '',
+    }
+  }
+  return forms
 }
 
 function initializeJobForm(jobData: any) {
@@ -173,6 +194,7 @@ function initializeJobForm(jobData: any) {
     estimated_duration: '',
     is_parallel: false,
   })
+  setCompletionForms(normalizeCompletionForms(steps))
 }
 
 async function ensureReferences() {
@@ -185,7 +207,14 @@ async function ensureReferences() {
       customersAPI.getAll(),
     ])
     setUsers(usersRes.data || usersRes || [])
-    setProcesses(processesRes.data || processesRes || [])
+
+    const processPayload = processesRes?.data ?? processesRes ?? {}
+    const processList = [
+      ...((processPayload.groups ?? []).flatMap((g: any) => g.processes ?? [])),
+      ...(processPayload.ungrouped ?? []),
+    ]
+    setProcesses(processList)
+
     setMachines(machinesRes.data || machinesRes || [])
     setCustomers(customersRes.data || customersRes || [])
     setReferenceLoaded(true)
@@ -291,6 +320,19 @@ function handleStepFieldChange(stepId: string, field: string, value: any) {
         : step,
     ),
   )
+}
+
+function handleCompletionFieldChange(stepId: string, field: string, value: string) {
+  setCompletionForms((prev) => {
+    const current = prev[stepId] || { quantity: '', unit: '', notes: '' }
+    return {
+      ...prev,
+      [stepId]: {
+        ...current,
+        [field]: value,
+      },
+    }
+  })
 }
 
 async function handleStepSave(stepId: string) {
@@ -445,6 +487,61 @@ async function handleResume() {
   }
 }
 
+function getCompletionForm(stepId: string) {
+  return completionForms[stepId] || { quantity: '', unit: '', notes: '' }
+}
+
+async function handleStartStep(stepId: string) {
+  try {
+    setStepActionLoading((prev) => ({ ...prev, [stepId]: true }))
+    await jobsAPI.startStep(stepId)
+    toast.success('Süreç başlatıldı')
+    await loadJob()
+  } catch (error: any) {
+    toast.error(error?.response?.data?.error || 'Süreç başlatılamadı')
+  } finally {
+    setStepActionLoading((prev) => ({ ...prev, [stepId]: false }))
+  }
+}
+
+  async function handleCompleteStep(step: any) {
+    const form = getCompletionForm(step.id)
+    const payload: any = {}
+
+  const quantityRaw = form.quantity?.trim()
+  if (quantityRaw) {
+    const normalized = quantityRaw.replace(',', '.')
+    const quantityValue = Number(normalized)
+    if (Number.isNaN(quantityValue)) {
+      toast.error('Üretim miktarı sayısal olmalıdır')
+      return
+    }
+    payload.production_quantity = quantityValue
+    payload.production_unit = form.unit?.trim() || step.production_unit || 'adet'
+  } else if (step.production_quantity) {
+    // Kullanıcı boş bıraktıysa mevcut miktarı sıfırla
+    payload.production_quantity = null
+    payload.production_unit = null
+  }
+
+  if (form.unit && !payload.production_unit && form.unit.trim()) {
+    payload.production_unit = form.unit.trim()
+  }
+
+  payload.production_notes = form.notes?.trim() || null
+
+  try {
+    setStepActionLoading((prev) => ({ ...prev, [step.id]: true }))
+    await jobsAPI.completeStep(step.id, payload)
+    toast.success('Süreç tamamlandı')
+    await loadJob()
+  } catch (error: any) {
+    toast.error(error?.response?.data?.error || 'Süreç tamamlanamadı')
+  } finally {
+    setStepActionLoading((prev) => ({ ...prev, [step.id]: false }))
+  }
+}
+
 async function handleCancel() {
   if (!actionReason.trim()) {
     toast.error('Lütfen iptal sebebini belirtin')
@@ -478,6 +575,39 @@ async function handleCancel() {
         return 'bg-red-100 text-red-700'
       default:
         return 'bg-gray-100 text-gray-700'
+    }
+  }
+
+  async function handlePauseStep(stepId: string, reason: string) {
+    setStepActionLoading((prev) => ({ ...prev, [stepId]: true }))
+    try {
+      await jobsAPI.pauseStep(stepId, { reason })
+      await loadJob()
+    } catch (error) {
+      throw error
+    } finally {
+      setStepActionLoading((prev) => ({ ...prev, [stepId]: false }))
+    }
+  }
+
+  async function handleResumeStep(stepId: string) {
+    setStepActionLoading((prev) => ({ ...prev, [stepId]: true }))
+    try {
+      await jobsAPI.resumeStep(stepId)
+      await loadJob()
+    } catch (error) {
+      throw error
+    } finally {
+      setStepActionLoading((prev) => ({ ...prev, [stepId]: false }))
+    }
+  }
+
+  async function handleAddStepNote(stepId: string, note: string) {
+    try {
+      await jobsAPI.addStepNote(stepId, { note })
+      await loadJob()
+    } catch (error) {
+      throw error
     }
   }
 
@@ -520,6 +650,17 @@ async function handleCancel() {
     users,
     machines,
     processOptions,
+    completionForm,
+    onCompletionChange,
+    onStartStep,
+    onCompleteStep,
+    actionLoading,
+    canUploadFiles,
+    canDeleteFiles,
+    onPauseStep,
+    onResumeStep,
+    notes,
+    onAddNote,
   }: {
     step: any
     files?: { files?: any[] }
@@ -533,8 +674,30 @@ async function handleCancel() {
     users: any[]
     machines: any[]
     processOptions: { value: string; label: string }[]
+    completionForm?: { quantity: string; unit: string; notes: string }
+    onCompletionChange?: (stepId: string, field: string, value: string) => void
+    onStartStep?: (stepId: string) => void
+    onCompleteStep?: (step: any) => void
+    actionLoading?: boolean
+    canUploadFiles: boolean
+    canDeleteFiles: boolean
+    onPauseStep?: (stepId: string, reason: string) => Promise<void> | void
+    onResumeStep?: (stepId: string) => Promise<void> | void
+    notes?: any[]
+    onAddNote?: (stepId: string, note: string) => Promise<void> | void
   }) => {
     const [open, setOpen] = useState(step.status !== 'completed')
+    const [showPauseForm, setShowPauseForm] = useState(false)
+    const [pauseReason, setPauseReason] = useState('')
+    const [pauseSubmitting, setPauseSubmitting] = useState(false)
+    const [noteText, setNoteText] = useState('')
+    const [noteSubmitting, setNoteSubmitting] = useState(false)
+
+    useEffect(() => {
+      setShowPauseForm(false)
+      setPauseReason('')
+      setPauseSubmitting(false)
+    }, [step.status])
 
     const processName = step.process?.name || 'Süreç'
     const processCode = step.process?.code || ''
@@ -552,12 +715,82 @@ async function handleCancel() {
       step.production_quantity != null && step.production_quantity !== ''
         ? `${step.production_quantity} ${step.production_unit || ''}`.trim()
         : '-'
-    const notes = step.production_notes || ''
+    const legacyProductionNote = step.production_notes || ''
     const filesList = Array.isArray(files?.files) ? files.files : []
+    const completion = completionForm || { quantity: '', unit: '', notes: '' }
+    const noteList = Array.isArray(notes)
+      ? notes
+      : Array.isArray(step.notes)
+        ? step.notes
+        : []
 
+    const canStart = onStartStep && ['ready', 'pending'].includes(step.status)
     const handleFieldChange = (field: string, value: any) => {
       if (onFieldChange) {
         onFieldChange(step.id, field, value)
+      }
+    }
+
+    const handleCompletionField = (field: string, value: string) => {
+      if (onCompletionChange) {
+        onCompletionChange(step.id, field, value)
+      }
+    }
+
+    const handlePauseSubmit = async () => {
+      const reason = pauseReason.trim()
+      if (!reason) {
+        toast.error('Lütfen bir durdurma sebebi girin')
+        return
+      }
+      if (!onPauseStep) return
+      try {
+        setPauseSubmitting(true)
+        await onPauseStep(step.id, reason)
+        toast.success('Süreç durduruldu')
+        setPauseReason('')
+        setShowPauseForm(false)
+      } catch (error: any) {
+        const message = error?.response?.data?.error || 'Süreç durdurulamadı'
+        toast.error(message)
+      } finally {
+        setPauseSubmitting(false)
+      }
+    }
+
+    const handleResume = async () => {
+      if (!onResumeStep) return
+      try {
+        setPauseSubmitting(true)
+        await onResumeStep(step.id)
+        toast.success('Süreç devam ettirildi')
+        setShowPauseForm(false)
+        setPauseReason('')
+      } catch (error: any) {
+        const message = error?.response?.data?.error || 'Süreç devam ettirilemedi'
+        toast.error(message)
+      } finally {
+        setPauseSubmitting(false)
+      }
+    }
+
+    const handleNoteSubmit = async () => {
+      const note = noteText.trim()
+      if (!note) {
+        toast.error('Not içeriği boş olamaz')
+        return
+      }
+      if (!onAddNote) return
+      try {
+        setNoteSubmitting(true)
+        await onAddNote(step.id, note)
+        toast.success('Not eklendi')
+        setNoteText('')
+      } catch (error: any) {
+        const message = error?.response?.data?.error || 'Not eklenemedi'
+        toast.error(message)
+      } finally {
+        setNoteSubmitting(false)
       }
     }
 
@@ -724,13 +957,13 @@ async function handleCancel() {
                   <p className="text-xs uppercase text-gray-500">Üretim</p>
                   <p className="font-medium text-gray-900">{productionValue}</p>
                 </div>
-                {notes && (
+                {legacyProductionNote && (
                   <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-700">
                     <div className="flex items-start gap-2">
                       <FileText className="mt-0.5 h-4 w-4 text-gray-400" />
                       <div>
                         <p className="font-medium text-gray-900">Üretim Notu</p>
-                        <p className="mt-1 whitespace-pre-line">{notes}</p>
+                        <p className="mt-1 whitespace-pre-line">{legacyProductionNote}</p>
                       </div>
                     </div>
                   </div>
@@ -794,14 +1027,162 @@ async function handleCancel() {
                   </div>
                 </div>
 
-                {notes && (
+                {legacyProductionNote && (
                   <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-700">
                     <div className="flex items-start gap-2">
                       <FileText className="mt-0.5 h-4 w-4 text-gray-400" />
                       <div>
                         <p className="font-medium text-gray-900">Üretim Notu</p>
-                        <p className="mt-1 whitespace-pre-line">{notes}</p>
+                        <p className="mt-1 whitespace-pre-line">{legacyProductionNote}</p>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {canStart && (
+                  <div className="rounded-md bg-blue-50 p-4 text-sm text-blue-800">
+                    <p className="mb-3 font-medium">
+                      {step.status === 'pending'
+                        ? 'Bu süreç beklemede görünüyor. Yine de başlatmak isterseniz aşağıdaki butonu kullanabilirsiniz.'
+                        : 'Bu süreç hazır durumda. Başlatmak için aşağıdaki butonu kullanın.'}
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={() => onStartStep(step.id)}
+                      disabled={disabled || !!actionLoading}
+                    >
+                      {actionLoading ? 'Başlatılıyor...' : 'Süreci Başlat'}
+                    </Button>
+                  </div>
+                )}
+
+                {onCompleteStep && step.status === 'in_progress' && (
+                  <div className="space-y-4 rounded-md bg-green-50 p-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Üretim Miktarı</Label>
+                        <Input
+                          value={completion.quantity}
+                          onChange={(e) => handleCompletionField('quantity', e.target.value)}
+                          placeholder="Örn: 120"
+                          disabled={disabled || !!actionLoading}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Birim</Label>
+                        <Input
+                          value={completion.unit}
+                          onChange={(e) => handleCompletionField('unit', e.target.value)}
+                          placeholder="adet"
+                          disabled={disabled || !!actionLoading}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Üretim Notu</Label>
+                      <Textarea
+                        value={completion.notes}
+                        onChange={(e) => handleCompletionField('notes', e.target.value)}
+                        placeholder="Süreç hakkında not ekleyin"
+                        rows={3}
+                        disabled={disabled || !!actionLoading}
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        onClick={() => onCompleteStep(step)}
+                        disabled={disabled || !!actionLoading}
+                      >
+                        {actionLoading ? 'Tamamlanıyor...' : 'Süreci Tamamla'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {onPauseStep && ['ready', 'in_progress'].includes(step.status) && (
+                  <div className="space-y-3 rounded-md bg-orange-50 p-4 text-sm text-orange-800">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-medium">
+                        {step.status === 'in_progress'
+                          ? 'Süreç şu anda devam ediyor. Durdurmak isterseniz sebep belirtebilirsiniz.'
+                          : 'Süreç başlamadan önce durdurabilirsiniz.'}
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowPauseForm((prev) => !prev)}
+                        disabled={pauseSubmitting || !!actionLoading}
+                      >
+                        {showPauseForm ? 'Vazgeç' : 'Süreci Durdur'}
+                      </Button>
+                    </div>
+                    {showPauseForm && (
+                      <div className="space-y-2">
+                        <div>
+                          <Label className="text-xs uppercase text-orange-700">Durdurma Sebebi</Label>
+                          <Textarea
+                            value={pauseReason}
+                            onChange={(e) => setPauseReason(e.target.value)}
+                            rows={3}
+                            placeholder="Örn: Malzeme bekleniyor"
+                            disabled={pauseSubmitting || !!actionLoading}
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setShowPauseForm(false)
+                              setPauseReason('')
+                            }}
+                            disabled={pauseSubmitting || !!actionLoading}
+                          >
+                            İptal
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handlePauseSubmit}
+                            disabled={pauseSubmitting || !!actionLoading}
+                          >
+                            {pauseSubmitting ? 'Gönderiliyor...' : 'Durdur'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {step.status === 'blocked' && (
+                  <div className="space-y-3 rounded-md bg-orange-50 p-4 text-sm text-orange-800">
+                    <div>
+                      <p className="font-medium">Süreç durduruldu</p>
+                      {step.block_reason && (
+                        <p className="mt-1 whitespace-pre-wrap text-orange-700">
+                          {step.block_reason}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {step.blocked_at && (
+                        <span className="text-xs text-orange-600">
+                          {new Date(step.blocked_at).toLocaleString('tr-TR')}
+                        </span>
+                      )}
+                      {onResumeStep && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleResume}
+                          disabled={pauseSubmitting || !!actionLoading}
+                        >
+                          {pauseSubmitting ? 'Devam Ettiriliyor...' : 'Süreci Devam Ettir'}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -818,8 +1199,64 @@ async function handleCancel() {
                 refId={step.id}
                 onUploadComplete={loadJob}
                 maxFiles={5}
+                disabled={!canUploadFiles}
               />
-              <FileList files={filesList} onDelete={loadJob} showFolder={false} />
+              <FileList
+                files={filesList}
+                onDelete={canDeleteFiles ? loadJob : undefined}
+                showFolder={false}
+                allowDelete={canDeleteFiles}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h5 className="text-sm font-semibold text-gray-900">Üretim Notları</h5>
+                <span className="text-xs text-gray-500">{noteList.length} kayıt</span>
+              </div>
+              <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-dashed border-gray-200 bg-white p-3">
+                {noteList.length === 0 ? (
+                  <p className="text-center text-xs text-gray-500">Henüz not eklenmemiş.</p>
+                ) : (
+                  noteList.map((note: any) => (
+                    <div key={note.id} className="rounded-md border border-gray-100 bg-gray-50 p-2">
+                      <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-gray-500">
+                        <span>{note.author_name || 'Bilinmeyen Kullanıcı'}</span>
+                        {note.created_at && (
+                          <span>
+                            {new Date(note.created_at).toLocaleString('tr-TR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">{note.note}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="space-y-2">
+                <Textarea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  rows={2}
+                  placeholder="Süreç hakkında not ekleyin"
+                  disabled={noteSubmitting || !onAddNote}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={handleNoteSubmit}
+                    disabled={noteSubmitting || !noteText.trim() || !onAddNote}
+                  >
+                    {noteSubmitting ? 'Gönderiliyor...' : 'Not Ekle'}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -880,7 +1317,7 @@ async function handleCancel() {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 justify-end">
         {isEditing ? (
           <>
             <Button
@@ -950,6 +1387,14 @@ async function handleCancel() {
               </Button>
             )}
           </>
+        )}
+        {job.id && (
+          <Link href={`/jobs/${job.id}/revisions`}>
+            <Button variant="outline">
+              <FileText className="w-4 h-4 mr-2" />
+              Revizyon Geçmişi
+            </Button>
+          </Link>
         )}
       </div>
     </div>
@@ -1197,6 +1642,17 @@ async function handleCancel() {
                   const processFiles = jobFiles.process_files?.find(
                     (pf: any) => pf.process_id === processId
                   )
+                  const currentRole = currentUser?.role
+                  const isManager =
+                    currentRole === 'yonetici' || currentRole === 'admin'
+                  const isAssignee =
+                    step.assigned_to?.id &&
+                    currentUser?.id &&
+                    String(step.assigned_to.id) === String(currentUser.id)
+                  const canUploadFiles = Boolean(
+                    isManager || isEditing || isAssignee,
+                  )
+                  const canDeleteFiles = Boolean(isManager || isEditing)
 
                   return (
                     <ProcessStepCard
@@ -1217,6 +1673,17 @@ async function handleCancel() {
                       users={users}
                       machines={machines}
                       processOptions={processOptions}
+                      completionForm={completionForms[step.id]}
+                      onCompletionChange={handleCompletionFieldChange}
+                      onStartStep={handleStartStep}
+                      onCompleteStep={handleCompleteStep}
+                      actionLoading={stepActionLoading[step.id] || false}
+                      canUploadFiles={canUploadFiles}
+                      canDeleteFiles={canDeleteFiles}
+                      onPauseStep={handlePauseStep}
+                      onResumeStep={handleResumeStep}
+                      notes={step.notes || []}
+                      onAddNote={handleAddStepNote}
                     />
                   )
                 })}
@@ -1318,89 +1785,6 @@ async function handleCancel() {
             )}
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Revizyon Geçmişi (Rev.{job.revision_no})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-4 text-xs text-gray-500">
-                Taslak olmayan işlerde yapılan değişiklikler otomatik olarak revizyona dönüştürülür.
-              </p>
-              {revisions.length === 0 ? (
-                <p className="py-8 text-center text-gray-500">
-                  Henüz revizyon oluşturulmamış
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {revisions.map((revision, index) => {
-                    const reason =
-                      revision.revision_reason ||
-                      revision.changes?.description?.new ||
-                      'Açıklama yok'
-                    const changeEntries = Object.entries(
-                      (revision.changes as Record<string, any>) || {},
-                    )
-
-                    return (
-                      <div
-                        key={revision.id}
-                        className="flex gap-4 rounded-lg border p-4 hover:bg-gray-50"
-                      >
-                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-purple-100 font-semibold text-purple-700">
-                          {revisions.length - index}
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-gray-900">
-                              Rev.{revision.revision_no ?? 'N/A'}
-                            </h4>
-                            <span className="text-sm text-gray-500">
-                              {new Date(revision.created_at).toLocaleDateString('tr-TR', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                          <p className="whitespace-pre-wrap text-sm text-gray-600">
-                            {reason}
-                          </p>
-                          {revision.created_by_name && (
-                            <p className="text-xs text-gray-500">
-                              Düzenleyen: {revision.created_by_name}
-                            </p>
-                          )}
-                          {changeEntries.length > 0 && (
-                            <div className="rounded-md bg-gray-50 p-3 text-xs text-gray-600">
-                              <span className="font-semibold text-gray-700">
-                                Değişen Alanlar:
-                              </span>
-                              <ul className="mt-2 space-y-1">
-                                {changeEntries.map(([key, value]) => {
-                                  if (!value || typeof value !== 'object') return null
-                                  return (
-                                    <li key={key}>
-                                      <span className="font-medium text-gray-700">{key}</span>:{' '}
-                                      <span className="line-through text-gray-400">
-                                        {value.old ?? '-'}
-                                      </span>{' '}
-                                      <span className="text-gray-800">→ {value.new ?? '-'}</span>
-                                    </li>
-                                  )
-                                })}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
 

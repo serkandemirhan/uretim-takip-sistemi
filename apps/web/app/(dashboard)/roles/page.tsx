@@ -6,6 +6,7 @@ import { rolesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { handleApiError } from '@/lib/utils/error-handler'
 import {
   Table,
   TableBody,

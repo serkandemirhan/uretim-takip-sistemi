@@ -11,7 +11,6 @@ from app.models.database import execute_query, execute_query_one, execute_write
 from app.services.s3_client import get_s3
 from app.services.storage_paths import (
     ensure_bucket,
-    get_minio,
     job_files_prefix,
     make_folder,
     process_prefix,
@@ -163,12 +162,29 @@ def get_upload_url():
         return jsonify({"error": "Klasör yolu oluşturulamadı"}), 400
 
     bucket = _bucket_name()
-    client = get_minio()
+    client = get_s3()
     ensure_bucket(client, bucket)
     make_folder(client, bucket, folder_path)
 
     object_key, unique_name = _build_object_key(folder_path, filename)
-    upload_url = client.presigned_put_object(bucket, object_key, expires=timedelta(hours=1))
+    expires_seconds = int(timedelta(hours=1).total_seconds())
+
+    if hasattr(client, "presigned_put_object"):
+        upload_url = client.presigned_put_object(
+            bucket, object_key, expires=timedelta(hours=1)
+        )
+    else:
+        params = {
+            "Bucket": bucket,
+            "Key": object_key,
+        }
+        if content_type:
+            params["ContentType"] = content_type
+        upload_url = client.generate_presigned_url(
+            ClientMethod="put_object",
+            Params=params,
+            ExpiresIn=expires_seconds,
+        )
 
     return (
         jsonify(

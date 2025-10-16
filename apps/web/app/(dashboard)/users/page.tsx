@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { usersAPI, userRolesAPI } from '@/lib/api/client'
+import { usersAPI, userRolesAPI, filesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Users, Plus, Edit2, Trash2, Save, X, Mail, Star } from 'lucide-react'
+import { Users, Plus, Edit2, Trash2, Save, X, Mail, Star, UserCircle } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { handleApiError, debugLog } from '@/lib/utils/error-handler'
@@ -27,6 +27,9 @@ interface User {
   role?: string
   is_active: boolean
   roles: UserRole[]
+  avatar_url?: string | null
+  avatar_file_id?: string | null
+  avatarDownloadUrl?: string | null
 }
 
 export default function UsersPage() {
@@ -51,11 +54,35 @@ export default function UsersPage() {
       setLoading(true)
       const response = await usersAPI.getAll()
       debugLog('Users response:', response) // Debug için
-      const data = (response.data || []).map((user: any) => ({
-        ...user,
-        roles: Array.isArray(user.roles) ? user.roles : [],
-      }))
-      setUsers(data)
+      const rawUsers = response?.data || []
+
+      const enrichedUsers: User[] = await Promise.all(
+        rawUsers.map(async (user: any) => {
+          const avatarFileId =
+            user.avatar_file_id || user.avatarFileId || null
+          let avatarDownloadUrl: string | null = null
+
+          if (avatarFileId) {
+            try {
+              const downloadRes = await filesAPI.getDownloadUrl(avatarFileId)
+              avatarDownloadUrl =
+                downloadRes?.data?.download_url || null
+            } catch (error) {
+              debugLog('Avatar download URL alınamadı', error)
+            }
+          }
+
+          return {
+            ...user,
+            avatar_file_id: avatarFileId,
+            avatar_url: user.avatar_url || user.avatarUrl || null,
+            avatarDownloadUrl,
+            roles: Array.isArray(user.roles) ? user.roles : [],
+          }
+        })
+      )
+
+      setUsers(enrichedUsers)
     } catch (error) {
       handleApiError(error, 'Users load')
       toast.error('Kullanıcılar yüklenirken hata oluştu')
@@ -240,7 +267,20 @@ export default function UsersPage() {
                             className="h-8"
                           />
                         ) : (
-                          <span className="font-medium text-gray-900">{user.full_name}</span>
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-full bg-gray-100 ring-1 ring-gray-200 overflow-hidden flex items-center justify-center">
+                              {user.avatarDownloadUrl ? (
+                                <img
+                                  src={user.avatarDownloadUrl}
+                                  alt={user.full_name || user.username}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <UserCircle className="h-6 w-6 text-gray-400" />
+                              )}
+                            </div>
+                            <span className="font-medium text-gray-900">{user.full_name}</span>
+                          </div>
                         )}
                       </td>
 

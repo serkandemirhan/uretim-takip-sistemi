@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Cpu, Save, X, Plus, Edit2, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 interface Machine {
   id: string

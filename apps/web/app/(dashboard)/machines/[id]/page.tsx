@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Edit2, Save, X, Cpu, Workflow } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 export default function MachineDetailPage() {
   const params = useParams()
@@ -39,7 +40,12 @@ export default function MachineDetailPage() {
       
       // Tüm süreçleri yükle
       const processesResponse = await processesAPI.getAll()
-      setAllProcesses(processesResponse.data || [])
+      const payload = processesResponse?.data ?? processesResponse ?? {}
+      const combined = [
+        ...((payload.groups ?? []).flatMap((g: any) => g.processes ?? [])),
+        ...(payload.ungrouped ?? []),
+      ]
+      setAllProcesses(combined)
       
     } catch (error) {
       handleApiError(error, 'Machine load')

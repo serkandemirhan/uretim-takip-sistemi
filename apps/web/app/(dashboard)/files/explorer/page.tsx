@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
 import { Download, FileIcon, Loader2, Trash2 } from 'lucide-react'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 type ExplorerFile = {
   id: string

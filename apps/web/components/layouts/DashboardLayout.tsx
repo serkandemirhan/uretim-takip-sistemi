@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { Activity ,Shield,Bell,TrendingUp} from 'lucide-react'
-import { NotificationsDropdown } from '@/components/layout/NotificationsDropdown'
+import { NotificationsDropdown } from '@/components/layouts/NotificationsDropdown'
 import { 
   LayoutDashboard, 
   Briefcase, 

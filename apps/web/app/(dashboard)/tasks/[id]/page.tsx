@@ -13,6 +13,7 @@ import { ArrowLeft, Play, CheckCircle, Clock, AlertCircle, Cpu, Building2 } from
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { formatDateTime, formatDate } from '@/lib/utils/formatters'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 export default function TaskDetailPage() {
   const params = useParams()

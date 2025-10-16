@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft, Save, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 type StepFormState = {
   id: string
@@ -83,7 +84,12 @@ export default function EditJobPage() {
       const jobData = jobRes.data ?? jobRes
       setJob(jobData)
       setCustomers(customersRes.data || customersRes || [])
-      setProcesses(processesRes.data || processesRes || [])
+      const processPayload = processesRes?.data ?? processesRes ?? {}
+      const processList = [
+        ...((processPayload.groups ?? []).flatMap((g: any) => g.processes ?? [])),
+        ...(processPayload.ungrouped ?? []),
+      ]
+      setProcesses(processList)
       setUsers(usersRes.data || usersRes || [])
       setMachines(machinesRes.data || machinesRes || [])
 

@@ -1,14 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { usersAPI, userRolesAPI, rolesAPI } from '@/lib/api/client'
+import axios from 'axios'
+import { usersAPI, userRolesAPI, filesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MultiRoleSelector } from '@/components/features/users/MultiRoleSelector'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, UserCircle, X } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 
@@ -25,10 +26,108 @@ export default function NewUserPage() {
   })
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([])
   const [primaryRoleId, setPrimaryRoleId] = useState<string | undefined>()
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) {
+        URL.revokeObjectURL(avatarPreview)
+      }
+    }
+  }, [avatarPreview])
 
   function handleRolesChange(roleIds: string[], primaryId?: string) {
     setSelectedRoleIds(roleIds)
     setPrimaryRoleId(primaryId)
+  }
+
+  function handleAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      setAvatarFile(null)
+      setAvatarPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+      return
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Sadece resim formatı yükleyebilirsiniz')
+      event.target.value = ''
+      return
+    }
+
+    const MAX_SIZE = 2 * 1024 * 1024 // 2MB
+    if (file.size > MAX_SIZE) {
+      toast.error('Avatar dosyası en fazla 2MB olabilir')
+      event.target.value = ''
+      return
+    }
+
+    setAvatarFile(file)
+    setAvatarPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+  }
+
+  function clearAvatar() {
+    setAvatarFile(null)
+    setAvatarPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    if (avatarInputRef.current) {
+      avatarInputRef.current.value = ''
+    }
+  }
+
+  async function uploadAvatar(userId: string) {
+    if (!avatarFile) return
+
+    try {
+      const contentType = avatarFile.type || 'application/octet-stream'
+      const uploadUrlRes = await filesAPI.getUploadUrl({
+        filename: avatarFile.name,
+        content_type: contentType,
+        ref_type: 'user',
+        ref_id: userId,
+      })
+
+      const { upload_url, object_key, folder_path } = uploadUrlRes?.data || {}
+      if (!upload_url || !object_key) {
+        throw new Error('Profil fotoğrafı için yükleme adresi alınamadı')
+      }
+
+      await axios.put(upload_url, avatarFile, {
+        headers: { 'Content-Type': contentType },
+      })
+
+      const linkRes = await filesAPI.linkFile({
+        object_key,
+        filename: avatarFile.name,
+        file_size: avatarFile.size,
+        content_type: contentType,
+        ref_type: 'user',
+        ref_id: userId,
+        folder_path,
+      })
+
+      const fileId = linkRes?.data?.id
+      if (fileId) {
+        await usersAPI.update(userId, {
+          avatar_file_id: fileId,
+          avatar_url: object_key,
+        })
+      }
+    } catch (error) {
+      console.error('Avatar upload error:', error)
+      toast.error('Avatar yüklenemedi, kullanıcı yine de oluşturuldu')
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -67,6 +166,11 @@ export default function NewUserPage() {
         primary_role_id: primaryRoleId,
       })
 
+      // 3. Avatar varsa yükle
+      if (avatarFile) {
+        await uploadAvatar(newUserId)
+      }
+
       toast.success('Kullanıcı başarıyla oluşturuldu!')
       router.push('/users')
     } catch (error: any) {
@@ -98,6 +202,48 @@ export default function NewUserPage() {
             <CardTitle>Kullanıcı Bilgileri</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Profil Fotoğrafı</Label>
+              <div className="flex items-center gap-4">
+                <div className="relative h-16 w-16 rounded-full bg-gray-100 ring-1 ring-gray-200 overflow-hidden flex items-center justify-center">
+                  {avatarPreview ? (
+                    <img
+                      src={avatarPreview}
+                      alt="Avatar preview"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <UserCircle className="h-10 w-10 text-gray-400" />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    disabled={loading}
+                    onChange={handleAvatarChange}
+                  />
+                  <p className="text-xs text-gray-500">
+                    PNG, JPG veya WEBP formatında, en fazla 2MB.
+                  </p>
+                  {avatarPreview && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={clearAvatar}
+                      disabled={loading}
+                    >
+                      <X className="h-3 w-3" />
+                      Kaldır
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="full_name">Ad Soyad *</Label>
               <Input

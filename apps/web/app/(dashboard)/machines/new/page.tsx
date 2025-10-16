@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 export default function NewMachinePage() {
   const router = useRouter()
@@ -34,7 +35,12 @@ export default function NewMachinePage() {
   async function loadProcesses() {
     try {
       const response = await processesAPI.getAll()
-      setProcesses(response.data || [])
+      const payload = response?.data ?? response ?? {}
+      const combined = [
+        ...((payload.groups ?? []).flatMap((g: any) => g.processes ?? [])),
+        ...(payload.ungrouped ?? []),
+      ]
+      setProcesses(combined)
     } catch (error) {
       handleApiError(error, 'Processes load')
     }

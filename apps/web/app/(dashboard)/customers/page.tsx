@@ -10,19 +10,24 @@ import { customersAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { handleError, handleApiError, debugLog } from '@/lib/utils/error-handler'
+import { handleError } from '@/lib/utils/error-handler'
 
 type Customer = {
   id: string
   name: string
-  code?: string
-  contact_name?: string
-  phone?: string
-  email?: string
-  city?: string
-  country?: string
-  tax_number?: string
-  created_at?: string
+  code?: string | null
+  contact_person?: string | null
+  phone?: string | null
+  phone_secondary?: string | null
+  gsm?: string | null
+  email?: string | null
+  address?: string | null
+  city?: string | null
+  tax_office?: string | null
+  tax_number?: string | null
+  short_code?: string | null
+  postal_code?: string | null
+  created_at?: string | null
 }
 
 export default function CustomersPage() {
@@ -37,7 +42,24 @@ export default function CustomersPage() {
       try {
         const res = await customersAPI.getAll()
         // API bazen data.data döndürebilir:
-        const list: Customer[] = (res?.data ?? res ?? []).slice()
+        const raw = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
+        const list: Customer[] = raw.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          code: item.code,
+          contact_person: item.contact_person,
+          phone: item.phone,
+          phone_secondary: item.phone_secondary,
+          gsm: item.gsm,
+          email: item.email,
+          address: item.address,
+          city: item.city,
+          tax_office: item.tax_office,
+          tax_number: item.tax_number,
+          short_code: item.short_code,
+          postal_code: item.postal_code,
+          created_at: item.created_at,
+        }))
         setCustomers(list)
       } catch (e) {
         handleError(e)
@@ -55,12 +77,15 @@ export default function CustomersPage() {
       [
         c.name,
         c.code,
-        c.contact_name,
+        c.contact_person,
         c.phone,
+        c.phone_secondary,
+        c.gsm,
         c.email,
         c.city,
-        c.country,
+        c.tax_office,
         c.tax_number,
+        c.short_code,
       ]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(term))
@@ -115,10 +140,10 @@ export default function CustomersPage() {
                     {/* 5–6 önemli sütun */}
                     <th className="py-3 px-4">Ad</th>
                     <th className="py-3 px-4">Kod</th>
-                    <th className="py-3 px-4">Yetkili / İletişim</th>
-                    <th className="py-3 px-4">Telefon</th>
+                    <th className="py-3 px-4">Yetkili</th>
+                    <th className="py-3 px-4">Telefonlar</th>
                     <th className="py-3 px-4">E-posta</th>
-                    <th className="py-3 px-4">Şehir / Ülke</th>
+                    <th className="py-3 px-4">Şehir</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -146,15 +171,17 @@ export default function CustomersPage() {
                         <td className="py-3 px-4 font-medium">{c.name}</td>
                         <td className="py-3 px-4">
                           <span className="bg-gray-100 px-2 py-1 rounded text-xs">
-                            {c.code ?? '—'}
+                            {c.short_code || c.code || '—'}
                           </span>
                         </td>
-                        <td className="py-3 px-4">{c.contact_name ?? '—'}</td>
-                        <td className="py-3 px-4">{c.phone ?? '—'}</td>
-                        <td className="py-3 px-4">{c.email ?? '—'}</td>
+                        <td className="py-3 px-4">{c.contact_person ?? '—'}</td>
                         <td className="py-3 px-4">
-                          {[c.city, c.country].filter(Boolean).join(' / ') || '—'}
+                          {[c.phone, c.phone_secondary, c.gsm]
+                            .filter(Boolean)
+                            .join(' / ') || '—'}
                         </td>
+                        <td className="py-3 px-4">{c.email ?? '—'}</td>
+                        <td className="py-3 px-4">{c.city ?? '—'}</td>
                       </tr>
                     ))
                   )}

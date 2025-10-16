@@ -9,6 +9,7 @@ import { CheckCircle, Clock, TrendingUp, Briefcase, Filter } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { formatDateTime } from '@/lib/utils/formatters'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 export default function ProductionHistoryPage() {
   const [history, setHistory] = useState<any[]>([])

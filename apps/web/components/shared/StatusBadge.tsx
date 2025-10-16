@@ -4,7 +4,7 @@
  */
 
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 
 // Job Status Types
 export type JobStatus = 'draft' | 'active' | 'in_progress' | 'completed' | 'canceled' | 'on_hold'

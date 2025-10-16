@@ -39,8 +39,7 @@ Cloudflare R2, AWS S3 ile uyumlu bir object storage servisidir. En büyük avant
    - Sadece `reklampro-files` bucket'ı için kısıtla (opsiyonel)
 4. **Create API token** tıkla
 5. ⚠️ **Şimdi kaydet! Bir daha göremezsin:**
-   - Access Key ID 0024ddcaa483cc29bcd2b96ec0bdf5aa
-   - Secret Access Key 76c76683564f8e2adf8ae96e198537d533d3dd919518fe1751b5fd68f80fdb40
+ 
    - Endpoint URL (örn: `https://<account-id>.r2.cloudflarestorage.com`)
    https://07c26a9deccd2564ee5db3cc0e062a60.r2.cloudflarestorage.com
 

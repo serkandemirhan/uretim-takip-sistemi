@@ -6,6 +6,25 @@ from datetime import datetime
 
 quotations_bp = Blueprint('quotations', __name__, url_prefix='/api/quotations')
 
+# Debug endpoint
+@quotations_bp.route('/debug', methods=['GET'])
+def debug_quotations():
+    """Debug endpoint - tablo var mı kontrol et"""
+    try:
+        from app.models.database import execute_query
+        result = execute_query("SELECT COUNT(*) as count FROM quotations")
+        return jsonify({
+            'status': 'ok',
+            'table_exists': True,
+            'count': result[0] if result else 0
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'table_exists': False,
+            'error': str(e)
+        }), 500
+
 def _s(v):
     """Boş/whitespace string -> None."""
     if v is None:

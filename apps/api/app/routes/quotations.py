@@ -129,12 +129,20 @@ def create_quotation(current_user):
     try:
         data = request.get_json()
 
+        if not data:
+            return jsonify({'error': 'Request body gerekli'}), 400
+
         name = _s(data.get('name'))
         customer_id = _s(data.get('customer_id'))
         description = _s(data.get('description'))
 
         if not name:
             return jsonify({'error': 'Teklif adı gerekli'}), 400
+
+        # Current user ID'yi al
+        user_id = current_user.get('id') if isinstance(current_user, dict) else None
+        if not user_id:
+            return jsonify({'error': 'Kullanıcı bilgisi bulunamadı'}), 401
 
         query = """
             INSERT INTO quotations (name, customer_id, description, created_by)
@@ -145,8 +153,11 @@ def create_quotation(current_user):
 
         result = execute_query_one(
             query,
-            (name, customer_id, description, current_user['id'])
+            (name, customer_id, description, user_id)
         )
+
+        if not result:
+            return jsonify({'error': 'Teklif oluşturulamadı'}), 500
 
         return jsonify({
             'message': 'Teklif oluşturuldu',
@@ -154,7 +165,10 @@ def create_quotation(current_user):
         }), 201
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"Create quotation error: {error_detail}")
+        return jsonify({'error': str(e), 'detail': error_detail}), 500
 
 
 # ============================================

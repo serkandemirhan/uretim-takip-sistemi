@@ -46,7 +46,7 @@ def _decimal(v):
 # ============================================
 @quotations_bp.route('', methods=['GET'])
 @token_required
-def get_quotations(current_user):
+def get_quotations():
     """Tüm teklifleri listele"""
     try:
         status = request.args.get('status')
@@ -93,7 +93,7 @@ def get_quotations(current_user):
 # ============================================
 @quotations_bp.route('/<quotation_id>', methods=['GET'])
 @token_required
-def get_quotation(current_user, quotation_id):
+def get_quotation(quotation_id):
     """Teklif detayını getir"""
     try:
         # Ana teklif bilgisi
@@ -143,13 +143,18 @@ def get_quotation(current_user, quotation_id):
 # ============================================
 @quotations_bp.route('', methods=['POST'])
 @token_required
-def create_quotation(current_user):
+def create_quotation():
     """Yeni teklif oluştur"""
     import logging
     logger = logging.getLogger(__name__)
 
     try:
         logger.info("=== CREATE QUOTATION START ===")
+
+        # Current user'ı request'ten al
+        current_user = request.current_user
+        logger.info(f"Current user from request: {current_user}")
+
         data = request.get_json()
         logger.info(f"Request data: {data}")
 
@@ -166,8 +171,8 @@ def create_quotation(current_user):
             return jsonify({'error': 'Teklif adı gerekli'}), 400
 
         # Current user ID'yi al
-        user_id = current_user.get('id') if isinstance(current_user, dict) else None
-        logger.info(f"Current user: {current_user}, user_id: {user_id}")
+        user_id = current_user.get('id') if isinstance(current_user, dict) else current_user.get('user_id')
+        logger.info(f"User ID: {user_id}")
 
         if not user_id:
             return jsonify({'error': 'Kullanıcı bilgisi bulunamadı'}), 401
@@ -210,7 +215,7 @@ def create_quotation(current_user):
 # ============================================
 @quotations_bp.route('/<quotation_id>', methods=['PUT'])
 @token_required
-def update_quotation(current_user, quotation_id):
+def update_quotation(quotation_id):
     """Teklif bilgilerini güncelle"""
     try:
         data = request.get_json()
@@ -261,7 +266,7 @@ def update_quotation(current_user, quotation_id):
 @quotations_bp.route('/<quotation_id>', methods=['DELETE'])
 @token_required
 @permission_required(['yonetici'])
-def delete_quotation(current_user, quotation_id):
+def delete_quotation(quotation_id):
     """Teklif sil (cascade ile kalemleri de siler)"""
     try:
         existing = execute_query_one(
@@ -285,7 +290,7 @@ def delete_quotation(current_user, quotation_id):
 # ============================================
 @quotations_bp.route('/<quotation_id>/items', methods=['POST'])
 @token_required
-def add_quotation_items(current_user, quotation_id):
+def add_quotation_items(quotation_id):
     """Teklif'e ürün/stok kalemleri ekle (toplu ekleme destekler)"""
     try:
         data = request.get_json()
@@ -373,7 +378,7 @@ def add_quotation_items(current_user, quotation_id):
 # ============================================
 @quotations_bp.route('/<quotation_id>/items/<item_id>', methods=['PUT'])
 @token_required
-def update_quotation_item(current_user, quotation_id, item_id):
+def update_quotation_item(quotation_id, item_id):
     """Teklif kalemini güncelle"""
     try:
         data = request.get_json()
@@ -418,7 +423,7 @@ def update_quotation_item(current_user, quotation_id, item_id):
 # ============================================
 @quotations_bp.route('/<quotation_id>/items/<item_id>', methods=['DELETE'])
 @token_required
-def delete_quotation_item(current_user, quotation_id, item_id):
+def delete_quotation_item(quotation_id, item_id):
     """Teklif kalemini sil"""
     try:
         existing = execute_query_one(
@@ -442,7 +447,7 @@ def delete_quotation_item(current_user, quotation_id, item_id):
 # ============================================
 @quotations_bp.route('/<quotation_id>/items/reorder', methods=['POST'])
 @token_required
-def reorder_items(current_user, quotation_id):
+def reorder_items(quotation_id):
     """Teklif kalemlerini yeniden sırala"""
     try:
         data = request.get_json()

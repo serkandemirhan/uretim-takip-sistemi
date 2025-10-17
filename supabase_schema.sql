@@ -134,10 +134,9 @@ CREATE TABLE IF NOT EXISTS role_process_permissions (role_id uuid NOT NULL, proc
 -- Table: roles
 CREATE TABLE IF NOT EXISTS roles (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    code character varying(50) NOT NULL,
     name character varying(100) NOT NULL,
+    code character varying(50) NOT NULL,
     description text,
-    permissions jsonb DEFAULT '[]'::jsonb,
     is_active boolean DEFAULT true,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
@@ -148,10 +147,10 @@ CREATE TABLE IF NOT EXISTS user_roles (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL,
     role_id uuid NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     is_primary boolean DEFAULT false,
-    assigned_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    assigned_by uuid,
-    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+    assigned_at timestamp without time zone DEFAULT now(),
+    assigned_by uuid
 );
 
 CREATE TABLE IF NOT EXISTS users (

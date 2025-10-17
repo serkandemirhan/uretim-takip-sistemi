@@ -732,9 +732,9 @@ async function handleCancel() {
       assignedName && assignedName !== 'Atanmamış'
         ? assignedName
             .split(/\s+/)
-            .filter(Boolean)
+            .filter((part): part is string => Boolean(part))
             .slice(0, 2)
-            .map((part) => part[0]?.toUpperCase() ?? '')
+            .map((part: string) => part[0]?.toUpperCase() ?? '')
             .join('') || '?'
         : '?'
     const machineName = step.machine?.name || 'Belirlenmedi'

@@ -25,13 +25,13 @@ def create_app():
         close_connection_pool()
 
     # CORS - Tüm origin'lere izin ver (development için)
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": "*",
-            "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
-        }
-    })
+    CORS(app,
+         resources={r"/api/*": {"origins": "*"}},
+         supports_credentials=False,
+         allow_headers=["Content-Type", "Authorization"],
+         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+         expose_headers=["Content-Type", "Authorization"]
+    )
     
     # Routes
     from app.routes.auth import auth_bp

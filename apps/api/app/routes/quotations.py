@@ -145,8 +145,13 @@ def get_quotation(current_user, quotation_id):
 @token_required
 def create_quotation(current_user):
     """Yeni teklif oluştur"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
+        logger.info("=== CREATE QUOTATION START ===")
         data = request.get_json()
+        logger.info(f"Request data: {data}")
 
         if not data:
             return jsonify({'error': 'Request body gerekli'}), 400
@@ -155,11 +160,15 @@ def create_quotation(current_user):
         customer_id = _s(data.get('customer_id'))
         description = _s(data.get('description'))
 
+        logger.info(f"Parsed - name: {name}, customer_id: {customer_id}")
+
         if not name:
             return jsonify({'error': 'Teklif adı gerekli'}), 400
 
         # Current user ID'yi al
         user_id = current_user.get('id') if isinstance(current_user, dict) else None
+        logger.info(f"Current user: {current_user}, user_id: {user_id}")
+
         if not user_id:
             return jsonify({'error': 'Kullanıcı bilgisi bulunamadı'}), 401
 
@@ -170,14 +179,19 @@ def create_quotation(current_user):
                       version, status, total_cost, currency, created_at, updated_at
         """
 
+        logger.info(f"Executing query with params: {(name, customer_id, description, user_id)}")
+
         result = execute_query_one(
             query,
             (name, customer_id, description, user_id)
         )
 
-        if not result:
-            return jsonify({'error': 'Teklif oluşturulamadı'}), 500
+        logger.info(f"Query result: {result}")
 
+        if not result:
+            return jsonify({'error': 'Teklif oluşturulamadı - result is None'}), 500
+
+        logger.info("=== CREATE QUOTATION SUCCESS ===")
         return jsonify({
             'message': 'Teklif oluşturuldu',
             'data': result
@@ -186,8 +200,9 @@ def create_quotation(current_user):
     except Exception as e:
         import traceback
         error_detail = traceback.format_exc()
-        print(f"Create quotation error: {error_detail}")
-        return jsonify({'error': str(e), 'detail': error_detail}), 500
+        logger.error(f"Create quotation error: {error_detail}")
+        print(f"=== ERROR ===\n{error_detail}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ============================================

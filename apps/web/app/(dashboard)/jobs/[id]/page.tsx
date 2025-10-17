@@ -1032,6 +1032,13 @@ async function handleCancel() {
                       <p className="text-sm font-medium text-gray-900">{assignedName}</p>
                     </div>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <Package className="h-4 w-4 text-gray-400" />
+                    <div>
+                      <p className="text-xs uppercase text-gray-500">Üretim</p>
+                      <p className="text-sm font-medium text-gray-900">{productionValue}</p>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2.5">
                     <Settings className="h-4 w-4 text-gray-400" />
                     <div>
@@ -1069,13 +1076,6 @@ async function handleCancel() {
                       <p className="text-sm font-medium text-gray-900">
                         {formatDateTime(step.completed_at)}
                       </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Package className="h-4 w-4 text-gray-400" />
-                    <div>
-                      <p className="text-xs uppercase text-gray-500">Üretim</p>
-                      <p className="text-sm font-medium text-gray-900">{productionValue}</p>
                     </div>
                   </div>
                 </div>
@@ -1247,24 +1247,26 @@ async function handleCancel() {
                 <h5 className="text-sm font-semibold text-gray-900">Süreç Dosyaları</h5>
                 <span className="text-xs text-gray-500">{filesList.length} dosya</span>
               </div>
-              <FileUpload
-                refType="job_step"
-                refId={step.id}
-                onUploadComplete={loadJob}
-                maxFiles={5}
-                disabled={!canUploadFiles}
-              />
-              {filesList.length > 0 ? (
-                <FileList
-                  files={filesList}
-                  onDelete={canDeleteFiles ? loadJob : undefined}
-                  allowDelete={canDeleteFiles}
-                  variant="grid"
-                  itemWidth={116}
+              <div className="max-w-md">
+                <FileUpload
+                  refType="job_step"
+                  refId={step.id}
+                  onUploadComplete={loadJob}
+                  maxFiles={5}
+                  disabled={!canUploadFiles}
                 />
-              ) : (
-                <p className="text-xs text-gray-500">Henüz dosya eklenmemiş.</p>
-              )}
+                {filesList.length > 0 ? (
+                  <FileList
+                    files={filesList}
+                    onDelete={canDeleteFiles ? loadJob : undefined}
+                    allowDelete={canDeleteFiles}
+                    variant="grid"
+                    itemWidth={90}
+                  />
+                ) : (
+                  <p className="text-xs text-gray-500">Henüz dosya eklenmemiş.</p>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -1693,160 +1695,253 @@ async function handleCancel() {
                 {(job.steps && job.steps.length) || 0} adım
               </span>
             </div>
-            {job.steps && job.steps.length > 0 ? (
-              <div className="space-y-3">
-                {job.steps.map((step: any) => {
-                  const processId = step.process?.id ?? step.process_id
-                  const processFiles = jobFiles.process_files?.find(
-                    (pf: any) => pf.process_id === processId
-                  )
-                  const currentRole = currentUser?.role
-                  const isManager =
-                    currentRole === 'yonetici' || currentRole === 'admin'
-                  const isAssignee =
-                    step.assigned_to?.id &&
-                    currentUser?.id &&
-                    String(step.assigned_to.id) === String(currentUser.id)
-                  const canUploadFiles = Boolean(
-                    isManager || isEditing || isAssignee,
-                  )
-                  const canDeleteFiles = Boolean(isManager || isEditing)
 
-                  return (
-                    <ProcessStepCard
-                      key={step.id}
-                      step={step}
-                      files={processFiles}
-                      isEditingMode={isEditing}
-                      editForm={stepForms.find((item) => item.id === step.id)}
-                      onFieldChange={handleStepFieldChange}
-                      onSave={handleStepSave}
-                      disabled={
-                        savingStepId === step.id ||
-                        savingJob ||
-                        ['completed', 'canceled'].includes(step.status)
-                      }
-                      onDelete={handleDeleteStep}
-                      canDelete={['pending', 'ready'].includes(step.status)}
-                      users={users}
-                      machines={machines}
-                      processOptions={processOptions}
-                      completionForm={completionForms[step.id]}
-                      onCompletionChange={handleCompletionFieldChange}
-                      onStartStep={handleStartStep}
-                      onCompleteStep={handleCompleteStep}
-                      actionLoading={stepActionLoading[step.id] || false}
-                      canUploadFiles={canUploadFiles}
-                      canDeleteFiles={canDeleteFiles}
-                      onPauseStep={handlePauseStep}
-                      onResumeStep={handleResumeStep}
-                      notes={step.notes || []}
-                      onAddNote={handleAddStepNote}
-                      isOpen={expandedSteps[step.id] ?? false}
-                      onToggle={() =>
-                        setExpandedSteps((prev) => ({
-                          ...prev,
-                          [step.id]: !(prev[step.id] ?? false),
-                        }))
-                      }
-                    />
-                  )
-                })}
-                {isEditing && (
-                  <div className="rounded-lg border border-dashed p-4">
-                    <h4 className="font-semibold text-gray-900">Yeni Süreç Ekle</h4>
-                    <p className="mb-4 text-xs text-gray-500">
-                      İhtiyacınız olan süreçleri sırasıyla ekleyip sorumluluk ataması yapabilirsiniz.
-                    </p>
-                    <form onSubmit={handleAddStep} className="grid gap-3 md:grid-cols-2">
+            {/* İki Kolonlu Yapı: Sol = Eklenen Süreçler, Sağ = Mevcut Süreçler */}
+            {isEditing ? (
+              <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
+                {/* Sol: Eklenen Süreçler (Kompakt Liste) */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Eklenen Süreçler</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {job.steps && job.steps.length > 0 ? (
                       <div className="space-y-2">
-                        <Label>Süreç *</Label>
-                        <select
-                          value={newStep.process_id}
-                          onChange={(e) => handleNewStepChange('process_id', e.target.value)}
-                          className="w-full rounded-md border border-gray-300 px-3 py-2"
-                          required
-                          disabled={addingStep}
-                        >
-                          <option value="">Süreç seçin</option>
-                          {processOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+                        {job.steps.map((step: any, index: number) => {
+                          const editForm = stepForms.find((item) => item.id === step.id)
+                          const canDelete = ['pending', 'ready'].includes(step.status)
+
+                          return (
+                            <div key={step.id} className="rounded-lg border bg-gray-50 p-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+                                  {index + 1}
+                                </span>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm text-gray-900">
+                                      {step.process?.name || 'Süreç'}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      {step.process?.group_name ? `(${step.process.group_name})` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                                {canDelete && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteStep(step.id, step.process?.name)}
+                                    className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+
+                              {/* Kompakt Form */}
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                  <Label className="text-xs">Sorumlu</Label>
+                                  <select
+                                    value={editForm?.assigned_to || ''}
+                                    onChange={(e) => handleStepFieldChange(step.id, 'assigned_to', e.target.value)}
+                                    className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+                                    disabled={savingStepId === step.id}
+                                  >
+                                    <option value="">Seçilmedi</option>
+                                    {users.map((user) => (
+                                      <option key={user.id} value={user.id}>
+                                        {user.full_name || user.username}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Makine</Label>
+                                  <select
+                                    value={editForm?.machine_id || ''}
+                                    onChange={(e) => handleStepFieldChange(step.id, 'machine_id', e.target.value)}
+                                    className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+                                    disabled={savingStepId === step.id}
+                                  >
+                                    <option value="">Seçilmedi</option>
+                                    {machines.map((machine) => (
+                                      <option key={machine.id} value={machine.id}>
+                                        {machine.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Süre (dk)</Label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={editForm?.estimated_duration ?? ''}
+                                    onChange={(e) => handleStepFieldChange(step.id, 'estimated_duration', e.target.value)}
+                                    className="h-7 text-xs"
+                                    disabled={savingStepId === step.id}
+                                  />
+                                </div>
+                                <div className="flex items-end">
+                                  <label className="flex items-center gap-1 text-xs text-gray-600">
+                                    <input
+                                      type="checkbox"
+                                      checked={editForm?.is_parallel ?? false}
+                                      onChange={(e) => handleStepFieldChange(step.id, 'is_parallel', e.target.checked)}
+                                      disabled={savingStepId === step.id}
+                                      className="rounded"
+                                    />
+                                    Paralel
+                                  </label>
+                                </div>
+                              </div>
+
+                              <div className="mt-2 flex justify-end">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => handleStepSave(step.id)}
+                                  disabled={savingStepId === step.id}
+                                  className="h-7 text-xs"
+                                >
+                                  {savingStepId === step.id ? 'Kaydediliyor...' : 'Kaydet'}
+                                </Button>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                      <div className="space-y-2">
-                        <Label>Sorumlu Kullanıcı</Label>
-                        <select
-                          value={newStep.assigned_to}
-                          onChange={(e) => handleNewStepChange('assigned_to', e.target.value)}
-                          className="w-full rounded-md border border-gray-300 px-3 py-2"
-                          disabled={addingStep}
-                        >
-                          <option value="">Seçilmedi</option>
-                          {users.map((user) => (
-                            <option key={user.id} value={user.id}>
-                              {user.full_name || user.username}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Makine</Label>
-                        <select
-                          value={newStep.machine_id}
-                          onChange={(e) => handleNewStepChange('machine_id', e.target.value)}
-                          className="w-full rounded-md border border-gray-300 px-3 py-2"
-                          disabled={addingStep}
-                        >
-                          <option value="">Seçilmedi</option>
-                          {machines.map((machine) => (
-                            <option key={machine.id} value={machine.id}>
-                              {machine.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Tahmini Süre (dk)</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={newStep.estimated_duration}
-                          onChange={(e) =>
-                            handleNewStepChange('estimated_duration', e.target.value)
-                          }
-                          disabled={addingStep}
-                        />
-                      </div>
-                      <label className="flex items-center gap-2 text-sm text-gray-600">
-                        <input
-                          type="checkbox"
-                          checked={newStep.is_parallel}
-                          onChange={(e) =>
-                            handleNewStepChange('is_parallel', e.target.checked)
-                          }
-                          disabled={addingStep}
-                        />
-                        Paralel çalışabilir
-                      </label>
-                      <div className="flex items-end justify-end">
-                        <Button type="submit" disabled={addingStep}>
-                          <Plus className="mr-2 h-4 w-4" />
-                          {addingStep ? 'Ekleniyor...' : 'Süreç Ekle'}
-                        </Button>
-                      </div>
-                    </form>
-                  </div>
-                )}
+                    ) : (
+                      <p className="text-center text-sm text-gray-500 py-8">
+                        Henüz süreç eklenmedi. Sağdaki listeden süreç ekleyin.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Sağ: Mevcut Süreçler (Tıklayarak Ekle) */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Mevcut Süreçler</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                      {processes.length > 0 ? (
+                        // Süreçleri gruplara göre ayır
+                        (() => {
+                          const grouped = processes.reduce((acc: any, process: any) => {
+                            const groupName = process.group_name || 'Grupsuz'
+                            if (!acc[groupName]) acc[groupName] = []
+                            acc[groupName].push(process)
+                            return acc
+                          }, {})
+
+                          return Object.entries(grouped).map(([groupName, groupProcesses]: [string, any]) => (
+                            <div key={groupName} className="border rounded-lg">
+                              <div className="bg-gray-100 px-3 py-2 font-medium text-sm text-gray-700">
+                                {groupName}
+                              </div>
+                              <div className="divide-y">
+                                {groupProcesses.map((process: any) => (
+                                  <button
+                                    key={process.id}
+                                    type="button"
+                                    onClick={() => {
+                                      handleNewStepChange('process_id', process.id)
+                                      handleAddStep({ preventDefault: () => {} } as any)
+                                    }}
+                                    disabled={addingStep}
+                                    className="w-full px-3 py-2 text-left hover:bg-blue-50 transition-colors disabled:opacity-50 flex items-center justify-between group"
+                                  >
+                                    <span className="text-sm text-gray-900">{process.name}</span>
+                                    <Plus className="h-4 w-4 text-gray-400 group-hover:text-blue-600" />
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))
+                        })()
+                      ) : (
+                        <p className="text-center text-sm text-gray-500 py-8">
+                          Süreç bulunamadı
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             ) : (
-              <Card>
-                <CardContent className="py-8 text-center text-sm text-gray-500">
-                  Bu işe henüz süreç eklenmemiş.
-                </CardContent>
-              </Card>
+              // Düzenleme modunda değilse - Normal görünüm
+              <div className="space-y-3">
+                {job.steps && job.steps.length > 0 ? (
+                  job.steps.map((step: any) => {
+                    const processId = step.process?.id ?? step.process_id
+                    const processFiles = jobFiles.process_files?.find(
+                      (pf: any) => pf.process_id === processId
+                    )
+                    const currentRole = currentUser?.role
+                    const isManager =
+                      currentRole === 'yonetici' || currentRole === 'admin'
+                    const isAssignee =
+                      step.assigned_to?.id &&
+                      currentUser?.id &&
+                      String(step.assigned_to.id) === String(currentUser.id)
+                    const canUploadFiles = Boolean(
+                      isManager || isEditing || isAssignee,
+                    )
+                    const canDeleteFiles = Boolean(isManager || isEditing)
+
+                    return (
+                      <ProcessStepCard
+                        key={step.id}
+                        step={step}
+                        files={processFiles}
+                        isEditingMode={isEditing}
+                        editForm={stepForms.find((item) => item.id === step.id)}
+                        onFieldChange={handleStepFieldChange}
+                        onSave={handleStepSave}
+                        disabled={
+                          savingStepId === step.id ||
+                          savingJob ||
+                          ['completed', 'canceled'].includes(step.status)
+                        }
+                        onDelete={handleDeleteStep}
+                        canDelete={['pending', 'ready'].includes(step.status)}
+                        users={users}
+                        machines={machines}
+                        processOptions={processOptions}
+                        completionForm={completionForms[step.id]}
+                        onCompletionChange={handleCompletionFieldChange}
+                        onStartStep={handleStartStep}
+                        onCompleteStep={handleCompleteStep}
+                        actionLoading={stepActionLoading[step.id] || false}
+                        canUploadFiles={canUploadFiles}
+                        canDeleteFiles={canDeleteFiles}
+                        onPauseStep={handlePauseStep}
+                        onResumeStep={handleResumeStep}
+                        notes={step.notes || []}
+                        onAddNote={handleAddStepNote}
+                        isOpen={expandedSteps[step.id] ?? false}
+                        onToggle={() =>
+                          setExpandedSteps((prev) => ({
+                            ...prev,
+                            [step.id]: !(prev[step.id] ?? false),
+                          }))
+                        }
+                      />
+                    )
+                  })
+                ) : (
+                  <Card>
+                    <CardContent className="py-8 text-center text-sm text-gray-500">
+                      Bu işe henüz süreç eklenmemiş.
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             )}
           </div>
 

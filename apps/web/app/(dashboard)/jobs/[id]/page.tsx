@@ -732,7 +732,7 @@ async function handleCancel() {
       assignedName && assignedName !== 'Atanmamış'
         ? assignedName
             .split(/\s+/)
-            .filter((part): part is string => Boolean(part))
+            .filter((part: string) => Boolean(part))
             .slice(0, 2)
             .map((part: string) => part[0]?.toUpperCase() ?? '')
             .join('') || '?'

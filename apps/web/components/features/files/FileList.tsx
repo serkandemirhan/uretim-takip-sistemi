@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { filesAPI } from '@/lib/api/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,35 +15,83 @@ import {
   FileVideo,
   FileAudio,
   FileCode,
+  Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { LucideIcon } from 'lucide-react'
 
 interface FileListProps {
-  files: any[]
+  files?: any[]
   onDelete?: () => void
   showFolder?: boolean
   allowDelete?: boolean
   variant?: 'list' | 'grid'
   itemWidth?: number
+  refType?: 'job' | 'job_step' | 'stock_movement' | 'user'
+  refId?: string
 }
 
 export function FileList({
   files,
   onDelete,
-  showFolder: _showFolder = true,
+  showFolder: _showFolder = true, // reserved for future folder display support
   allowDelete = true,
   variant = 'list',
   itemWidth = 112,
+  refType,
+  refId,
 }: FileListProps) {
+  const providedFiles = useMemo(() => files ?? [], [files])
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [items, setItems] = useState<any[]>(providedFiles)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!refType || !refId) {
+      setItems(providedFiles)
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    const fetchFiles = async () => {
+      setLoading(true)
+      try {
+        const response = await filesAPI.getFiles({
+          ref_type: refType,
+          ref_id: refId,
+        })
+        if (cancelled) return
+        const fetched = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+            ? response
+            : []
+        setItems(fetched)
+      } catch (error) {
+        if (cancelled) return
+        console.error('Dosyalar yüklenemedi:', error)
+        toast.error('Dosyalar yüklenemedi')
+        setItems([])
+      } finally {
+        if (cancelled) return
+        setLoading(false)
+      }
+    }
+
+    void fetchFiles()
+
+    return () => {
+      cancelled = true
+    }
+  }, [refType, refId, providedFiles])
 
   async function handleDownload(fileId: string, filename: string) {
     try {
       const response = await filesAPI.getDownloadUrl(fileId)
       const downloadUrl = response.data.download_url
 
-      // Trigger download
       const link = document.createElement('a')
       link.href = downloadUrl
       link.download = filename
@@ -66,6 +114,7 @@ export function FileList({
       setDeletingId(fileId)
       await filesAPI.delete(fileId)
       toast.success('Dosya silindi')
+      setItems((prev) => prev.filter((file) => file.id !== fileId))
       if (onDelete) {
         onDelete()
       }
@@ -99,8 +148,7 @@ export function FileList({
     },
     {
       match: (ext, type) =>
-        ['doc', 'docx', 'rtf', 'odt'].includes(ext) ||
-        type.includes('word'),
+        ['doc', 'docx', 'rtf', 'odt'].includes(ext) || type.includes('word'),
       icon: FileText,
       iconClass: 'text-blue-600',
       bgClass: 'bg-blue-50',
@@ -174,7 +222,12 @@ export function FileList({
       null
 
     if (preset) {
-      return { Icon: preset.icon, iconClass: preset.iconClass, bgClass: preset.bgClass, extension }
+      return {
+        Icon: preset.icon,
+        iconClass: preset.iconClass,
+        bgClass: preset.bgClass,
+        extension,
+      }
     }
 
     return {
@@ -185,10 +238,19 @@ export function FileList({
     }
   }
 
-  if (files.length === 0) {
+  if (loading && items.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <File className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+      <div className="flex flex-col items-center justify-center space-y-2 py-8 text-gray-500">
+        <Loader2 className="h-6 w-6 animate-spin" />
+        <p>Dosyalar yükleniyor...</p>
+      </div>
+    )
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="py-8 text-center text-gray-500">
+        <File className="mx-auto mb-2 h-12 w-12 text-gray-400" />
         <p>Henüz dosya yüklenmemiş</p>
       </div>
     )
@@ -200,7 +262,7 @@ export function FileList({
         className="grid gap-2"
         style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${itemWidth}px, 1fr))` }}
       >
-        {files.map((file) => {
+        {items.map((file) => {
           const { Icon, iconClass, bgClass, extension } = resolveFileVisuals(
             file.filename,
             file.content_type || '',
@@ -211,9 +273,7 @@ export function FileList({
               key={file.id}
               className="group relative flex h-32 flex-col overflow-hidden rounded-md border border-gray-200 bg-white p-2 text-xs shadow-sm transition hover:shadow-md"
             >
-              <div
-                className={`flex h-8 w-8 items-center justify-center rounded-md ${bgClass}`}
-              >
+              <div className={`flex h-8 w-8 items-center justify-center rounded-md ${bgClass}`}>
                 <Icon className={`h-4 w-4 ${iconClass}`} aria-hidden="true" />
               </div>
               <p className="mt-2 h-10 overflow-hidden text-ellipsis text-[11px] font-medium text-gray-700">
@@ -261,7 +321,7 @@ export function FileList({
 
   return (
     <div className="space-y-1.5">
-      {files.map((file) => {
+      {items.map((file) => {
         const { Icon, iconClass, bgClass, extension } = resolveFileVisuals(
           file.filename,
           file.content_type || '',

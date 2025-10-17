@@ -677,3 +677,52 @@ export const currencySettingsAPI = {
     return response.data
   },
 }
+
+// Quotations API (Teklifler/Malzeme Listeleri)
+export const quotationsAPI = {
+  getAll: async (params?: { status?: string; customer_id?: string }) => {
+    const response = await apiClient.get('/api/quotations', { params })
+    return response.data
+  },
+
+  getById: async (id: string) => {
+    const response = await apiClient.get(`/api/quotations/${id}`)
+    return response.data
+  },
+
+  create: async (data: { name: string; customer_id?: string; description?: string }) => {
+    const response = await apiClient.post('/api/quotations', data)
+    return response.data
+  },
+
+  update: async (id: string, data: { name?: string; customer_id?: string; description?: string; status?: string }) => {
+    const response = await apiClient.put(`/api/quotations/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: string) => {
+    const response = await apiClient.delete(`/api/quotations/${id}`)
+    return response.data
+  },
+
+  // Kalem işlemleri
+  addItems: async (quotationId: string, items: Array<{ stock_id: string; quantity?: number }>) => {
+    const response = await apiClient.post(`/api/quotations/${quotationId}/items`, { items })
+    return response.data
+  },
+
+  updateItem: async (quotationId: string, itemId: string, data: { quantity?: number; unit_cost?: number; notes?: string }) => {
+    const response = await apiClient.put(`/api/quotations/${quotationId}/items/${itemId}`, data)
+    return response.data
+  },
+
+  deleteItem: async (quotationId: string, itemId: string) => {
+    const response = await apiClient.delete(`/api/quotations/${quotationId}/items/${itemId}`)
+    return response.data
+  },
+
+  reorderItems: async (quotationId: string, itemIds: string[]) => {
+    const response = await apiClient.post(`/api/quotations/${quotationId}/items/reorder`, { item_ids: itemIds })
+    return response.data
+  },
+}

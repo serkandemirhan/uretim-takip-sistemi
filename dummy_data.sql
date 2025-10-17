@@ -1,6 +1,9 @@
 -- ReklamPRO Dummy Data Insert Script
 -- This script creates sample customers, jobs, job steps, and related data
 
+-- Set client encoding to UTF8 for Turkish characters
+SET client_encoding = 'UTF8';
+
 -- Ensure UUID extension is enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -30,12 +33,12 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Insert Machines
 INSERT INTO machines (id, name, code, type, status, location, capacity_per_hour) VALUES
-('m1111111-1111-1111-1111-111111111111', 'Heidelberg Speedmaster', 'HB-SM-01', 'Ofset Baskı', 'active', 'Üretim Salonu A', 5000),
-('m2222222-2222-2222-2222-222222222222', 'HP Indigo 7900', 'HP-IND-01', 'Dijital Baskı', 'active', 'Üretim Salonu B', 3000),
-('m3333333-3333-3333-3333-333333333333', 'Polar 137 XT', 'POL-137-01', 'Giyotin Kesim', 'active', 'Kesim Bölümü', 800),
-('m4444444-4444-4444-4444-444444444444', 'Trotec Speedy 400', 'TRT-400-01', 'Lazer Kesim', 'active', 'Kesim Bölümü', 200),
-('m5555555-5555-5555-5555-555555555555', 'Kolbus KM 473', 'KOL-473-01', 'Ciltleme', 'active', 'Ciltleme Bölümü', 500),
-('m6666666-6666-6666-6666-666666666666', 'GMP Surelam', 'GMP-SL-01', 'Laminasyon', 'active', 'Son İşlem Bölümü', 1000)
+('m1111111-1111-1111-1111-111111111111'::uuid, 'Heidelberg Speedmaster', 'HB-SM-01', 'Ofset Baski', 'active', 'Uretim Salonu A', 5000),
+('m2222222-2222-2222-2222-222222222222'::uuid, 'HP Indigo 7900', 'HP-IND-01', 'Dijital Baski', 'active', 'Uretim Salonu B', 3000),
+('m3333333-3333-3333-3333-333333333333'::uuid, 'Polar 137 XT', 'POL-137-01', 'Giyotin Kesim', 'active', 'Kesim Bolumu', 800),
+('m4444444-4444-4444-4444-444444444444'::uuid, 'Trotec Speedy 400', 'TRT-400-01', 'Lazer Kesim', 'active', 'Kesim Bolumu', 200),
+('m5555555-5555-5555-5555-555555555555'::uuid, 'Kolbus KM 473', 'KOL-473-01', 'Ciltleme', 'active', 'Ciltleme Bolumu', 500),
+('m6666666-6666-6666-6666-666666666666'::uuid, 'GMP Surelam', 'GMP-SL-01', 'Laminasyon', 'active', 'Son Islem Bolumu', 1000)
 ON CONFLICT (id) DO NOTHING;
 
 -- Link Machines to Processes

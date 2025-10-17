@@ -13,6 +13,8 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255),
+    avatar_file_id UUID REFERENCES files(id),
+    avatar_url TEXT,
     role VARCHAR(50) NOT NULL CHECK (role IN ('yonetici', 'musteri_temsilcisi', 'tasarimci', 'kesifci', 'operator', 'depocu', 'satinalma')),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
@@ -25,21 +27,62 @@ CREATE TABLE users (
 CREATE TABLE customers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
+    code VARCHAR(50),
     contact_person VARCHAR(255),
     phone VARCHAR(50),
+    phone_secondary VARCHAR(50),
+    gsm VARCHAR(50),
     email VARCHAR(255),
     address TEXT,
+    city VARCHAR(255),
     tax_office VARCHAR(255),
     tax_number VARCHAR(50),
     notes TEXT,
+    short_code VARCHAR(50),
+    postal_code VARCHAR(20),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE customer_dealers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    address TEXT,
+    district VARCHAR(255),
+    city VARCHAR(255),
+    contact_person VARCHAR(255),
+    contact_phone VARCHAR(50),
+    tax_office VARCHAR(255),
+    tax_number VARCHAR(50),
+    phone1 VARCHAR(50),
+    phone2 VARCHAR(50),
+    email VARCHAR(255),
+    website VARCHAR(255),
+    postal_code VARCHAR(20),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_customer_dealers_customer_id ON customer_dealers(customer_id);
+
 -- ============================================
 -- PROCESSES (Süreçler: Ölçü, Keşif, Tasarım, Baskı, Kesim, vb.)
 -- ============================================
+CREATE TABLE process_groups (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(150) NOT NULL,
+    description TEXT,
+    color VARCHAR(20),
+    order_index INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_process_groups_name ON process_groups(lower(name));
+
 CREATE TABLE processes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
@@ -48,9 +91,11 @@ CREATE TABLE processes (
     is_machine_based BOOLEAN DEFAULT false,
     is_production BOOLEAN DEFAULT false,
     order_index INTEGER DEFAULT 0,
+    group_id UUID REFERENCES process_groups(id) ON DELETE SET NULL,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW()
 );
+
 
 -- ============================================
 -- MACHINES (Makineler: HP Latex, CNC Router, vb.)
@@ -117,10 +162,23 @@ CREATE TABLE job_steps (
     production_quantity DECIMAL(10,2),
     production_unit VARCHAR(50),
     production_notes TEXT,
+    block_reason TEXT,
+    blocked_at TIMESTAMP,
+    status_before_block VARCHAR(50),
     revision_no INTEGER DEFAULT 1,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE job_step_notes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    job_step_id UUID NOT NULL REFERENCES job_steps(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    note TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_job_step_notes_step_id ON job_step_notes(job_step_id);
 
 -- ============================================
 -- FILES (Dosyalar: MinIO'da tutulan dosyaların metadata'sı)

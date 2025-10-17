@@ -135,6 +135,28 @@ def _resolve_folder_path(ref_type, ref_id):
             )
         )
 
+    if ref_type == "stock_movement":
+        row = execute_query_one(
+            """
+            SELECT sm.id, sm.movement_type, sm.created_at,
+                   s.product_code, s.product_name
+            FROM stock_movements sm
+            JOIN stocks s ON s.id = sm.stock_id
+            WHERE sm.id = %s
+            """,
+            (ref_id_str,),
+        )
+        if not row:
+            return None
+
+        # stocks/URUN_KODU/YILAYGUN_HareketID/
+        product_code = secure_filename(row.get("product_code") or "UNKNOWN")
+        movement_date = row.get("created_at")
+        date_str = movement_date.strftime("%Y%m%d") if movement_date else "UNKNOWN"
+        movement_id = ref_id_str[:8]  # First 8 chars of UUID
+
+        return f"stocks/{product_code}/{date_str}_{movement_id}/"
+
     # Fallback: use sanitized ref_type/ref_id
     return f"{secure_filename(ref_type)}/{secure_filename(ref_id_str)}/"
 

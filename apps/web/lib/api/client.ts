@@ -560,3 +560,120 @@ export const rolesAPI = {
     return response.data
   },
 }
+
+// Stocks API
+export const stocksAPI = {
+  getAll: async (params?: { category?: string; critical_only?: boolean }) => {
+    const response = await apiClient.get('/api/stocks', { params })
+    return response.data
+  },
+
+  getById: async (id: string) => {
+    const response = await apiClient.get(`/api/stocks/${id}`)
+    return response.data
+  },
+
+  create: async (data: any) => {
+    const response = await apiClient.post('/api/stocks', data)
+    return response.data
+  },
+
+  update: async (id: string, data: any) => {
+    const response = await apiClient.patch(`/api/stocks/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: string) => {
+    const response = await apiClient.delete(`/api/stocks/${id}`)
+    return response.data
+  },
+
+  getCategories: async () => {
+    const response = await apiClient.get('/api/stocks/categories')
+    return response.data
+  },
+
+  getSummary: async () => {
+    const response = await apiClient.get('/api/stocks/summary')
+    return response.data
+  },
+}
+
+// Stock Movements API
+export const stockMovementsAPI = {
+  getAll: async (params?: { stock_id?: string; job_id?: string; movement_type?: string; start_date?: string; end_date?: string }) => {
+    const response = await apiClient.get('/api/stock-movements', { params })
+    return response.data
+  },
+
+  getById: async (id: string) => {
+    const response = await apiClient.get(`/api/stock-movements/${id}`)
+    return response.data
+  },
+
+  create: async (data: any) => {
+    const response = await apiClient.post('/api/stock-movements', data)
+    return response.data
+  },
+
+  delete: async (id: string) => {
+    const response = await apiClient.delete(`/api/stock-movements/${id}`)
+    return response.data
+  },
+}
+
+// Purchase Orders API
+export const purchaseOrdersAPI = {
+  getAll: async (params?: { stock_id?: string; status?: string }) => {
+    const response = await apiClient.get('/api/purchase-orders', { params })
+    return response.data
+  },
+
+  getById: async (id: string) => {
+    const response = await apiClient.get(`/api/purchase-orders/${id}`)
+    return response.data
+  },
+
+  create: async (data: any) => {
+    const response = await apiClient.post('/api/purchase-orders', data)
+    return response.data
+  },
+
+  update: async (id: string, data: any) => {
+    const response = await apiClient.patch(`/api/purchase-orders/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: string) => {
+    const response = await apiClient.delete(`/api/purchase-orders/${id}`)
+    return response.data
+  },
+
+  deliver: async (id: string, data?: { document_no?: string; notes?: string }) => {
+    const response = await apiClient.post(`/api/purchase-orders/${id}/deliver`, data)
+    return response.data
+  },
+
+  cancel: async (id: string) => {
+    const response = await apiClient.post(`/api/purchase-orders/${id}/cancel`)
+    return response.data
+  },
+}
+
+// Currency Settings API
+export const currencySettingsAPI = {
+  get: async () => {
+    const response = await apiClient.get('/api/currency-settings')
+    return response.data
+  },
+
+  update: async (data: { usd_to_try?: number; eur_to_try?: number }) => {
+    const response = await apiClient.post('/api/currency-settings', data)
+    return response.data
+  },
+
+  convert: async (data: { amount: number; from_currency: string; to_currency: string }) => {
+    const response = await apiClient.post('/api/currency-settings/convert', data)
+    return response.data
+  },
+}

@@ -1,19 +1,72 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { tasksAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CheckSquare, Clock, Play, CheckCircle, AlertCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle, CheckSquare, Clock, Kanban, LayoutList, Play } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils/formatters'
 import { handleError, handleApiError, debugLog } from '@/lib/utils/error-handler'
 
+type TaskStatus = 'ready' | 'in_progress' | 'completed'
+
+type StatusColumn = {
+  key: TaskStatus
+  label: string
+  description: string
+  emptyLabel: string
+  icon: LucideIcon
+  iconClass: string
+  headerClass: string
+}
+
+const STATUS_COLUMNS: StatusColumn[] = [
+  {
+    key: 'ready',
+    label: 'Atanmış / Başlamamış',
+    description: 'Başlamayı bekleyen görevler',
+    emptyLabel: 'Başlamayı bekleyen görev bulunmuyor',
+    icon: AlertCircle,
+    iconClass: 'text-blue-600',
+    headerClass: 'bg-blue-50/60 border-blue-100',
+  },
+  {
+    key: 'in_progress',
+    label: 'Devam Eden',
+    description: 'Üzerinde çalışılan görevler',
+    emptyLabel: 'Şu anda devam eden görev yok',
+    icon: Play,
+    iconClass: 'text-yellow-600',
+    headerClass: 'bg-yellow-50/60 border-yellow-100',
+  },
+  {
+    key: 'completed',
+    label: 'Tamamlanan',
+    description: 'Tamamlanan görevler',
+    emptyLabel: 'Henüz tamamlanmış görev yok',
+    icon: CheckCircle,
+    iconClass: 'text-green-600',
+    headerClass: 'bg-green-50/60 border-green-100',
+  },
+]
+
 export default function TasksPage() {
   const [tasks, setTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
+
+  const statusBuckets = useMemo<Record<TaskStatus, any[]>>(
+    () => ({
+      ready: tasks.filter((task) => task.status === 'ready'),
+      in_progress: tasks.filter((task) => task.status === 'in_progress'),
+      completed: tasks.filter((task) => task.status === 'completed'),
+    }),
+    [tasks],
+  )
 
   useEffect(() => {
     loadTasks()
@@ -42,9 +95,9 @@ export default function TasksPage() {
   }
 
   // Görevleri grupla
-  const inProgressTasks = tasks.filter(t => t.status === 'in_progress')
-  const readyTasks = tasks.filter(t => t.status === 'ready')
-  const completedTasks = tasks.filter(t => t.status === 'completed')
+  const readyTasks = statusBuckets.ready
+  const inProgressTasks = statusBuckets.in_progress
+  const completedTasks = statusBuckets.completed
 
   if (loading) {
     return (
@@ -56,13 +109,35 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Görevlerim</h1>
-        <p className="text-gray-600 mt-1">Size atanan görevleri görüntüleyin ve yönetin</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Görevlerim</h1>
+          <p className="mt-1 text-gray-600">Size atanan görevleri görüntüleyin ve yönetin</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={viewMode === 'list' ? 'default' : 'outline'}
+            onClick={() => setViewMode('list')}
+            className="gap-2"
+            aria-pressed={viewMode === 'list'}
+          >
+            <LayoutList className="h-4 w-4" />
+            Liste
+          </Button>
+          <Button
+            size="sm"
+            variant={viewMode === 'kanban' ? 'default' : 'outline'}
+            onClick={() => setViewMode('kanban')}
+            className="gap-2"
+            aria-pressed={viewMode === 'kanban'}
+          >
+            <Kanban className="h-4 w-4" />
+            Kanban
+          </Button>
+        </div>
       </div>
 
-      {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="pt-6">
@@ -71,7 +146,7 @@ export default function TasksPage() {
                 <p className="text-sm text-gray-600">Devam Eden</p>
                 <p className="text-2xl font-bold text-yellow-600">{inProgressTasks.length}</p>
               </div>
-              <Play className="w-8 h-8 text-yellow-600" />
+              <Play className="h-8 w-8 text-yellow-600" />
             </div>
           </CardContent>
         </Card>
@@ -83,7 +158,7 @@ export default function TasksPage() {
                 <p className="text-sm text-gray-600">Bekleyen</p>
                 <p className="text-2xl font-bold text-blue-600">{readyTasks.length}</p>
               </div>
-              <AlertCircle className="w-8 h-8 text-blue-600" />
+              <AlertCircle className="h-8 w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
@@ -95,73 +170,104 @@ export default function TasksPage() {
                 <p className="text-sm text-gray-600">Tamamlanan</p>
                 <p className="text-2xl font-bold text-green-600">{completedTasks.length}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-600" />
+              <CheckCircle className="h-8 w-8 text-green-600" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* No Tasks */}
-      {tasks.length === 0 && (
+      {tasks.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <CheckSquare className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <CheckSquare className="mx-auto mb-4 h-12 w-12 text-gray-400" />
             <p className="text-gray-500">Size atanmış görev bulunmuyor</p>
           </CardContent>
         </Card>
-      )}
-
-      {/* In Progress Tasks */}
-      {inProgressTasks.length > 0 && (
-        <div>
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Play className="w-5 h-5 text-yellow-600" />
-            Devam Eden Görevler
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {inProgressTasks.map((task) => (
-              <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
-            ))}
-          </div>
+      ) : viewMode === 'kanban' ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {STATUS_COLUMNS.map((column) => {
+            const columnTasks = statusBuckets[column.key] || []
+            const Icon = column.icon
+            return (
+              <Card key={column.key} className="flex h-full flex-col">
+                <CardHeader className={`border-b ${column.headerClass}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                        <Icon className={`h-4 w-4 ${column.iconClass}`} />
+                        {column.label}
+                      </div>
+                      <p className="text-xs text-gray-500">{column.description}</p>
+                    </div>
+                    <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-gray-600 shadow-sm">
+                      {columnTasks.length}
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3 px-2 py-4 sm:px-4">
+                  {columnTasks.map((task) => (
+                    <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
+                  ))}
+                  {columnTasks.length === 0 && (
+                    <div className="rounded border border-dashed border-gray-200 bg-white/70 p-6 text-center text-xs text-gray-500">
+                      {column.emptyLabel}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
-      )}
+      ) : (
+        <>
+          {inProgressTasks.length > 0 && (
+            <div>
+              <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
+                <Play className="h-5 w-5 text-yellow-600" />
+                Devam Eden Görevler
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {inProgressTasks.map((task) => (
+                  <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
+                ))}
+              </div>
+            </div>
+          )}
 
-      {/* Ready Tasks */}
-      {readyTasks.length > 0 && (
-        <div>
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-blue-600" />
-            Bekleyen Görevler
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {readyTasks.map((task) => (
-              <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
-            ))}
-          </div>
-        </div>
-      )}
+          {readyTasks.length > 0 && (
+            <div>
+              <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
+                <AlertCircle className="h-5 w-5 text-blue-600" />
+                Bekleyen Görevler
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {readyTasks.map((task) => (
+                  <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
+                ))}
+              </div>
+            </div>
+          )}
 
-      {/* Completed Tasks */}
-      {completedTasks.length > 0 && (
-        <div>
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            Tamamlanan Görevler
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {completedTasks.map((task) => (
-              <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
-            ))}
-          </div>
-        </div>
+          {completedTasks.length > 0 && (
+            <div>
+              <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                Tamamlanan Görevler
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {completedTasks.map((task) => (
+                  <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
 }
 
 // Task Card Component
-type TaskStatus = 'ready' | 'in_progress' | 'completed'
-
 function TaskCard({ task, onUpdate }: { task: any; onUpdate: () => void }) {
   const statusMap: Record<TaskStatus, { label: string; class: string }> = {
     ready: { label: 'Hazır', class: 'bg-blue-100 text-blue-700' },

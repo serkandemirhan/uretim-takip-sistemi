@@ -140,51 +140,207 @@ export default function ProcessesPage() {
     ]
   }, [groups])
 
-const markGroupDirty = (groupId: string) => {
-  setDirtyGroups((prev) => {
-    const next = new Set(prev)
-    next.add(groupId)
-    return next
-  })
-}
+  const markGroupDirty = (groupId: string) => {
+    setDirtyGroups((prev) => {
+      const next = new Set(prev)
+      next.add(groupId)
+      return next
+    })
+  }
 
-const resetNewProcess = () => {
-  setNewProcessTarget(null)
-  setNewProcessForm({
-    name: '',
-    code: '',
-    is_machine_based: false,
-    is_production: false,
-  })
-  setCreatingProcess(false)
-}
+  const resetNewProcess = () => {
+    setNewProcessTarget(null)
+    setNewProcessForm({
+      name: '',
+      code: '',
+      is_machine_based: false,
+      is_production: false,
+    })
+    setCreatingProcess(false)
+  }
 
-const reorderProcesses = (groupId: string, processId: string, overProcessId: string) => {
-    if (processId === overProcessId) return
+  const updateProcessOrder = (list: Process[], groupId: string) => {
+    const normalizedGroupId = groupId === '__ungrouped__' ? null : groupId
+    return list.map((process, index) => ({
+      ...process,
+      order_index: index + 1,
+      group_id: normalizedGroupId,
+    }))
+  }
 
-    const reorder = (list: Process[]) => {
-      const copy = list.slice()
-      const fromIndex = copy.findIndex((p) => p.id === processId)
-      const toIndex = copy.findIndex((p) => p.id === overProcessId)
-      if (fromIndex === -1 || toIndex === -1) return list
-      const [moved] = copy.splice(fromIndex, 1)
-      copy.splice(toIndex, 0, moved)
-      return copy.map((p, idx) => ({ ...p, order_index: idx + 1 }))
-    }
+  const reorderWithinGroup = (
+    list: Process[],
+    groupId: string,
+    processId: string,
+    beforeProcessId?: string,
+  ) => {
+    const fromIndex = list.findIndex((p) => p.id === processId)
+    if (fromIndex === -1) return list
 
-    if (groupId === '__ungrouped__') {
-      setUngrouped((prev) => reorder(prev))
-    } else {
-      setGroups((prev) =>
-        prev.map((group) =>
-          group.id === groupId
-            ? { ...group, processes: reorder(group.processes) }
-            : group,
-        ),
+    const working = list.slice()
+    const [moved] = working.splice(fromIndex, 1)
+    const targetIndex = beforeProcessId
+      ? working.findIndex((p) => p.id === beforeProcessId)
+      : working.length
+    const insertionIndex = targetIndex === -1 ? working.length : targetIndex
+    working.splice(insertionIndex, 0, moved)
+
+    const hasChanged = working.some((proc, idx) => proc.id !== list[idx]?.id)
+    if (!hasChanged) return list
+
+    return updateProcessOrder(working, groupId)
+  }
+
+  const moveProcess = (
+    sourceGroupId: string,
+    targetGroupId: string,
+    processId: string,
+    beforeProcessId?: string,
+  ) => {
+    if (sourceGroupId === targetGroupId) {
+      if (sourceGroupId === '__ungrouped__') {
+        const currentList = ungrouped
+        const reordered = reorderWithinGroup(currentList, sourceGroupId, processId, beforeProcessId)
+        if (reordered === currentList) return false
+        setUngrouped(reordered)
+        markGroupDirty(sourceGroupId)
+        return true
+      }
+
+      const sourceGroupIndex = groups.findIndex((group) => group.id === sourceGroupId)
+      if (sourceGroupIndex === -1) return false
+      const sourceGroup = groups[sourceGroupIndex]
+      const reordered = reorderWithinGroup(sourceGroup.processes, sourceGroupId, processId, beforeProcessId)
+      if (reordered === sourceGroup.processes) return false
+
+      const nextGroups = groups.map((group, index) =>
+        index === sourceGroupIndex ? { ...group, processes: reordered } : group,
       )
+      setGroups(nextGroups)
+      markGroupDirty(sourceGroupId)
+      return true
     }
 
-    markGroupDirty(groupId)
+    if (sourceGroupId === '__ungrouped__') {
+      const targetIndex = groups.findIndex((group) => group.id === targetGroupId)
+      if (targetIndex === -1) return false
+
+      const sourceList = ungrouped.slice()
+      const processIndex = sourceList.findIndex((process) => process.id === processId)
+      if (processIndex === -1) return false
+
+      const [movedProcess] = sourceList.splice(processIndex, 1)
+      const updatedUngrouped = updateProcessOrder(sourceList, sourceGroupId)
+
+      const targetGroup = groups[targetIndex]
+      const targetProcesses = targetGroup.processes.slice()
+      const targetPosition = beforeProcessId
+        ? targetProcesses.findIndex((process) => process.id === beforeProcessId)
+        : targetProcesses.length
+      const insertionIndex = targetPosition === -1 ? targetProcesses.length : targetPosition
+      targetProcesses.splice(insertionIndex, 0, movedProcess)
+      const updatedTarget = updateProcessOrder(targetProcesses, targetGroupId)
+
+      const nextGroups = groups.map((group, index) =>
+        index === targetIndex ? { ...group, processes: updatedTarget } : group,
+      )
+
+      setUngrouped(updatedUngrouped)
+      setGroups(nextGroups)
+      markGroupDirty(sourceGroupId)
+      markGroupDirty(targetGroupId)
+      setExpandedGroups((prev) => ({ ...prev, [targetGroupId]: true }))
+      return true
+    }
+
+    if (targetGroupId === '__ungrouped__') {
+      const sourceIndex = groups.findIndex((group) => group.id === sourceGroupId)
+      if (sourceIndex === -1) return false
+
+      const sourceGroup = groups[sourceIndex]
+      const sourceProcesses = sourceGroup.processes.slice()
+      const processIndex = sourceProcesses.findIndex((process) => process.id === processId)
+      if (processIndex === -1) return false
+
+      const [movedProcess] = sourceProcesses.splice(processIndex, 1)
+      const updatedSource = updateProcessOrder(sourceProcesses, sourceGroupId)
+
+      const ungroupedList = ungrouped.slice()
+      const targetPosition = beforeProcessId
+        ? ungroupedList.findIndex((process) => process.id === beforeProcessId)
+        : ungroupedList.length
+      const insertionIndex = targetPosition === -1 ? ungroupedList.length : targetPosition
+      ungroupedList.splice(insertionIndex, 0, movedProcess)
+      const updatedUngrouped = updateProcessOrder(ungroupedList, targetGroupId)
+
+      const nextGroups = groups.map((group, index) =>
+        index === sourceIndex ? { ...group, processes: updatedSource } : group,
+      )
+
+      setGroups(nextGroups)
+      setUngrouped(updatedUngrouped)
+      markGroupDirty(sourceGroupId)
+      markGroupDirty(targetGroupId)
+      setExpandedGroups((prev) => ({ ...prev, [targetGroupId]: true }))
+      return true
+    }
+
+    const sourceIndex = groups.findIndex((group) => group.id === sourceGroupId)
+    const targetIndex = groups.findIndex((group) => group.id === targetGroupId)
+    if (sourceIndex === -1 || targetIndex === -1) return false
+
+    const sourceGroup = groups[sourceIndex]
+    const targetGroup = groups[targetIndex]
+
+    const sourceProcesses = sourceGroup.processes.slice()
+    const processIndex = sourceProcesses.findIndex((process) => process.id === processId)
+    if (processIndex === -1) return false
+
+    const [movedProcess] = sourceProcesses.splice(processIndex, 1)
+    const updatedSource = updateProcessOrder(sourceProcesses, sourceGroupId)
+
+    const targetProcesses = targetGroup.processes.slice()
+    const targetPosition = beforeProcessId
+      ? targetProcesses.findIndex((process) => process.id === beforeProcessId)
+      : targetProcesses.length
+    const insertionIndex = targetPosition === -1 ? targetProcesses.length : targetPosition
+    targetProcesses.splice(insertionIndex, 0, movedProcess)
+    const updatedTarget = updateProcessOrder(targetProcesses, targetGroupId)
+
+    const nextGroups = groups.map((group, index) => {
+      if (index === sourceIndex) {
+        return { ...group, processes: updatedSource }
+      }
+      if (index === targetIndex) {
+        return { ...group, processes: updatedTarget }
+      }
+      return group
+    })
+
+    setGroups(nextGroups)
+    markGroupDirty(sourceGroupId)
+    markGroupDirty(targetGroupId)
+    setExpandedGroups((prev) => ({ ...prev, [targetGroupId]: true }))
+    return true
+  }
+
+  const handleRowDragOver = (targetGroupId: string, targetProcessId: string) => {
+    if (!dragging) return
+    const { groupId: sourceGroupId, processId } = dragging
+    if (processId === targetProcessId && sourceGroupId === targetGroupId) return
+    const didChange = moveProcess(sourceGroupId, targetGroupId, processId, targetProcessId)
+    if (didChange && sourceGroupId !== targetGroupId) {
+      setDragging({ groupId: targetGroupId, processId })
+    }
+  }
+
+  const handleGroupDragOver = (targetGroupId: string) => {
+    if (!dragging) return
+    const { groupId: sourceGroupId, processId } = dragging
+    const didChange = moveProcess(sourceGroupId, targetGroupId, processId)
+    if (didChange && sourceGroupId !== targetGroupId) {
+      setDragging({ groupId: targetGroupId, processId })
+    }
   }
 
   const toggleGroup = (groupId: string) => {
@@ -249,29 +405,41 @@ const startEditProcess = (process: Process) => {
     }
   }
 
-  const saveOrder = async () => {
+  const saveOrder = async ({ silent = false }: { silent?: boolean } = {}) => {
     if (dirtyGroups.size === 0) return
+    const groupsToSave = Array.from(dirtyGroups)
+    if (groupsToSave.length === 0) return
     try {
       setSavingOrder(true)
       const updates: Promise<any>[] = []
 
-      dirtyGroups.forEach((groupId) => {
+      groupsToSave.forEach((groupId) => {
         const list = groupId === '__ungrouped__'
           ? ungrouped
           : groups.find((g) => g.id === groupId)?.processes || []
+        const normalizedGroupId = groupId === '__ungrouped__' ? null : groupId
 
         list.forEach((process, index) => {
           updates.push(
             processesAPI.update(process.id, {
               order_index: index + 1,
+              group_id: process.group_id ?? normalizedGroupId,
             }),
           )
         })
       })
 
       await Promise.all(updates)
-      toast.success('Süreç sıralamaları kaydedildi')
-      setDirtyGroups(new Set())
+      if (!silent) {
+        toast.success('Süreç sıralamaları kaydedildi')
+      }
+      setDirtyGroups((prev) => {
+        const next = new Set(prev)
+        groupsToSave.forEach((groupId) => {
+          next.delete(groupId)
+        })
+        return next
+      })
     } catch (error) {
       handleError(error)
       toast.error('Sıralama kaydedilemedi')
@@ -279,6 +447,12 @@ const startEditProcess = (process: Process) => {
       setSavingOrder(false)
     }
   }
+
+  useEffect(() => {
+    if (!dragging && dirtyGroups.size > 0 && !savingOrder) {
+      void saveOrder({ silent: true })
+    }
+  }, [dragging, dirtyGroups, savingOrder, saveOrder])
 
   const deleteProcess = async (process: Process) => {
     if (!confirm(`"${process.name}" sürecini silmek istiyor musunuz?`)) return
@@ -429,9 +603,9 @@ const renderProcessRow = (process: Process, groupId: string) => {
         onDragEnd={() => setDragging(null)}
         onDragOver={(e) => {
           e.preventDefault()
-          if (!dragging || dragging.groupId !== groupId) return
-          reorderProcesses(groupId, dragging.processId, process.id)
+          handleRowDragOver(groupId, process.id)
         }}
+        onDrop={(e) => e.preventDefault()}
       >
         <td className="py-3 px-4 w-[32px] align-top text-sm text-gray-400">
           <span className="flex items-center justify-center text-gray-400">
@@ -670,7 +844,7 @@ const renderNewProcessRow = (groupId: string) => {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>Süreç Listesi</CardTitle>
             {dirtyGroups.size > 0 && (
-              <Button size="sm" className="gap-2" onClick={saveOrder} disabled={savingOrder}>
+              <Button size="sm" className="gap-2" onClick={() => saveOrder()} disabled={savingOrder}>
                 <Save className="h-4 w-4" />
                 {savingOrder ? 'Kaydediliyor...' : 'Sıralamayı Kaydet'}
               </Button>
@@ -699,7 +873,15 @@ const renderNewProcessRow = (groupId: string) => {
                     const isExpanded = expandedGroups[group.id] ?? true
                     return (
                       <Fragment key={group.id}>
-                        <tr key={group.id} className="border-b bg-gray-100">
+                        <tr
+                          key={group.id}
+                          className="border-b bg-gray-100"
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            handleGroupDragOver(group.id)
+                          }}
+                          onDrop={(e) => e.preventDefault()}
+                        >
                           <td className="py-3 px-4">
                             <button
                               type="button"
@@ -777,7 +959,14 @@ const renderNewProcessRow = (groupId: string) => {
                           group.processes.map((process) => renderProcessRow(process, group.id))}
                         {isExpanded && newProcessTarget === group.id && renderNewProcessRow(group.id)}
                         {isExpanded && group.processes.length === 0 && newProcessTarget !== group.id && (
-                          <tr className="border-b">
+                          <tr
+                            className="border-b"
+                            onDragOver={(e) => {
+                              e.preventDefault()
+                              handleGroupDragOver(group.id)
+                            }}
+                            onDrop={(e) => e.preventDefault()}
+                          >
                             <td colSpan={7} className="py-4 px-4 text-center text-xs text-gray-500">
                               Bu gruba henüz süreç eklenmemiş.
                             </td>
@@ -787,7 +976,14 @@ const renderNewProcessRow = (groupId: string) => {
                     )
                   })}
 
-                  <tr className="border-b bg-gray-100">
+                  <tr
+                    className="border-b bg-gray-100"
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      handleGroupDragOver('__ungrouped__')
+                    }}
+                    onDrop={(e) => e.preventDefault()}
+                  >
                     <td className="py-3 px-4">
                       <button
                         type="button"
@@ -823,7 +1019,14 @@ const renderNewProcessRow = (groupId: string) => {
                         {newProcessTarget === '__ungrouped__' && renderNewProcessRow('__ungrouped__')}
                       </>
                     ) : (
-                      <tr className="border-b">
+                      <tr
+                        className="border-b"
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          handleGroupDragOver('__ungrouped__')
+                        }}
+                        onDrop={(e) => e.preventDefault()}
+                      >
                         <td colSpan={7} className="py-4 px-4 text-center text-xs text-gray-500">
                           Grupsuz süreç yok.
                         </td>

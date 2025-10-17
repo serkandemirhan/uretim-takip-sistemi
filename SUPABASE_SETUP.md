@@ -67,7 +67,7 @@ postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-eu-central-1.pooler.supabas
 Host: aws-0-eu-central-1.pooler.supabase.com
 Port: 5432
 Database: postgres
-User: postgres.[PROJECT-REF]
+User: postgres.qgfwskuyqrbalvhexecy
 Password: [SENIN ŞİFREN] 2025Abm2044!!2044
 ```
 

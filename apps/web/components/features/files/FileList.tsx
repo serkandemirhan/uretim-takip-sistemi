@@ -4,21 +4,37 @@ import { useState } from 'react'
 import { filesAPI } from '@/lib/api/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { File, Download, Trash2, Folder } from 'lucide-react'
+import {
+  File,
+  Download,
+  Trash2,
+  FileText,
+  FileSpreadsheet,
+  FileArchive,
+  FileImage,
+  FileVideo,
+  FileAudio,
+  FileCode,
+} from 'lucide-react'
 import { toast } from 'sonner'
+import type { LucideIcon } from 'lucide-react'
 
 interface FileListProps {
   files: any[]
   onDelete?: () => void
   showFolder?: boolean
   allowDelete?: boolean
+  variant?: 'list' | 'grid'
+  itemWidth?: number
 }
 
 export function FileList({
   files,
   onDelete,
-  showFolder = true,
+  showFolder: _showFolder = true,
   allowDelete = true,
+  variant = 'list',
+  itemWidth = 112,
 }: FileListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -60,22 +76,113 @@ export function FileList({
     }
   }
 
-  function formatFileSize(bytes: number) {
+  function formatFileSize(bytes?: number | null) {
+    if (!bytes) return '—'
     if (bytes === 0) return '0 Bytes'
     const k = 1024
     const sizes = ['Bytes', 'KB', 'MB', 'GB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
   }
 
-  function getFileIcon(contentType: string) {
-    if (contentType.startsWith('image/')) return '🖼️'
-    if (contentType.startsWith('video/')) return '🎬'
-    if (contentType.includes('pdf')) return '📄'
-    if (contentType.includes('word')) return '📝'
-    if (contentType.includes('excel') || contentType.includes('spreadsheet')) return '📊'
-    if (contentType.includes('zip') || contentType.includes('rar')) return '📦'
-    return '📎'
+  const extensionPresets: Array<{
+    match: (ext: string, type: string) => boolean
+    icon: LucideIcon
+    iconClass: string
+    bgClass: string
+  }> = [
+    {
+      match: (ext, type) => ['pdf'].includes(ext) || type.includes('pdf'),
+      icon: FileText,
+      iconClass: 'text-red-600',
+      bgClass: 'bg-red-50',
+    },
+    {
+      match: (ext, type) =>
+        ['doc', 'docx', 'rtf', 'odt'].includes(ext) ||
+        type.includes('word'),
+      icon: FileText,
+      iconClass: 'text-blue-600',
+      bgClass: 'bg-blue-50',
+    },
+    {
+      match: (ext, type) =>
+        ['xls', 'xlsx', 'csv', 'ods'].includes(ext) ||
+        type.includes('excel') ||
+        type.includes('spreadsheet'),
+      icon: FileSpreadsheet,
+      iconClass: 'text-emerald-600',
+      bgClass: 'bg-emerald-50',
+    },
+    {
+      match: (ext, type) =>
+        ['ppt', 'pptx', 'key'].includes(ext) || type.includes('powerpoint'),
+      icon: FileText,
+      iconClass: 'text-orange-600',
+      bgClass: 'bg-orange-50',
+    },
+    {
+      match: (ext, type) =>
+        ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext) ||
+        type.includes('zip') ||
+        type.includes('archive'),
+      icon: FileArchive,
+      iconClass: 'text-amber-600',
+      bgClass: 'bg-amber-50',
+    },
+    {
+      match: (ext, type) =>
+        ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) ||
+        type.startsWith('image/'),
+      icon: FileImage,
+      iconClass: 'text-purple-600',
+      bgClass: 'bg-purple-50',
+    },
+    {
+      match: (ext, type) =>
+        ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext) ||
+        type.startsWith('video/'),
+      icon: FileVideo,
+      iconClass: 'text-indigo-600',
+      bgClass: 'bg-indigo-50',
+    },
+    {
+      match: (ext, type) =>
+        ['mp3', 'wav', 'aac', 'flac'].includes(ext) || type.startsWith('audio/'),
+      icon: FileAudio,
+      iconClass: 'text-pink-600',
+      bgClass: 'bg-pink-50',
+    },
+    {
+      match: (ext, type) =>
+        ['json', 'js', 'ts', 'tsx', 'jsx', 'html', 'css', 'xml'].includes(ext) ||
+        type.includes('json') ||
+        type.startsWith('text/'),
+      icon: FileCode,
+      iconClass: 'text-slate-600',
+      bgClass: 'bg-slate-100',
+    },
+  ]
+
+  const resolveFileVisuals = (
+    filename: string,
+    contentType: string,
+  ): { Icon: LucideIcon; iconClass: string; bgClass: string; extension: string } => {
+    const extension = (filename?.split('.')?.pop() || '').toLowerCase()
+    const preset =
+      extensionPresets.find((item) => item.match(extension, contentType || '')) ||
+      null
+
+    if (preset) {
+      return { Icon: preset.icon, iconClass: preset.iconClass, bgClass: preset.bgClass, extension }
+    }
+
+    return {
+      Icon: File,
+      iconClass: 'text-gray-500',
+      bgClass: 'bg-gray-100',
+      extension,
+    }
   }
 
   if (files.length === 0) {
@@ -87,70 +194,128 @@ export function FileList({
     )
   }
 
-  return (
-    <div className="space-y-2">
-      {files.map((file) => (
-        <Card key={file.id}>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-3">
-              <div className="text-2xl flex-shrink-0">
-                {getFileIcon(file.content_type)}
-              </div>
+  if (variant === 'grid') {
+    return (
+      <div
+        className="grid gap-2"
+        style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${itemWidth}px, 1fr))` }}
+      >
+        {files.map((file) => {
+          const { Icon, iconClass, bgClass, extension } = resolveFileVisuals(
+            file.filename,
+            file.content_type || '',
+          )
 
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {file.filename}
-                </p>
-                <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
-                  <span>{formatFileSize(file.file_size)}</span>
-                  {file.uploaded_by_name && (
-                    <>
-                      <span>•</span>
-                      <span>{file.uploaded_by_name}</span>
-                    </>
-                  )}
-                  {file.created_at && (
-                    <>
-                      <span>•</span>
-                      <span>
-                        {new Date(file.created_at).toLocaleDateString('tr-TR')}
-                      </span>
-                    </>
-                  )}
-                </div>
-                {showFolder && file.folder_path && (
-                  <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                    <Folder className="w-3 h-3" />
-                    <span className="truncate">{file.folder_path}</span>
-                  </div>
-                )}
+          return (
+            <div
+              key={file.id}
+              className="group relative flex h-32 flex-col overflow-hidden rounded-md border border-gray-200 bg-white p-2 text-xs shadow-sm transition hover:shadow-md"
+            >
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-md ${bgClass}`}
+              >
+                <Icon className={`h-4 w-4 ${iconClass}`} aria-hidden="true" />
               </div>
-
-              <div className="flex gap-1 flex-shrink-0">
+              <p className="mt-2 h-10 overflow-hidden text-ellipsis text-[11px] font-medium text-gray-700">
+                {file.filename}
+              </p>
+              <div className="mt-auto flex items-center justify-between text-[10px] uppercase text-gray-400">
+                <span>{extension || 'Dosya'}</span>
+                <span>{formatFileSize(file.file_size)}</span>
+              </div>
+              <div className="absolute right-1 top-1 flex gap-1">
                 <Button
                   variant="ghost"
-                  size="sm"
-                  onClick={() => handleDownload(file.id, file.filename)}
-                  className="h-8"
+                  size="icon"
+                  className="h-7 w-7 text-gray-600 hover:bg-gray-100"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleDownload(file.id, file.filename)
+                  }}
+                  aria-label="Dosyayı indir"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="h-3.5 w-3.5" />
                 </Button>
                 {allowDelete && (
                   <Button
                     variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(file.id, file.filename)}
+                    size="icon"
+                    className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleDelete(file.id, file.filename)
+                    }}
                     disabled={deletingId === file.id}
-                    className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    aria-label="Dosyayı sil"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 )}
               </div>
             </div>
-          </CardContent>
-        </Card>
-      ))}
+          )
+        })}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {files.map((file) => {
+        const { Icon, iconClass, bgClass, extension } = resolveFileVisuals(
+          file.filename,
+          file.content_type || '',
+        )
+        return (
+          <Card
+            key={file.id}
+            className="overflow-hidden border border-gray-200/70 shadow-sm transition hover:shadow-md focus-within:shadow-md"
+          >
+            <CardContent className="p-2.5">
+              <div className="flex items-center gap-3">
+                <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md ${bgClass}`}>
+                  <Icon className={`h-4 w-4 ${iconClass}`} aria-hidden="true" />
+                </div>
+
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <p className="truncate text-sm font-medium text-gray-900" title={file.filename}>
+                    {file.filename}
+                  </p>
+                  {extension && (
+                    <span className="flex-shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-600">
+                      {extension}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-shrink-0 items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDownload(file.id, file.filename)}
+                    className="h-8 w-8"
+                    aria-label="Dosyayı indir"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  {allowDelete && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(file.id, file.filename)}
+                      disabled={deletingId === file.id}
+                      className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      aria-label="Dosyayı sil"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })}
     </div>
   )
 }

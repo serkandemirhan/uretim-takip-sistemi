@@ -34,6 +34,7 @@ import {
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { getStatusLabel, getStatusColor, getPriorityLabel, getPriorityColor, formatDate } from '@/lib/utils/formatters'
+import { cn } from '@/lib/utils/cn'
 import { handleApiError, debugLog } from '@/lib/utils/error-handler'
 
 import { FileUpload } from '@/components/features/files/FileUpload'
@@ -81,6 +82,7 @@ export default function JobDetailPage() {
   const [referenceLoaded, setReferenceLoaded] = useState(false)
   const [customers, setCustomers] = useState<any[]>([])
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (params.id) {
@@ -104,6 +106,13 @@ export default function JobDetailPage() {
       if (job) {
         initializeJobForm(job)
       }
+      setExpandedSteps((prev) => {
+        const next = { ...prev }
+        job?.steps?.forEach((step: any) => {
+          next[step.id] = true
+        })
+        return next
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing])
@@ -122,6 +131,13 @@ async function loadJob() {
       if (isEditing) {
         initializeJobForm(payload)
       }
+      setExpandedSteps((prev) => {
+        const next: Record<string, boolean> = {}
+        for (const step of payload.steps || []) {
+          next[step.id] = prev[step.id] ?? false
+        }
+        return next
+      })
     } catch (err) {
       handleApiError(err, 'Job GET failed:')
       toast.error('İş bilgisi yüklenemedi')
@@ -661,6 +677,8 @@ async function handleCancel() {
     onResumeStep,
     notes,
     onAddNote,
+    isOpen,
+    onToggle,
   }: {
     step: any
     files?: { files?: any[] }
@@ -685,8 +703,9 @@ async function handleCancel() {
     onResumeStep?: (stepId: string) => Promise<void> | void
     notes?: any[]
     onAddNote?: (stepId: string, note: string) => Promise<void> | void
+    isOpen: boolean
+    onToggle: () => void
   }) => {
-    const [open, setOpen] = useState(step.status !== 'completed')
     const [showPauseForm, setShowPauseForm] = useState(false)
     const [pauseReason, setPauseReason] = useState('')
     const [pauseSubmitting, setPauseSubmitting] = useState(false)
@@ -701,7 +720,23 @@ async function handleCancel() {
 
     const processName = step.process?.name || 'Süreç'
     const processCode = step.process?.code || ''
-    const assignedName = step.assigned_to?.name || 'Atanmamış'
+    const assignedUser = step.assigned_to
+    const assignedName =
+      assignedUser?.full_name || assignedUser?.name || 'Atanmamış'
+    const assignedAvatarUrl =
+      assignedUser?.avatarDownloadUrl ||
+      assignedUser?.avatar_url ||
+      assignedUser?.avatarUrl ||
+      null
+    const assignedInitials =
+      assignedName && assignedName !== 'Atanmamış'
+        ? assignedName
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part[0]?.toUpperCase() ?? '')
+            .join('') || '?'
+        : '?'
     const machineName = step.machine?.name || 'Belirlenmedi'
     const formatDateTime = (value?: string | null) =>
       value ? new Date(value).toLocaleString('tr-TR') : '-'
@@ -798,32 +833,50 @@ async function handleCancel() {
       <div className="rounded-lg border bg-white shadow-sm">
         <button
           type="button"
-          className="flex w-full items-center justify-between px-4 py-3 text-left"
-          onClick={() => setOpen((prev) => !prev)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+          onClick={onToggle}
         >
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-900">
-                #{(step.order_index ?? 0) + 1} · {processName}
-              </span>
-              <Badge className={getStepStatusColor(step.status)}>
-                {getStepStatusLabel(step.status)}
-              </Badge>
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-xs font-semibold uppercase text-blue-600 ring-1 ring-blue-100">
+              {assignedAvatarUrl ? (
+                <img
+                  src={assignedAvatarUrl}
+                  alt={assignedName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                assignedInitials
+              )}
             </div>
-            <p className="mt-0.5 text-xs text-gray-500">
-              {processCode || 'Kod belirtilmedi'}
-            </p>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-gray-900">
+                  #{(step.order_index ?? 0) + 1} · {processName}
+                </span>
+                <Badge className={getStepStatusColor(step.status)}>
+                  {getStepStatusLabel(step.status)}
+                </Badge>
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                <span>{processCode || 'Kod belirtilmedi'}</span>
+                <span className="flex items-center gap-1 text-gray-600">
+                  <User className="h-3 w-3" />
+                  {assignedName}
+                </span>
+              </div>
+            </div>
           </div>
           <ChevronDown
-            className={`h-4 w-4 text-gray-500 transition-transform ${
-              open ? 'rotate-180' : ''
-            }`}
+            className={cn(
+              'h-4 w-4 text-gray-500 transition-transform',
+              isOpen ? 'rotate-180' : '',
+            )}
           />
         </button>
-        {open && (
-          <div className="space-y-4 border-t px-4 py-4">
+        {isOpen && (
+          <div className="space-y-3 border-t px-4 py-3">
             {isEditingMode && editForm ? (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span
                     className={`rounded-full px-3 py-1 text-xs uppercase ${getStatusBadge(
@@ -844,7 +897,7 @@ async function handleCancel() {
                     </Button>
                   )}
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Süreç</Label>
                     <select
@@ -971,36 +1024,36 @@ async function handleCancel() {
               </div>
             ) : (
               <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex items-center gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex items-center gap-2.5">
                     <User className="h-4 w-4 text-gray-400" />
                     <div>
                       <p className="text-xs uppercase text-gray-500">Sorumlu</p>
                       <p className="text-sm font-medium text-gray-900">{assignedName}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <Settings className="h-4 w-4 text-gray-400" />
                     <div>
                       <p className="text-xs uppercase text-gray-500">Makine</p>
                       <p className="text-sm font-medium text-gray-900">{machineName}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <Timer className="h-4 w-4 text-gray-400" />
                     <div>
                       <p className="text-xs uppercase text-gray-500">Tahmini Süre</p>
                       <p className="text-sm font-medium text-gray-900">{estimatedDuration}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <Clock className="h-4 w-4 text-gray-400" />
                     <div>
                       <p className="text-xs uppercase text-gray-500">Gerçekleşen Süre</p>
                       <p className="text-sm font-medium text-gray-900">{actualDuration}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <Calendar className="h-4 w-4 text-gray-400" />
                     <div>
                       <p className="text-xs uppercase text-gray-500">Başlama</p>
@@ -1040,7 +1093,7 @@ async function handleCancel() {
                 )}
 
                 {canStart && (
-                  <div className="rounded-md bg-blue-50 p-4 text-sm text-blue-800">
+                  <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-800">
                     <p className="mb-3 font-medium">
                       {step.status === 'pending'
                         ? 'Bu süreç beklemede görünüyor. Yine de başlatmak isterseniz aşağıdaki butonu kullanabilirsiniz.'
@@ -1057,7 +1110,7 @@ async function handleCancel() {
                 )}
 
                 {onCompleteStep && step.status === 'in_progress' && (
-                  <div className="space-y-4 rounded-md bg-green-50 p-4">
+                  <div className="space-y-3 rounded-md bg-green-50 p-3">
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Üretim Miktarı</Label>
@@ -1101,7 +1154,7 @@ async function handleCancel() {
                 )}
 
                 {onPauseStep && ['ready', 'in_progress'].includes(step.status) && (
-                  <div className="space-y-3 rounded-md bg-orange-50 p-4 text-sm text-orange-800">
+                  <div className="space-y-3 rounded-md bg-orange-50 p-3 text-sm text-orange-800">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium">
                         {step.status === 'in_progress'
@@ -1158,7 +1211,7 @@ async function handleCancel() {
                 )}
 
                 {step.status === 'blocked' && (
-                  <div className="space-y-3 rounded-md bg-orange-50 p-4 text-sm text-orange-800">
+                  <div className="space-y-3 rounded-md bg-orange-50 p-3 text-sm text-orange-800">
                     <div>
                       <p className="font-medium">Süreç durduruldu</p>
                       {step.block_reason && (
@@ -1189,7 +1242,7 @@ async function handleCancel() {
               </>
             )}
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h5 className="text-sm font-semibold text-gray-900">Süreç Dosyaları</h5>
                 <span className="text-xs text-gray-500">{filesList.length} dosya</span>
@@ -1201,20 +1254,25 @@ async function handleCancel() {
                 maxFiles={5}
                 disabled={!canUploadFiles}
               />
-              <FileList
-                files={filesList}
-                onDelete={canDeleteFiles ? loadJob : undefined}
-                showFolder={false}
-                allowDelete={canDeleteFiles}
-              />
+              {filesList.length > 0 ? (
+                <FileList
+                  files={filesList}
+                  onDelete={canDeleteFiles ? loadJob : undefined}
+                  allowDelete={canDeleteFiles}
+                  variant="grid"
+                  itemWidth={116}
+                />
+              ) : (
+                <p className="text-xs text-gray-500">Henüz dosya eklenmemiş.</p>
+              )}
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h5 className="text-sm font-semibold text-gray-900">Üretim Notları</h5>
                 <span className="text-xs text-gray-500">{noteList.length} kayıt</span>
               </div>
-              <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-dashed border-gray-200 bg-white p-3">
+              <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-dashed border-gray-200 bg-white p-2.5">
                 {noteList.length === 0 ? (
                   <p className="text-center text-xs text-gray-500">Henüz not eklenmemiş.</p>
                 ) : (
@@ -1481,7 +1539,7 @@ async function handleCancel() {
             </CardHeader>
             <CardContent>
               {isEditing ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div className="space-y-2">
                     <Label htmlFor="job_title">Başlık *</Label>
                     <Input
@@ -1511,7 +1569,7 @@ async function handleCancel() {
                       ))}
                     </select>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="job_due_date">Teslim Tarihi</Label>
                       <Input
@@ -1620,7 +1678,7 @@ async function handleCancel() {
             <CardHeader>
               <CardTitle>İş Dosyaları</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3">
               <FileUpload refType="job" refId={job.id} onUploadComplete={loadJob} />
               <FileList files={jobFiles.job_files || []} onDelete={loadJob} />
             </CardContent>
@@ -1684,6 +1742,13 @@ async function handleCancel() {
                       onResumeStep={handleResumeStep}
                       notes={step.notes || []}
                       onAddNote={handleAddStepNote}
+                      isOpen={expandedSteps[step.id] ?? false}
+                      onToggle={() =>
+                        setExpandedSteps((prev) => ({
+                          ...prev,
+                          [step.id]: !(prev[step.id] ?? false),
+                        }))
+                      }
                     />
                   )
                 })}
@@ -1693,7 +1758,7 @@ async function handleCancel() {
                     <p className="mb-4 text-xs text-gray-500">
                       İhtiyacınız olan süreçleri sırasıyla ekleyip sorumluluk ataması yapabilirsiniz.
                     </p>
-                    <form onSubmit={handleAddStep} className="grid gap-4 md:grid-cols-2">
+                    <form onSubmit={handleAddStep} className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Süreç *</Label>
                         <select
@@ -1798,7 +1863,7 @@ async function handleCancel() {
                 İşi Dondur
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
               <p className="text-sm text-gray-600">
                 Bu işi dondurmak istediğinizden emin misiniz? Tüm aktif süreçler bekletilecek ve ilgili kullanıcılara bildirim gönderilecektir.
               </p>
@@ -1849,7 +1914,7 @@ async function handleCancel() {
                 İşi İptal Et
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm text-red-800 font-medium">
                   ⚠️ Dikkat: Bu işlem geri alınamaz!

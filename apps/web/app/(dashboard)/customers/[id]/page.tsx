@@ -1,19 +1,89 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'next/navigation'
+import Link from 'next/link'
+import { useParams, useRouter } from 'next/navigation'
+import {
+  ArrowLeft,
+  Building2,
+  Loader2,
+  Mail,
+  MapPin,
+  Pencil,
+  Phone,
+  Plus,
+  Trash2,
+  User,
+  X,
+} from 'lucide-react'
+import { toast } from 'sonner'
+
 import { customersAPI } from '@/lib/api/client'
-import { handleApiError } from '@/lib/utils/error-handler'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { handleApiError, handleError } from '@/lib/utils/error-handler'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { toast } from 'sonner'
-import Link from 'next/link'
-import { ArrowLeft, Edit, Save, X, Plus, Trash2 } from 'lucide-react'
+import { formatDate } from '@/lib/utils/formatters'
 
-type DealerForm = {
+type Dealer = {
+  id: string
+  name: string
+  address?: string | null
+  district?: string | null
+  city?: string | null
+  contact_person?: string | null
+  contact_phone?: string | null
+  tax_office?: string | null
+  tax_number?: string | null
+  phone1?: string | null
+  phone2?: string | null
+  email?: string | null
+  website?: string | null
+  postal_code?: string | null
+  notes?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+type CustomerDetail = {
+  id: string
+  name: string
+  code?: string | null
+  short_code?: string | null
+  contact_person?: string | null
+  phone?: string | null
+  phone_secondary?: string | null
+  gsm?: string | null
+  email?: string | null
+  address?: string | null
+  city?: string | null
+  tax_office?: string | null
+  tax_number?: string | null
+  postal_code?: string | null
+  notes?: string | null
+  created_at?: string | null
+  dealers: Dealer[]
+}
+
+type CustomerFormValues = {
+  name: string
+  code: string
+  short_code: string
+  contact_person: string
+  phone: string
+  phone_secondary: string
+  gsm: string
+  email: string
+  tax_office: string
+  tax_number: string
+  address: string
+  city: string
+  postal_code: string
+  notes: string
+}
+
+type DealerFormValues = {
   name: string
   address: string
   district: string
@@ -30,33 +100,24 @@ type DealerForm = {
   notes: string
 }
 
-type Dealer = DealerForm & {
-  id: string
-  created_at?: string | null
-  updated_at?: string | null
+const EMPTY_CUSTOMER_FORM: CustomerFormValues = {
+  name: '',
+  code: '',
+  short_code: '',
+  contact_person: '',
+  phone: '',
+  phone_secondary: '',
+  gsm: '',
+  email: '',
+  tax_office: '',
+  tax_number: '',
+  address: '',
+  city: '',
+  postal_code: '',
+  notes: '',
 }
 
-type CustomerDetail = {
-  id: string
-  name: string
-  code?: string | null
-  contact_person?: string | null
-  phone?: string | null
-  phone_secondary?: string | null
-  gsm?: string | null
-  email?: string | null
-  address?: string | null
-  city?: string | null
-  tax_office?: string | null
-  tax_number?: string | null
-  notes?: string | null
-  short_code?: string | null
-  postal_code?: string | null
-  is_active?: boolean
-  dealers: Dealer[]
-}
-
-const emptyDealerForm: DealerForm = {
+const EMPTY_DEALER_FORM: DealerFormValues = {
   name: '',
   address: '',
   district: '',
@@ -73,689 +134,732 @@ const emptyDealerForm: DealerForm = {
   notes: '',
 }
 
+type PanelMode = 'customer' | 'dealer-create' | 'dealer-edit'
+
 export default function CustomerDetailPage() {
-  const { id } = useParams<{ id: string }>()
+  const params = useParams<{ id: string }>()
+  const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [customer, setCustomer] = useState<CustomerDetail | null>(null)
-  const [form, setForm] = useState<any>({})
-  const [savingCustomer, setSavingCustomer] = useState(false)
 
-  const [newDealer, setNewDealer] = useState<DealerForm>(emptyDealerForm)
-  const [addingDealer, setAddingDealer] = useState(false)
-  const [editingDealerId, setEditingDealerId] = useState<string | null>(null)
-  const [dealerEditForm, setDealerEditForm] = useState<DealerForm>(emptyDealerForm)
-  const [savingDealer, setSavingDealer] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelMode, setPanelMode] = useState<PanelMode>('customer')
+  const [saving, setSaving] = useState(false)
 
-  const loadCustomer = async () => {
+  const [customerForm, setCustomerForm] = useState<CustomerFormValues>(EMPTY_CUSTOMER_FORM)
+  const [dealerForm, setDealerForm] = useState<DealerFormValues>(EMPTY_DEALER_FORM)
+  const [activeDealerId, setActiveDealerId] = useState<string | null>(null)
+
+  useEffect(() => {
+    void loadCustomer()
+  }, [params.id])
+
+  async function loadCustomer() {
+    if (!params.id) return
     setLoading(true)
     try {
-      const res = await customersAPI.getById(String(id))
+      const res = await customersAPI.getById(String(params.id))
       const data: CustomerDetail = res?.data ?? res
       setCustomer(data)
-      setForm({
-        name: data.name || '',
-        code: data.code || '',
-        contact_person: data.contact_person || '',
-        phone: data.phone || '',
-        phone_secondary: data.phone_secondary || '',
-        gsm: data.gsm || '',
-        email: data.email || '',
-        address: data.address || '',
-        city: data.city || '',
-        tax_office: data.tax_office || '',
-        tax_number: data.tax_number || '',
-        notes: data.notes || '',
-        short_code: data.short_code || '',
-        postal_code: data.postal_code || '',
-        is_active: data.is_active !== false,
-      })
+      setCustomerForm(mapCustomerToForm(data))
     } catch (error) {
       handleApiError(error, 'Customer detail')
-      toast.error('Müşteri getirilemedi')
+      toast.error('Müşteri bilgisi getirilemedi')
+      setCustomer(null)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    void loadCustomer()
-  }, [id])
+  const dealerCount = useMemo(() => customer?.dealers?.length ?? 0, [customer])
 
-  const handleCustomerField = (field: string, value: any) => {
-    setForm((prev: any) => ({ ...prev, [field]: value }))
-  }
+  const mapCustomerToForm = (data: Partial<CustomerDetail> | null): CustomerFormValues => ({
+    name: data?.name ?? '',
+    code: data?.code ?? '',
+    short_code: data?.short_code ?? '',
+    contact_person: data?.contact_person ?? '',
+    phone: data?.phone ?? '',
+    phone_secondary: data?.phone_secondary ?? '',
+    gsm: data?.gsm ?? '',
+    email: data?.email ?? '',
+    tax_office: data?.tax_office ?? '',
+    tax_number: data?.tax_number ?? '',
+    address: data?.address ?? '',
+    city: data?.city ?? '',
+    postal_code: data?.postal_code ?? '',
+    notes: data?.notes ?? '',
+  })
 
-  const handleSaveCustomer = async () => {
+  const mapDealerToForm = (dealer: Partial<Dealer> | null): DealerFormValues => ({
+    name: dealer?.name ?? '',
+    address: dealer?.address ?? '',
+    district: dealer?.district ?? '',
+    city: dealer?.city ?? '',
+    contact_person: dealer?.contact_person ?? '',
+    contact_phone: dealer?.contact_phone ?? '',
+    tax_office: dealer?.tax_office ?? '',
+    tax_number: dealer?.tax_number ?? '',
+    phone1: dealer?.phone1 ?? '',
+    phone2: dealer?.phone2 ?? '',
+    email: dealer?.email ?? '',
+    website: dealer?.website ?? '',
+    postal_code: dealer?.postal_code ?? '',
+    notes: dealer?.notes ?? '',
+  })
+
+  const openCustomerPanel = () => {
     if (!customer) return
-    setSavingCustomer(true)
-    try {
-      await customersAPI.update(customer.id, form)
-      toast.success('Müşteri bilgileri güncellendi')
-      await loadCustomer()
-    } catch (error) {
-      handleApiError(error, 'Customer update')
-      toast.error('Müşteri güncellenemedi')
-    } finally {
-      setSavingCustomer(false)
-    }
+    setPanelMode('customer')
+    setCustomerForm(mapCustomerToForm(customer))
+    setPanelOpen(true)
   }
 
-  const handleCreateDealer = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!customer) return
-    if (!newDealer.name.trim()) {
-      toast.error('Bayi adı zorunludur')
-      return
-    }
-    setAddingDealer(true)
-    try {
-      await customersAPI.createDealer(customer.id, newDealer)
-      toast.success('Bayi eklendi')
-      setNewDealer(emptyDealerForm)
-      await loadCustomer()
-    } catch (error) {
-      handleApiError(error, 'Dealer create')
-      toast.error('Bayi eklenemedi')
-    } finally {
-      setAddingDealer(false)
-    }
+  const openDealerCreatePanel = () => {
+    setPanelMode('dealer-create')
+    setDealerForm(EMPTY_DEALER_FORM)
+    setActiveDealerId(null)
+    setPanelOpen(true)
   }
 
-  const startDealerEdit = (dealer: Dealer) => {
-    setEditingDealerId(dealer.id)
-    setDealerEditForm({
-      name: dealer.name || '',
-      address: dealer.address || '',
-      district: dealer.district || '',
-      city: dealer.city || '',
-      contact_person: dealer.contact_person || '',
-      contact_phone: dealer.contact_phone || '',
-      tax_office: dealer.tax_office || '',
-      tax_number: dealer.tax_number || '',
-      phone1: dealer.phone1 || '',
-      phone2: dealer.phone2 || '',
-      email: dealer.email || '',
-      website: dealer.website || '',
-      postal_code: dealer.postal_code || '',
-      notes: dealer.notes || '',
+  const openDealerEditPanel = (dealer: Dealer) => {
+    setPanelMode('dealer-edit')
+    setDealerForm(mapDealerToForm(dealer))
+    setActiveDealerId(dealer.id)
+    setPanelOpen(true)
+  }
+
+  const closePanel = () => {
+    if (saving) return
+    setPanelOpen(false)
+    setActiveDealerId(null)
+    setDealerForm(EMPTY_DEALER_FORM)
+  }
+
+  const buildPayload = (values: Record<string, string>) => {
+    const result: Record<string, string | null> = {}
+    Object.entries(values).forEach(([key, value]) => {
+      const trimmed = value.trim()
+      result[key] = trimmed === '' ? null : trimmed
     })
+    return result
   }
 
-  const cancelDealerEdit = () => {
-    setEditingDealerId(null)
-    setDealerEditForm(emptyDealerForm)
-  }
+  const handlePanelSave = async () => {
+    if (!customer) return
 
-  const handleUpdateDealer = async () => {
-    if (!customer || !editingDealerId) return
-    if (!dealerEditForm.name.trim()) {
+    if (panelMode === 'customer' && !customerForm.name.trim()) {
+      toast.error('Müşteri adı zorunludur')
+      return
+    }
+
+    if ((panelMode === 'dealer-create' || panelMode === 'dealer-edit') && !dealerForm.name.trim()) {
       toast.error('Bayi adı zorunludur')
       return
     }
-    setSavingDealer(true)
+
+    setSaving(true)
     try {
-      await customersAPI.updateDealer(customer.id, editingDealerId, dealerEditForm)
-      toast.success('Bayi güncellendi')
-      cancelDealerEdit()
+      if (panelMode === 'customer') {
+        await customersAPI.update(customer.id, buildPayload(customerForm))
+        toast.success('Müşteri güncellendi')
+      } else if (panelMode === 'dealer-create') {
+        await customersAPI.createDealer(customer.id, buildPayload(dealerForm))
+        toast.success('Bayi eklendi')
+      } else if (panelMode === 'dealer-edit' && activeDealerId) {
+        await customersAPI.updateDealer(customer.id, activeDealerId, buildPayload(dealerForm))
+        toast.success('Bayi güncellendi')
+      }
       await loadCustomer()
+      closePanel()
     } catch (error) {
-      handleApiError(error, 'Dealer update')
-      toast.error('Bayi güncellenemedi')
+      handleError(error)
+      toast.error('İşlem gerçekleştirilemedi')
     } finally {
-      setSavingDealer(false)
+      setSaving(false)
     }
   }
 
-  const handleDeleteDealer = async (dealerId: string) => {
+  const handleDealerDelete = async (dealer: Dealer) => {
     if (!customer) return
-    if (!confirm('Bu bayiyi silmek istediğinize emin misiniz?')) return
-    setSavingDealer(true)
+    if (
+      !confirm(
+        `"${dealer.name}" bayisini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`,
+      )
+    ) {
+      return
+    }
+
     try {
-      await customersAPI.deleteDealer(customer.id, dealerId)
+      await customersAPI.deleteDealer(customer.id, dealer.id)
       toast.success('Bayi silindi')
+      if (activeDealerId === dealer.id) {
+        closePanel()
+      }
       await loadCustomer()
     } catch (error) {
-      handleApiError(error, 'Dealer delete')
+      handleError(error)
       toast.error('Bayi silinemedi')
-    } finally {
-      setSavingDealer(false)
     }
   }
 
-  const hasChanges = useMemo(() => {
-    if (!customer) return false
-    return (
-      form.name !== (customer.name || '') ||
-      form.code !== (customer.code || '') ||
-      form.contact_person !== (customer.contact_person || '') ||
-      form.phone !== (customer.phone || '') ||
-      form.phone_secondary !== (customer.phone_secondary || '') ||
-      form.gsm !== (customer.gsm || '') ||
-      form.email !== (customer.email || '') ||
-      form.address !== (customer.address || '') ||
-      form.city !== (customer.city || '') ||
-      form.tax_office !== (customer.tax_office || '') ||
-      form.tax_number !== (customer.tax_number || '') ||
-      form.notes !== (customer.notes || '') ||
-      form.short_code !== (customer.short_code || '') ||
-      form.postal_code !== (customer.postal_code || '') ||
-      Boolean(form.is_active) !== (customer.is_active !== false)
-    )
-  }, [customer, form])
+  const renderPanelTitle = () => {
+    switch (panelMode) {
+      case 'customer':
+        return 'Müşteri Bilgilerini Düzenle'
+      case 'dealer-create':
+        return 'Yeni Bayi Ekle'
+      case 'dealer-edit':
+        return 'Bayi Bilgilerini Düzenle'
+      default:
+        return ''
+    }
+  }
 
-  if (loading) return <div className="p-6">Yükleniyor…</div>
-  if (!customer) return <div className="p-6">Kayıt bulunamadı</div>
+  const renderPanelContent = () => {
+    if (panelMode === 'customer') {
+      return (
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">Müşteri Adı *</label>
+              <Input
+                value={customerForm.name}
+                onChange={(e) => setCustomerForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Örn: ABC Reklam"
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">Kısa Kod</label>
+              <Input
+                value={customerForm.short_code}
+                onChange={(e) => setCustomerForm((prev) => ({ ...prev, short_code: e.target.value }))}
+                placeholder="Örn: ABC"
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">Müşteri Kodu</label>
+              <Input
+                value={customerForm.code}
+                onChange={(e) => setCustomerForm((prev) => ({ ...prev, code: e.target.value }))}
+                placeholder="Örn: MR-001"
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">Yetkili Kişi</label>
+              <Input
+                value={customerForm.contact_person}
+                onChange={(e) =>
+                  setCustomerForm((prev) => ({ ...prev, contact_person: e.target.value }))
+                }
+                placeholder="Örn: Ayşe Yılmaz"
+                disabled={saving}
+              />
+            </div>
+          </div>
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{customer.name}</h1>
-          <p className="text-gray-500">Müşteri detayları ve bayi yönetimi</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">Telefon</label>
+              <Input
+                value={customerForm.phone}
+                onChange={(e) => setCustomerForm((prev) => ({ ...prev, phone: e.target.value }))}
+                placeholder="+90 212 ..."
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">İkinci Telefon</label>
+              <Input
+                value={customerForm.phone_secondary}
+                onChange={(e) =>
+                  setCustomerForm((prev) => ({ ...prev, phone_secondary: e.target.value }))
+                }
+                placeholder="+90 212 ..."
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">GSM</label>
+              <Input
+                value={customerForm.gsm}
+                onChange={(e) => setCustomerForm((prev) => ({ ...prev, gsm: e.target.value }))}
+                placeholder="+90 5xx ..."
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">E-posta</label>
+              <Input
+                value={customerForm.email}
+                onChange={(e) => setCustomerForm((prev) => ({ ...prev, email: e.target.value }))}
+                placeholder="ornek@firma.com"
+                disabled={saving}
+                type="email"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">Vergi Dairesi</label>
+              <Input
+                value={customerForm.tax_office}
+                onChange={(e) =>
+                  setCustomerForm((prev) => ({ ...prev, tax_office: e.target.value }))
+                }
+                placeholder="Örn: Şişli"
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">Vergi No</label>
+              <Input
+                value={customerForm.tax_number}
+                onChange={(e) =>
+                  setCustomerForm((prev) => ({ ...prev, tax_number: e.target.value }))
+                }
+                placeholder="Örn: 1234567890"
+                disabled={saving}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">Şehir</label>
+              <Input
+                value={customerForm.city}
+                onChange={(e) => setCustomerForm((prev) => ({ ...prev, city: e.target.value }))}
+                placeholder="Örn: İstanbul"
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-gray-500">Posta Kodu</label>
+              <Input
+                value={customerForm.postal_code}
+                onChange={(e) =>
+                  setCustomerForm((prev) => ({ ...prev, postal_code: e.target.value }))
+                }
+                placeholder="Örn: 34394"
+                disabled={saving}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Adres</label>
+            <Textarea
+              value={customerForm.address}
+              onChange={(e) => setCustomerForm((prev) => ({ ...prev, address: e.target.value }))}
+              rows={3}
+              disabled={saving}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Notlar</label>
+            <Textarea
+              value={customerForm.notes}
+              onChange={(e) => setCustomerForm((prev) => ({ ...prev, notes: e.target.value }))}
+              rows={3}
+              disabled={saving}
+            />
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Link href="/customers">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Listeye Dön
-            </Button>
-          </Link>
-          <Button
-            size="sm"
-            onClick={handleSaveCustomer}
-            disabled={savingCustomer || !hasChanges}
-          >
-            {savingCustomer ? (
-              'Kaydediliyor...'
-            ) : (
-              <span className="flex items-center gap-2">
-                <Save className="h-4 w-4" /> Kaydet
-              </span>
-            )}
-          </Button>
+      )
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-3">
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Bayi Adı *</label>
+            <Input
+              value={dealerForm.name}
+              onChange={(e) => setDealerForm((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="Örn: X Reklam Bayi"
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Yetkili Kişi</label>
+            <Input
+              value={dealerForm.contact_person}
+              onChange={(e) =>
+                setDealerForm((prev) => ({ ...prev, contact_person: e.target.value }))
+              }
+              placeholder="Örn: Mehmet Kara"
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Telefon</label>
+            <Input
+              value={dealerForm.phone1}
+              onChange={(e) => setDealerForm((prev) => ({ ...prev, phone1: e.target.value }))}
+              placeholder="+90 212 ..."
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">İkinci Telefon</label>
+            <Input
+              value={dealerForm.phone2}
+              onChange={(e) => setDealerForm((prev) => ({ ...prev, phone2: e.target.value }))}
+              placeholder="+90 212 ..."
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">GSM</label>
+            <Input
+              value={dealerForm.contact_phone}
+              onChange={(e) =>
+                setDealerForm((prev) => ({ ...prev, contact_phone: e.target.value }))
+              }
+              placeholder="+90 5xx ..."
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">E-posta</label>
+            <Input
+              value={dealerForm.email}
+              onChange={(e) => setDealerForm((prev) => ({ ...prev, email: e.target.value }))}
+              type="email"
+              placeholder="ornek@firma.com"
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Vergi Dairesi</label>
+            <Input
+              value={dealerForm.tax_office}
+              onChange={(e) =>
+                setDealerForm((prev) => ({ ...prev, tax_office: e.target.value }))
+              }
+              placeholder="Örn: Şişli"
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Vergi No</label>
+            <Input
+              value={dealerForm.tax_number}
+              onChange={(e) =>
+                setDealerForm((prev) => ({ ...prev, tax_number: e.target.value }))
+              }
+              placeholder="Örn: 1234567890"
+              disabled={saving}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Şehir</label>
+            <Input
+              value={dealerForm.city}
+              onChange={(e) => setDealerForm((prev) => ({ ...prev, city: e.target.value }))}
+              placeholder="Örn: Ankara"
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">İlçe / Semt</label>
+            <Input
+              value={dealerForm.district}
+              onChange={(e) => setDealerForm((prev) => ({ ...prev, district: e.target.value }))}
+              placeholder="Örn: Çankaya"
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Posta Kodu</label>
+            <Input
+              value={dealerForm.postal_code}
+              onChange={(e) =>
+                setDealerForm((prev) => ({ ...prev, postal_code: e.target.value }))
+              }
+              placeholder="Örn: 06460"
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-gray-500">Website</label>
+            <Input
+              value={dealerForm.website}
+              onChange={(e) => setDealerForm((prev) => ({ ...prev, website: e.target.value }))}
+              placeholder="https://"
+              disabled={saving}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase text-gray-500">Adres</label>
+          <Textarea
+            value={dealerForm.address}
+            onChange={(e) => setDealerForm((prev) => ({ ...prev, address: e.target.value }))}
+            rows={3}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase text-gray-500">Notlar</label>
+          <Textarea
+            value={dealerForm.notes}
+            onChange={(e) => setDealerForm((prev) => ({ ...prev, notes: e.target.value }))}
+            rows={3}
+            disabled={saving}
+          />
         </div>
       </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-gray-500">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        Yükleniyor…
+      </div>
+    )
+  }
+
+  if (!customer) {
+    return (
+      <div className="space-y-4 py-12 text-center">
+        <p className="text-gray-500">Müşteri bulunamadı</p>
+        <Button onClick={() => router.push('/customers')}>Müşterilere Dön</Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative space-y-6">
+      <Link href="/customers">
+        <Button variant="ghost" size="sm" className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Müşterilere Dön
+        </Button>
+      </Link>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Müşteri Bilgileri</CardTitle>
+        <CardHeader className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <CardTitle className="text-2xl font-bold text-gray-900">{customer.name}</CardTitle>
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-500">
+              {customer.short_code && (
+                <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-semibold uppercase text-gray-600">
+                  {customer.short_code}
+                </span>
+              )}
+              {customer.code && <span>Kod: {customer.code}</span>}
+              {customer.created_at && <span>Oluşturma: {formatDate(customer.created_at)}</span>}
+            </div>
+          </div>
+          <Button variant="outline" className="gap-2" onClick={openCustomerPanel}>
+            <Pencil className="h-4 w-4" />
+            Bilgileri Düzenle
+          </Button>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Firma Adı *</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => handleCustomerField('name', e.target.value)}
-              />
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-gray-400" />
+              <span>{customer.contact_person || 'Yetkili belirtilmemiş'}</span>
             </div>
-            <div className="space-y-2">
-              <Label>Kısa Kod</Label>
-              <Input
-                value={form.short_code}
-                onChange={(e) => handleCustomerField('short_code', e.target.value)}
-                placeholder="Kısa tanım"
-              />
+            <div className="flex items-center gap-2">
+              <Phone className="h-4 w-4 text-gray-400" />
+              <span>
+                {[customer.phone, customer.phone_secondary, customer.gsm].filter(Boolean).join(' / ') ||
+                  'Telefon belirtilmemiş'}
+              </span>
             </div>
-            <div className="space-y-2">
-              <Label>Müşteri Kodu</Label>
-              <Input
-                value={form.code}
-                onChange={(e) => handleCustomerField('code', e.target.value)}
-                placeholder="ERP kodu vb."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Yetkili Kişi</Label>
-              <Input
-                value={form.contact_person}
-                onChange={(e) => handleCustomerField('contact_person', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Telefon 1</Label>
-              <Input
-                value={form.phone}
-                onChange={(e) => handleCustomerField('phone', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Telefon 2</Label>
-              <Input
-                value={form.phone_secondary}
-                onChange={(e) => handleCustomerField('phone_secondary', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>GSM</Label>
-              <Input
-                value={form.gsm}
-                onChange={(e) => handleCustomerField('gsm', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>E-posta</Label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => handleCustomerField('email', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Şehir</Label>
-              <Input
-                value={form.city}
-                onChange={(e) => handleCustomerField('city', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Posta Kodu</Label>
-              <Input
-                value={form.postal_code}
-                onChange={(e) => handleCustomerField('postal_code', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Vergi Dairesi</Label>
-              <Input
-                value={form.tax_office}
-                onChange={(e) => handleCustomerField('tax_office', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Vergi No</Label>
-              <Input
-                value={form.tax_number}
-                onChange={(e) => handleCustomerField('tax_number', e.target.value)}
-              />
+            <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-gray-400" />
+              <span>{customer.email || 'E-posta belirtilmemiş'}</span>
             </div>
           </div>
-
-          <div className="space-y-2">
-            <Label>Adres</Label>
-            <Textarea
-              rows={3}
-              value={form.address}
-              onChange={(e) => handleCustomerField('address', e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Notlar</Label>
-            <Textarea
-              rows={3}
-              value={form.notes}
-              onChange={(e) => handleCustomerField('notes', e.target.value)}
-            />
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              id="is_active"
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-300"
-              checked={Boolean(form.is_active)}
-              onChange={(e) => handleCustomerField('is_active', e.target.checked)}
-            />
-            Aktif müşteri
-          </label>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Bayi Yönetimi</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <form onSubmit={handleCreateDealer} className="space-y-4 rounded-lg border border-dashed p-4">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Plus className="h-4 w-4" /> Yeni Bayi Ekle
-            </h3>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <div className="space-y-2">
-                <Label>Bayi Adı *</Label>
-                <Input
-                  value={newDealer.name}
-                  onChange={(e) => setNewDealer({ ...newDealer, name: e.target.value })}
-                  required
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Şehir</Label>
-                <Input
-                  value={newDealer.city}
-                  onChange={(e) => setNewDealer({ ...newDealer, city: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Semt / İlçe</Label>
-                <Input
-                  value={newDealer.district}
-                  onChange={(e) => setNewDealer({ ...newDealer, district: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Yetkili</Label>
-                <Input
-                  value={newDealer.contact_person}
-                  onChange={(e) => setNewDealer({ ...newDealer, contact_person: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Yetkili Telefonu</Label>
-                <Input
-                  value={newDealer.contact_phone}
-                  onChange={(e) => setNewDealer({ ...newDealer, contact_phone: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Telefon 1</Label>
-                <Input
-                  value={newDealer.phone1}
-                  onChange={(e) => setNewDealer({ ...newDealer, phone1: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Telefon 2</Label>
-                <Input
-                  value={newDealer.phone2}
-                  onChange={(e) => setNewDealer({ ...newDealer, phone2: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>E-posta</Label>
-                <Input
-                  type="email"
-                  value={newDealer.email}
-                  onChange={(e) => setNewDealer({ ...newDealer, email: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Website</Label>
-                <Input
-                  value={newDealer.website}
-                  onChange={(e) => setNewDealer({ ...newDealer, website: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Vergi Dairesi</Label>
-                <Input
-                  value={newDealer.tax_office}
-                  onChange={(e) => setNewDealer({ ...newDealer, tax_office: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Vergi Numarası</Label>
-                <Input
-                  value={newDealer.tax_number}
-                  onChange={(e) => setNewDealer({ ...newDealer, tax_number: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Posta Kodu</Label>
-                <Input
-                  value={newDealer.postal_code}
-                  onChange={(e) => setNewDealer({ ...newDealer, postal_code: e.target.value })}
-                  disabled={addingDealer}
-                />
-              </div>
+          <div className="space-y-3 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-gray-400" />
+              <span>
+                {customer.tax_office
+                  ? `${customer.tax_office} • ${customer.tax_number || 'No belirtilmemiş'}`
+                  : 'Vergi bilgisi belirtilmemiş'}
+              </span>
             </div>
-            <div className="space-y-2">
-              <Label>Adres</Label>
-              <Textarea
-                rows={2}
-                value={newDealer.address}
-                onChange={(e) => setNewDealer({ ...newDealer, address: e.target.value })}
-                disabled={addingDealer}
-              />
+            <div className="flex items-start gap-2">
+              <MapPin className="mt-0.5 h-4 w-4 text-gray-400" />
+              <span>
+                {customer.address ? (
+                  <>
+                    {customer.address}
+                    {(customer.city || customer.postal_code) && (
+                      <>
+                        <br />
+                        {customer.postal_code && `${customer.postal_code} `}
+                        {customer.city}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  'Adres belirtilmemiş'
+                )}
+              </span>
             </div>
-            <div className="space-y-2">
-              <Label>Notlar</Label>
-              <Textarea
-                rows={2}
-                value={newDealer.notes}
-                onChange={(e) => setNewDealer({ ...newDealer, notes: e.target.value })}
-                disabled={addingDealer}
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button type="submit" disabled={addingDealer}>
-                {addingDealer ? 'Ekleniyor...' : 'Bayi Ekle'}
-              </Button>
-            </div>
-          </form>
-
-          <div className="space-y-3">
-            {customer.dealers.length === 0 ? (
-              <p className="text-sm text-gray-500">Henüz kayıtlı bayi bulunmuyor.</p>
-            ) : (
-              customer.dealers.map((dealer) => {
-                const isEditing = editingDealerId === dealer.id
-                return (
-                  <Card key={dealer.id} className="border border-gray-200">
-                    <CardContent className="space-y-3 pt-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h4 className="text-lg font-semibold text-gray-900">
-                            {dealer.name}
-                          </h4>
-                          <p className="text-sm text-gray-500">
-                            {dealer.city || 'Şehir belirtilmemiş'}
-                            {dealer.district ? ` • ${dealer.district}` : ''}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          {isEditing ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={cancelDealerEdit}
-                              disabled={savingDealer}
-                            >
-                              <X className="h-4 w-4 mr-1" /> İptal
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => startDealerEdit(dealer)}
-                              disabled={savingDealer}
-                            >
-                              <Edit className="h-4 w-4 mr-1" /> Düzenle
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-red-600 hover:bg-red-50"
-                            onClick={() => handleDeleteDealer(dealer.id)}
-                            disabled={savingDealer}
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" /> Sil
-                          </Button>
-                        </div>
-                      </div>
-
-                      {isEditing ? (
-                        <div className="space-y-3">
-                          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                            <div className="space-y-2">
-                              <Label>Bayi Adı *</Label>
-                              <Input
-                                value={dealerEditForm.name}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, name: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Şehir</Label>
-                              <Input
-                                value={dealerEditForm.city}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, city: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Semt</Label>
-                              <Input
-                                value={dealerEditForm.district}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, district: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Yetkili</Label>
-                              <Input
-                                value={dealerEditForm.contact_person}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, contact_person: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Yetkili Telefonu</Label>
-                              <Input
-                                value={dealerEditForm.contact_phone}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, contact_phone: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Telefon 1</Label>
-                              <Input
-                                value={dealerEditForm.phone1}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, phone1: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Telefon 2</Label>
-                              <Input
-                                value={dealerEditForm.phone2}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, phone2: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>E-posta</Label>
-                              <Input
-                                value={dealerEditForm.email}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, email: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Website</Label>
-                              <Input
-                                value={dealerEditForm.website}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, website: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Vergi Dairesi</Label>
-                              <Input
-                                value={dealerEditForm.tax_office}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, tax_office: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Vergi No</Label>
-                              <Input
-                                value={dealerEditForm.tax_number}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, tax_number: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Posta Kodu</Label>
-                              <Input
-                                value={dealerEditForm.postal_code}
-                                onChange={(e) => setDealerEditForm({ ...dealerEditForm, postal_code: e.target.value })}
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Adres</Label>
-                            <Textarea
-                              rows={2}
-                              value={dealerEditForm.address}
-                              onChange={(e) => setDealerEditForm({ ...dealerEditForm, address: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Notlar</Label>
-                            <Textarea
-                              rows={2}
-                              value={dealerEditForm.notes}
-                              onChange={(e) => setDealerEditForm({ ...dealerEditForm, notes: e.target.value })}
-                            />
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              onClick={cancelDealerEdit}
-                              type="button"
-                              disabled={savingDealer}
-                            >
-                              <X className="h-4 w-4 mr-1" /> İptal
-                            </Button>
-                            <Button onClick={handleUpdateDealer} type="button" disabled={savingDealer}>
-                              {savingDealer ? 'Kaydediliyor...' : 'Kaydet'}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="grid gap-2 text-sm text-gray-700 md:grid-cols-2">
-                          <div>
-                            <span className="text-xs uppercase text-gray-500">Yetkili</span>
-                            <div>{dealer.contact_person || '—'}</div>
-                          </div>
-                          <div>
-                            <span className="text-xs uppercase text-gray-500">Telefonlar</span>
-                            <div>
-                              {[dealer.phone1, dealer.phone2, dealer.contact_phone]
-                                .filter(Boolean)
-                                .join(' / ') || '—'}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-xs uppercase text-gray-500">E-posta</span>
-                            <div>{dealer.email || '—'}</div>
-                          </div>
-                          <div>
-                            <span className="text-xs uppercase text-gray-500">Web</span>
-                            <div>{dealer.website || '—'}</div>
-                          </div>
-                          <div>
-                            <span className="text-xs uppercase text-gray-500">Vergi Bilgisi</span>
-                            <div>
-                              {[dealer.tax_office, dealer.tax_number].filter(Boolean).join(' • ') || '—'}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-xs uppercase text-gray-500">Posta Kodu</span>
-                            <div>{dealer.postal_code || '—'}</div>
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="text-xs uppercase text-gray-500">Adres</span>
-                            <div>{dealer.address || '—'}</div>
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="text-xs uppercase text-gray-500">Notlar</span>
-                            <div>{dealer.notes || '—'}</div>
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                )
-              })
+            {customer.notes && (
+              <div className="rounded-md bg-gray-50 p-3 text-xs text-gray-600">
+                <p className="font-semibold text-gray-700">Notlar</p>
+                <p className="mt-1 whitespace-pre-wrap">{customer.notes}</p>
+              </div>
             )}
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle>Bayi Listesi</CardTitle>
+            <p className="text-sm text-gray-500">Bu müşteriye bağlı {dealerCount} bayi</p>
+          </div>
+          <Button onClick={openDealerCreatePanel} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Yeni Bayi
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {dealerCount === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">
+              Henüz bayi tanımlanmamış. Yeni bayi eklemek için sağ üstteki butonu kullanın.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full table-fixed text-left text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <th className="w-[22%] px-3 py-3">Bayi</th>
+                    <th className="w-[16%] px-3 py-3">Yetkili</th>
+                    <th className="w-[16%] px-3 py-3">Telefon</th>
+                    <th className="w-[18%] px-3 py-3">E-posta</th>
+                    <th className="w-[14%] px-3 py-3">Şehir</th>
+                    <th className="w-[14%] px-3 py-3">Vergi Dairesi</th>
+                    <th className="w-[10%] px-3 py-3 text-right">İşlem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customer.dealers.map((dealer) => {
+                    const phones = [dealer.phone1, dealer.phone2, dealer.contact_phone]
+                      .filter(Boolean)
+                      .join(' / ')
+                    return (
+                      <tr
+                        key={dealer.id}
+                        className="border-b transition-colors hover:bg-gray-50"
+                      >
+                        <td className="px-3 py-3 font-medium text-gray-900">
+                          {dealer.name}
+                        </td>
+                        <td className="px-3 py-3 text-gray-700">
+                          {dealer.contact_person || '—'}
+                        </td>
+                        <td className="px-3 py-3 text-gray-700">
+                          {phones || '—'}
+                        </td>
+                        <td className="px-3 py-3 text-gray-700 break-all">
+                          {dealer.email || '—'}
+                        </td>
+                        <td className="px-3 py-3 text-gray-700">
+                          {[dealer.district, dealer.city].filter(Boolean).join(' / ') || '—'}
+                        </td>
+                        <td className="px-3 py-3 text-gray-700">
+                          {dealer.tax_office || '—'}
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2 text-gray-600 hover:text-gray-900"
+                              onClick={() => openDealerEditPanel(dealer)}
+                              aria-label="Bayiyi düzenle"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              onClick={() => handleDealerDelete(dealer)}
+                              aria-label="Bayiyi sil"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {panelOpen && (
+        <div className="fixed inset-0 z-40 flex">
+          <div
+            className="hidden flex-1 bg-black/30 sm:block"
+            onClick={closePanel}
+            aria-hidden="true"
+          />
+          <div className="ml-auto flex h-full w-full max-w-xl flex-col bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <p className="text-xs uppercase text-gray-500">
+                  {panelMode === 'customer'
+                    ? 'Müşteri'
+                    : panelMode === 'dealer-create'
+                      ? 'Yeni Bayi'
+                      : 'Bayi Bilgileri'}
+                </p>
+                <h2 className="text-lg font-semibold text-gray-900">{renderPanelTitle()}</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={closePanel}
+                disabled={saving}
+                aria-label="Paneli kapat"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4">{renderPanelContent()}</div>
+
+            <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
+              <Button variant="outline" onClick={closePanel} disabled={saving}>
+                Vazgeç
+              </Button>
+              <Button onClick={handlePanelSave} disabled={saving} className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Kaydet
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

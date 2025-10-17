@@ -8,6 +8,31 @@ logger = logging.getLogger(__name__)
 
 # Global connection pool
 _connection_pool = None
+_pool_shutting_down = False
+
+
+class PooledConnection:
+    __slots__ = ('_conn', '_pool', '_closed')
+
+    def __init__(self, conn, pool_ref):
+        self._conn = conn
+        self._pool = pool_ref
+        self._closed = False
+
+    def close(self):
+        if self._closed:
+            return
+        if _pool_shutting_down:
+            try:
+                self._conn.close()
+            finally:
+                self._closed = True
+        else:
+            self._pool.putconn(self._conn)
+            self._closed = True
+
+    def __getattr__(self, item):
+        return getattr(self._conn, item)
 
 def get_connection_pool():
     """
@@ -59,9 +84,9 @@ def get_db_connection():
     Kullanım sonrası mutlaka putconn() ile geri koy!
     """
     try:
-        pool = get_connection_pool()
-        conn = pool.getconn()
-        return conn
+        pool_ref = get_connection_pool()
+        raw_conn = pool_ref.getconn()
+        return PooledConnection(raw_conn, pool_ref)
     except Exception as e:
         logger.error(f"❌ Failed to get connection from pool: {e}")
         raise
@@ -72,8 +97,17 @@ def release_db_connection(conn):
     """
     try:
         if conn:
-            pool = get_connection_pool()
-            pool.putconn(conn)
+            if isinstance(conn, PooledConnection):
+                conn.close()
+            else:
+                if _pool_shutting_down:
+                    try:
+                        conn.close()
+                    except Exception as inner_e:
+                        logger.debug(f"Ignored error while closing raw connection during shutdown: {inner_e}")
+                else:
+                    pool_ref = get_connection_pool()
+                    pool_ref.putconn(conn)
     except Exception as e:
         logger.error(f"❌ Failed to release connection to pool: {e}")
 
@@ -82,8 +116,13 @@ def close_connection_pool():
     Connection pool'u tamamen kapat (uygulama shutdown'da kullanılır)
     """
     global _connection_pool
+    global _pool_shutting_down
     if _connection_pool:
-        _connection_pool.closeall()
+        _pool_shutting_down = True
+        try:
+            _connection_pool.closeall()
+        finally:
+            _pool_shutting_down = False
         _connection_pool = None
         logger.info("✅ Connection pool closed")
 

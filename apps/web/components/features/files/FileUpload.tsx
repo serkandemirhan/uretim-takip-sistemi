@@ -3,10 +3,10 @@
 import { useState, useRef } from 'react'
 import axios from 'axios'
 import { filesAPI } from '@/lib/api/client'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Upload, File as FileIcon, X, Loader2, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 
 
 type QueueItem = {
@@ -36,12 +36,12 @@ export function FileUpload({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const pickFiles = () => {
-    if (disabled) return
+    if (disabled || uploading) return
     inputRef.current?.click()
   }
 
   const onSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (disabled) return
+    if (disabled || uploading) return
     const files = Array.from(e.target.files || [])
     if (!files.length) return
     if (files.length > maxFiles) {
@@ -53,7 +53,7 @@ export function FileUpload({
 
   const onDrop: React.DragEventHandler<HTMLDivElement> = (e) => {
     e.preventDefault()
-    if (disabled) return
+    if (disabled || uploading) return
     const files = Array.from(e.dataTransfer.files || [])
     if (!files.length) return
     if (files.length > maxFiles) {
@@ -168,16 +168,27 @@ export function FileUpload({
     <div className="space-y-4">
       {/* Drop zone */}
       <div
-        className={`w-full border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
-          disabled
-            ? 'cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200'
-            : 'hover:bg-gray-50'
+        className={`w-full rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
+          disabled || uploading
+            ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
+            : 'cursor-pointer hover:bg-gray-50'
         }`}
         onDragOver={(e) => {
-          if (disabled) return
+          if (disabled || uploading) return
           e.preventDefault()
         }}
         onDrop={onDrop}
+        onClick={pickFiles}
+        onKeyDown={(event) => {
+          if (disabled || uploading) return
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            pickFiles()
+          }
+        }}
+        role="button"
+        tabIndex={disabled || uploading ? -1 : 0}
+        aria-disabled={disabled || uploading}
       >
         <input
           ref={inputRef}
@@ -187,17 +198,25 @@ export function FileUpload({
           onChange={onSelect}
           disabled={uploading || disabled}
         />
-        <Button
-          type="button"
-          variant="outline"
-          onClick={pickFiles}
-          disabled={uploading || disabled}
-          className="w-full"
-        >
-          <Upload className="w-4 h-4 mr-2" />
-          {disabled ? 'Dosya yükleme izniniz yok' : uploading ? 'Yükleniyor…' : 'Dosya Seç veya Sürükleyip Bırak'}
-        </Button>
-        <p className="text-xs text-gray-500 mt-2">Maksimum {maxFiles} dosya yükleyebilirsiniz</p>
+        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-start sm:text-left">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-500 sm:mr-3">
+            <Upload className="h-4 w-4" />
+          </span>
+          <div className="space-y-1 text-xs text-gray-500 sm:flex-1 sm:space-y-0">
+            <p className="font-medium text-gray-700">
+              {disabled
+                ? 'Dosya yükleme izniniz yok'
+                : 'Dosyaları buraya sürükleyin veya simgeye tıklayın'}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-gray-400">
+              {uploading ? (
+                <span className="text-blue-600">Yükleme devam ediyor…</span>
+              ) : (
+                !disabled && <span>Maksimum {maxFiles} dosya</span>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Kuyruk */}

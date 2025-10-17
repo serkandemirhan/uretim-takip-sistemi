@@ -68,7 +68,7 @@ export default function DashboardLayout({
     { name: 'Görevlerim', href: '/tasks', icon: CheckSquare, roles: ['operator'] },
     { name: 'Görevler', href: '/tasks/all', icon: CheckSquare, roles: ['yonetici'] },
     { name: 'Dosya Yönetimi', href: '/files/explorer', icon: FileText, roles: ['yonetici'] },
-    { name: 'Makineler', href: '/machines', icon: Cpu, roles: ['yonetici', 'operator'] },
+    { name: 'Makineler', href: '/machines/status', icon: Cpu, roles: ['yonetici', 'operator'] },
   ]
 
   const secondaryNavigation = [

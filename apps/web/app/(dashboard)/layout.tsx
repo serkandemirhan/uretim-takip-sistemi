@@ -20,6 +20,7 @@ import {
   Package,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -64,6 +65,7 @@ export default function DashboardLayout({
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['yonetici', 'musteri_temsilcisi', 'operator'] },
     { name: 'İşler', href: '/jobs', icon: Briefcase, roles: ['yonetici', 'musteri_temsilcisi'] },
     { name: 'Müşteriler', href: '/customers', icon: Building2, roles: ['yonetici', 'musteri_temsilcisi'] },
+    { name: 'Teklifler', href: '/quotations', icon: ClipboardList, roles: ['yonetici', 'musteri_temsilcisi', 'satinalma'] },
     { name: 'Stoklar', href: '/stocks/inventory', icon: Package, roles: ['yonetici', 'depocu', 'satinalma'] },
     { name: 'Görevlerim', href: '/tasks', icon: CheckSquare, roles: ['operator'] },
     { name: 'Görevler', href: '/tasks/all', icon: CheckSquare, roles: ['yonetici'] },

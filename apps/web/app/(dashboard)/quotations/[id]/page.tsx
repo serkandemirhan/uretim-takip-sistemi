@@ -1,13 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { quotationsAPI, stocksAPI, customersAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
 import {
   ArrowLeft,
   Plus,
@@ -24,7 +23,6 @@ import { toast } from 'sonner'
 
 export default function QuotationDetailPage() {
   const params = useParams()
-  const router = useRouter()
 
   const [quotation, setQuotation] = useState<any>(null)
   const [stocks, setStocks] = useState<any[]>([])
@@ -43,6 +41,7 @@ export default function QuotationDetailPage() {
   const [stockSearch, setStockSearch] = useState('')
   const [selectedStockIds, setSelectedStockIds] = useState<Set<string>>(new Set())
   const [addingItems, setAddingItems] = useState(false)
+  const [showStockPanel, setShowStockPanel] = useState(false)
 
   useEffect(() => {
     if (params.id) {
@@ -361,14 +360,22 @@ export default function QuotationDetailPage() {
         </Card>
       )}
 
-      {/* Main Content: Two Columns */}
-      <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
-        {/* Left: Added Items */}
-        <Card>
+      {/* Main Content */}
+      <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Malzeme Listesi</span>
-              <Calculator className="h-5 w-5 text-gray-400" />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowStockPanel(!showStockPanel)}
+                >
+                  <Package className="mr-2 h-4 w-4" />
+                  {showStockPanel ? 'Stok Kartlarını Gizle' : 'Stok Kartlarından Ekle'}
+                </Button>
+                <Calculator className="h-5 w-5 text-gray-400" />
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -378,21 +385,65 @@ export default function QuotationDetailPage() {
               </p>
             ) : (
               <div className="space-y-3">
+                {/* Header Row */}
+                <div className="grid grid-cols-[40px_2fr_1fr_80px_1fr_1fr_40px] gap-2 border-b pb-2 text-xs font-semibold text-gray-600">
+                  <div className="text-center">#</div>
+                  <div>Ürün Adı</div>
+                  <div className="text-right">Miktar</div>
+                  <div className="text-center">Birim</div>
+                  <div className="text-right">Birim Fiyat</div>
+                  <div className="text-right">Toplam</div>
+                  <div></div>
+                </div>
+
+                {/* Items */}
                 {items.map((item: any, index: number) => (
-                  <div key={item.id} className="rounded-lg border bg-gray-50 p-3">
-                    <div className="mb-2 flex items-start justify-between">
-                      <div className="flex items-start gap-2">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
-                          {index + 1}
-                        </span>
-                        <div>
-                          <div className="font-medium text-gray-900">{item.product_name}</div>
-                          <div className="text-xs text-gray-500">
-                            {item.product_code && `Kod: ${item.product_code}`}
-                            {item.category && ` • ${item.category}`}
-                          </div>
-                        </div>
+                  <div key={item.id} className="grid grid-cols-[40px_2fr_1fr_80px_1fr_1fr_40px] gap-2 items-center rounded border bg-gray-50 px-2 py-2 text-sm hover:bg-gray-100">
+                    <div className="flex justify-center">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+                        {index + 1}
+                      </span>
+                    </div>
+                    <div className="truncate">
+                      <div className="font-medium text-gray-900 truncate">{item.product_name}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {item.product_code && `${item.product_code}`}
+                        {item.category && ` • ${item.category}`}
                       </div>
+                    </div>
+                    <div>
+                      <Input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        value={item.quantity || ''}
+                        onChange={(e) =>
+                          handleUpdateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)
+                        }
+                        className="h-8 text-xs text-right"
+                      />
+                    </div>
+                    <div className="text-center text-xs text-gray-600">
+                      {item.unit || '-'}
+                    </div>
+                    <div>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={item.unit_cost || ''}
+                        onChange={(e) =>
+                          handleUpdateItem(item.id, 'unit_cost', parseFloat(e.target.value) || 0)
+                        }
+                        className="h-8 text-xs text-right"
+                      />
+                    </div>
+                    <div className="flex items-center justify-end rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
+                      {Number(item.total_cost || 0).toLocaleString('tr-TR', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div className="flex justify-center">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -402,47 +453,6 @@ export default function QuotationDetailPage() {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-xs">
-                      <div>
-                        <Label className="text-xs">Miktar</Label>
-                        <Input
-                          type="number"
-                          step="0.001"
-                          min="0"
-                          value={item.quantity || ''}
-                          onChange={(e) =>
-                            handleUpdateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)
-                          }
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Birim Fiyat</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={item.unit_cost || ''}
-                          onChange={(e) =>
-                            handleUpdateItem(item.id, 'unit_cost', parseFloat(e.target.value) || 0)
-                          }
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Toplam</Label>
-                        <div className="flex h-8 items-center rounded-md bg-blue-50 px-2 text-xs font-semibold text-blue-700">
-                          {Number(item.total_cost || 0).toLocaleString('tr-TR', {
-                            minimumFractionDigits: 2,
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    {item.unit && (
-                      <div className="mt-2 text-xs text-gray-500">Birim: {item.unit}</div>
-                    )}
                   </div>
                 ))}
 
@@ -466,100 +476,124 @@ export default function QuotationDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Right: Stock Cards */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Stok Kartları</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* Search */}
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input
-                placeholder="Ürün ara..."
-                value={stockSearch}
-                onChange={(e) => setStockSearch(e.target.value)}
-                className="pl-10"
-              />
+      {/* Right Sidebar: Stock Cards Panel */}
+      {showStockPanel && (
+        <>
+          {/* Overlay */}
+          <div
+            className="fixed inset-0 bg-black/20 z-40"
+            onClick={() => setShowStockPanel(false)}
+          />
+
+          {/* Sliding Panel */}
+          <div className="fixed right-0 top-0 bottom-0 w-[500px] bg-white shadow-2xl z-50 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b p-4">
+              <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-semibold">Stok Kartları</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowStockPanel(false)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
 
-            {/* Selected Count & Add Button */}
-            {selectedStockIds.size > 0 && (
-              <div className="mb-4 rounded-lg bg-blue-50 p-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-blue-900">
-                    {selectedStockIds.size} ürün seçildi
-                  </span>
-                  <Button size="sm" onClick={handleAddSelectedItems} disabled={addingItems}>
-                    <Plus className="mr-1 h-3 w-3" />
-                    {addingItems ? 'Ekleniyor...' : 'Seçilenleri Ekle'}
-                  </Button>
-                </div>
+            {/* Content */}
+            <div className="flex-1 overflow-hidden flex flex-col p-4">
+              {/* Search */}
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input
+                  placeholder="Ürün ara..."
+                  value={stockSearch}
+                  onChange={(e) => setStockSearch(e.target.value)}
+                  className="pl-10"
+                />
               </div>
-            )}
 
-            {/* Stock List */}
-            <div className="max-h-[600px] space-y-2 overflow-y-auto">
-              {Object.keys(filteredGroupedStocks).length === 0 ? (
-                <p className="py-8 text-center text-sm text-gray-500">
-                  {stockSearch ? 'Arama sonucu bulunamadı' : 'Stok kartı bulunamadı'}
-                </p>
-              ) : (
-                Object.entries(filteredGroupedStocks).map(([category, categoryStocks]: [string, any]) => (
-                  <div key={category} className="rounded-lg border">
-                    <div className="bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700">
-                      {category}
-                    </div>
-                    <div className="divide-y">
-                      {categoryStocks.map((stock: any) => {
-                        const isSelected = selectedStockIds.has(stock.id)
-                        return (
-                          <button
-                            key={stock.id}
-                            type="button"
-                            onClick={() => {
-                              const newSet = new Set(selectedStockIds)
-                              if (isSelected) {
-                                newSet.delete(stock.id)
-                              } else {
-                                newSet.add(stock.id)
-                              }
-                              setSelectedStockIds(newSet)
-                            }}
-                            className={`group flex w-full items-center justify-between px-3 py-2 text-left transition-colors ${
-                              isSelected
-                                ? 'bg-blue-50'
-                                : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {}}
-                                className="rounded"
-                              />
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {stock.product_name}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {stock.product_code} • {stock.unit_price || 0} {stock.currency}
+              {/* Selected Count & Add Button */}
+              {selectedStockIds.size > 0 && (
+                <div className="mb-4 rounded-lg bg-blue-50 p-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-blue-900">
+                      {selectedStockIds.size} ürün seçildi
+                    </span>
+                    <Button size="sm" onClick={handleAddSelectedItems} disabled={addingItems}>
+                      <Plus className="mr-1 h-3 w-3" />
+                      {addingItems ? 'Ekleniyor...' : 'Seçilenleri Ekle'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Stock List */}
+              <div className="flex-1 space-y-2 overflow-y-auto">
+                {Object.keys(filteredGroupedStocks).length === 0 ? (
+                  <p className="py-8 text-center text-sm text-gray-500">
+                    {stockSearch ? 'Arama sonucu bulunamadı' : 'Stok kartı bulunamadı'}
+                  </p>
+                ) : (
+                  Object.entries(filteredGroupedStocks).map(([category, categoryStocks]: [string, any]) => (
+                    <div key={category} className="rounded-lg border">
+                      <div className="bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700">
+                        {category}
+                      </div>
+                      <div className="divide-y">
+                        {categoryStocks.map((stock: any) => {
+                          const isSelected = selectedStockIds.has(stock.id)
+                          return (
+                            <button
+                              key={stock.id}
+                              type="button"
+                              onClick={() => {
+                                const newSet = new Set(selectedStockIds)
+                                if (isSelected) {
+                                  newSet.delete(stock.id)
+                                } else {
+                                  newSet.add(stock.id)
+                                }
+                                setSelectedStockIds(newSet)
+                              }}
+                              className={`group flex w-full items-center justify-between px-3 py-2 text-left transition-colors ${
+                                isSelected
+                                  ? 'bg-blue-50'
+                                  : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="rounded"
+                                />
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {stock.product_name}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {stock.product_code} • {stock.unit_price || 0} {stock.currency}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                            <Package className={`h-4 w-4 ${isSelected ? 'text-blue-600' : 'text-gray-400'}`} />
-                          </button>
-                        )
-                      })}
+                              <Package className={`h-4 w-4 ${isSelected ? 'text-blue-600' : 'text-gray-400'}`} />
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

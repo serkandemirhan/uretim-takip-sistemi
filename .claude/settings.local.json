@@ -11,7 +11,10 @@
       "Bash(/Users/user/ReklamPRO/test_notifications.sh)",
       "Bash(curl:*)",
       "Bash(ls:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Read(//private/tmp/**)",
+      "Bash(xargs kill:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

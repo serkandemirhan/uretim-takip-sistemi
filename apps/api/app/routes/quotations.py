@@ -170,11 +170,12 @@ def create_quotation():
         if not name:
             return jsonify({'error': 'Teklif adı gerekli'}), 400
 
-        # Current user ID'yi al
-        user_id = current_user.get('id') if isinstance(current_user, dict) else current_user.get('user_id')
+        # Current user ID'yi al (JWT payload'ında 'user_id' olarak saklanıyor)
+        user_id = current_user.get('user_id')
         logger.info(f"User ID: {user_id}")
 
         if not user_id:
+            logger.error(f"User ID not found in token payload: {current_user}")
             return jsonify({'error': 'Kullanıcı bilgisi bulunamadı'}), 401
 
         query = """
@@ -186,10 +187,14 @@ def create_quotation():
 
         logger.info(f"Executing query with params: {(name, customer_id, description, user_id)}")
 
-        result = execute_query_one(
+        # execute_write kullan çünkü INSERT işlemi yapıyoruz ve commit gerekli
+        result = execute_write(
             query,
             (name, customer_id, description, user_id)
         )
+
+        # execute_write liste döndürür, ilk elemanı al
+        result = result[0] if result else None
 
         logger.info(f"Query result: {result}")
 
@@ -246,10 +251,14 @@ def update_quotation(quotation_id):
                       version, status, total_cost, currency, created_at, updated_at
         """
 
-        result = execute_query_one(
+        # execute_write kullan çünkü UPDATE işlemi yapıyoruz ve commit gerekli
+        result = execute_write(
             query,
             (name, customer_id, description, status, quotation_id)
         )
+
+        # execute_write liste döndürür, ilk elemanı al
+        result = result[0] if result else None
 
         return jsonify({
             'message': 'Teklif güncellendi',
@@ -347,7 +356,8 @@ def add_quotation_items(quotation_id):
                           quantity, unit, unit_cost, total_cost, order_index
             """
 
-            result = execute_query_one(
+            # execute_write kullan çünkü INSERT işlemi yapıyoruz ve commit gerekli
+            result = execute_write(
                 query,
                 (
                     quotation_id,
@@ -362,7 +372,9 @@ def add_quotation_items(quotation_id):
                 )
             )
 
-            added_items.append(result)
+            # execute_write liste döndürür, ilk elemanı al
+            if result:
+                added_items.append(result[0])
 
         return jsonify({
             'message': f'{len(added_items)} ürün eklendi',
@@ -407,7 +419,11 @@ def update_quotation_item(quotation_id, item_id):
                       quantity, unit, unit_cost, total_cost, notes, order_index
         """
 
-        result = execute_query_one(query, (quantity, unit_cost, notes, item_id))
+        # execute_write kullan çünkü UPDATE işlemi yapıyoruz ve commit gerekli
+        result = execute_write(query, (quantity, unit_cost, notes, item_id))
+
+        # execute_write liste döndürür, ilk elemanı al
+        result = result[0] if result else None
 
         return jsonify({
             'message': 'Kalem güncellendi',

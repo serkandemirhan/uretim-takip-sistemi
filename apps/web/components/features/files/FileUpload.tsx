@@ -17,7 +17,7 @@ type QueueItem = {
 }
 
 interface FileUploadProps {
-  refType: 'job' | 'job_step'
+  refType: 'job' | 'job_step' | 'stock_movement' | 'user'
   refId: string
   onUploadComplete?: () => void
   maxFiles?: number

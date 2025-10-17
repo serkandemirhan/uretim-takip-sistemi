@@ -435,7 +435,7 @@ export const dashboardAPI = {
 export const filesAPI = {
   // presigned PUT için URL al
   getUploadUrl: async (payload: {
-    ref_type: 'job' | 'job_step' | 'user'
+    ref_type: 'job' | 'job_step' | 'stock_movement' | 'user'
     ref_id: string
     filename: string
     content_type: string
@@ -447,7 +447,7 @@ export const filesAPI = {
   
 // yüklenen objeyi DB’ye linkle (bucket + object_key zorunlu)
   link: async (payload: {
-    ref_type: 'job' | 'job_step' | 'user'
+    ref_type: 'job' | 'job_step' | 'stock_movement' | 'user'
     ref_id: string
     bucket: string
     object_key: string
@@ -465,7 +465,7 @@ export const filesAPI = {
     filename: string
     file_size?: number
     content_type?: string
-    ref_type: 'job' | 'job_step' | 'user'
+    ref_type: 'job' | 'job_step' | 'stock_movement' | 'user'
     ref_id: string
     folder_path?: string
   }) => {

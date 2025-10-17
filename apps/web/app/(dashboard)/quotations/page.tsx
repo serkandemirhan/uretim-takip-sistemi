@@ -74,15 +74,24 @@ export default function QuotationsPage() {
 
     try {
       setCreating(true)
+      console.log('Creating quotation:', newQuotation)
       const response = await quotationsAPI.create(newQuotation)
+      console.log('Quotation created:', response)
       toast.success('Teklif oluşturuldu')
       setShowCreateDialog(false)
       setNewQuotation({ name: '', customer_id: '', description: '' })
 
       // Yeni oluşturulan teklif detayına yönlendir
-      router.push(`/quotations/${response.data.id}`)
+      if (response?.data?.id) {
+        router.push(`/quotations/${response.data.id}`)
+      } else {
+        // ID yoksa liste sayfasını yenile
+        await loadQuotations()
+      }
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Teklif oluşturulamadı')
+      console.error('Create quotation error:', error)
+      const errorMsg = error.response?.data?.error || error.message || 'Teklif oluşturulamadı'
+      toast.error(errorMsg)
     } finally {
       setCreating(false)
     }

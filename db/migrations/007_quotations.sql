@@ -3,9 +3,9 @@
 -- ============================================
 
 -- Teklif Ana Tablosu
-CREATE TABLE quotations (
+CREATE TABLE IF NOT EXISTS quotations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    quotation_number VARCHAR(50) UNIQUE NOT NULL,
+    quotation_number VARCHAR(50) UNIQUE,
     name VARCHAR(255) NOT NULL,
     customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
     description TEXT,

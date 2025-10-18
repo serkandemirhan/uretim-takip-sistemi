@@ -216,7 +216,7 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        <main className="flex-1 px-8 py-8">{children}</main>
+        <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">{children}</main>
       </div>
     </div>
   )

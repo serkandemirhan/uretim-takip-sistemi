@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Search, Filter, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { Plus, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { JobsStatsCards } from '@/components/features/jobs/JobsStatsCards'
@@ -109,6 +109,20 @@ export default function JobsPage() {
     setPagination(prev => ({ ...prev, page: 1 }))
   }
 
+  function handleStatusCardClick(statusFilter: string) {
+    // Map card status to API status values
+    const statusMap: Record<string, string> = {
+      'active': 'active,in_progress',
+      'delayed': '', // Will be filtered in the component
+      'on_hold': 'on_hold',
+      'completed': 'completed'
+    }
+
+    const newStatus = statusMap[statusFilter] || statusFilter
+    setFilters(prev => ({ ...prev, status: newStatus }))
+    setPagination(prev => ({ ...prev, page: 1 }))
+  }
+
   function clearFilters() {
     setFilters({
       search: '',
@@ -126,20 +140,18 @@ export default function JobsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full max-w-full space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">İşler</h1>
-          <p className="text-gray-600 mt-1">
-            Toplam {pagination.total} iş
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            İşler
+            <span className="text-gray-500 font-normal ml-3">
+              Toplam {pagination.total} iş
+            </span>
+          </h1>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={loadJobs} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Yenile
-          </Button>
           <Link href="/jobs/new">
             <Button>
               <Plus className="w-4 h-4 mr-2" />
@@ -150,14 +162,14 @@ export default function JobsPage() {
       </div>
 
       {/* Stats Cards */}
-      <JobsStatsCards stats={stats} />
+      <JobsStatsCards stats={stats} onFilterChange={handleStatusCardClick} />
 
       {/* Search & Filter Bar */}
       <Card>
         <CardContent className="pt-6">
           <div className="space-y-4">
             {/* Search & Filter Toggle & View Mode */}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
@@ -185,7 +197,7 @@ export default function JobsPage() {
 
             {/* Filters */}
             {showFilters && (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 pt-4 border-t">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 pt-4 border-t w-full">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700">Durum</label>
                   <select

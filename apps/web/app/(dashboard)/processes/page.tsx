@@ -48,7 +48,9 @@ export default function ProcessesPage() {
   const [processForm, setProcessForm] = useState<Partial<Process>>({})
   const [savingProcessId, setSavingProcessId] = useState<string | null>(null)
   const [dragging, setDragging] = useState<{ groupId: string; processId: string } | null>(null)
+  const [groupDraggingId, setGroupDraggingId] = useState<string | null>(null)
   const [dirtyGroups, setDirtyGroups] = useState<Set<string>>(new Set())
+  const [groupOrderDirty, setGroupOrderDirty] = useState(false)
   const [savingOrder, setSavingOrder] = useState(false)
 
   const [newGroupForm, setNewGroupForm] = useState<GroupForm>({ name: '', description: '' })
@@ -120,6 +122,8 @@ export default function ProcessesPage() {
         return next
       })
       setDirtyGroups(new Set())
+      setGroupOrderDirty(false)
+      setGroupDraggingId(null)
       resetNewProcess()
     } catch (error) {
       handleError(error)
@@ -166,6 +170,27 @@ export default function ProcessesPage() {
       order_index: index + 1,
       group_id: normalizedGroupId,
     }))
+  }
+
+  const reorderGroupsList = (list: ProcessGroup[], draggedId: string, beforeId?: string) => {
+    const fromIndex = list.findIndex((group) => group.id === draggedId)
+    if (fromIndex === -1) return list
+
+    const working = list.slice()
+    const [moved] = working.splice(fromIndex, 1)
+
+    let insertionIndex = beforeId ? working.findIndex((group) => group.id === beforeId) : working.length
+    if (insertionIndex === -1) {
+      insertionIndex = working.length
+    }
+    working.splice(insertionIndex, 0, moved)
+
+    const sameOrder = working.every((group, idx) => group.id === list[idx]?.id)
+    if (sameOrder) {
+      return list
+    }
+
+    return working
   }
 
   const reorderWithinGroup = (
@@ -335,6 +360,26 @@ export default function ProcessesPage() {
   }
 
   const handleGroupDragOver = (targetGroupId: string) => {
+    if (groupDraggingId) {
+      let didChange = false
+      setGroups((prev) => {
+        const next = reorderGroupsList(
+          prev,
+          groupDraggingId,
+          targetGroupId === '__ungrouped__' ? undefined : targetGroupId,
+        )
+        if (next === prev) {
+          return prev
+        }
+        didChange = true
+        return next
+      })
+      if (didChange) {
+        setGroupOrderDirty(true)
+      }
+      return
+    }
+
     if (!dragging) return
     const { groupId: sourceGroupId, processId } = dragging
     const didChange = moveProcess(sourceGroupId, targetGroupId, processId)
@@ -406,40 +451,65 @@ const startEditProcess = (process: Process) => {
   }
 
   const saveOrder = async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (dirtyGroups.size === 0) return
     const groupsToSave = Array.from(dirtyGroups)
-    if (groupsToSave.length === 0) return
+    const hasProcessOrderChanges = groupsToSave.length > 0
+    const hasGroupOrderChanges = groupOrderDirty
+    if (!hasProcessOrderChanges && !hasGroupOrderChanges) return
     try {
       setSavingOrder(true)
       const updates: Promise<any>[] = []
 
-      groupsToSave.forEach((groupId) => {
-        const list = groupId === '__ungrouped__'
-          ? ungrouped
-          : groups.find((g) => g.id === groupId)?.processes || []
-        const normalizedGroupId = groupId === '__ungrouped__' ? null : groupId
+      if (hasProcessOrderChanges) {
+        groupsToSave.forEach((groupId) => {
+          const list =
+            groupId === '__ungrouped__'
+              ? ungrouped
+              : groups.find((g) => g.id === groupId)?.processes || []
+          const normalizedGroupId = groupId === '__ungrouped__' ? null : groupId
 
-        list.forEach((process, index) => {
+          list.forEach((process, index) => {
+            updates.push(
+              processesAPI.update(process.id, {
+                order_index: index + 1,
+                group_id: process.group_id ?? normalizedGroupId,
+              }),
+            )
+          })
+        })
+      }
+
+      if (hasGroupOrderChanges) {
+        groups.forEach((group, index) => {
           updates.push(
-            processesAPI.update(process.id, {
+            processesAPI.updateGroup(group.id, {
               order_index: index + 1,
-              group_id: process.group_id ?? normalizedGroupId,
             }),
           )
         })
-      })
+      }
 
       await Promise.all(updates)
       if (!silent) {
-        toast.success('Süreç sıralamaları kaydedildi')
+        toast.success('Sıralamalar kaydedildi')
       }
-      setDirtyGroups((prev) => {
-        const next = new Set(prev)
-        groupsToSave.forEach((groupId) => {
-          next.delete(groupId)
+      if (hasProcessOrderChanges) {
+        setDirtyGroups((prev) => {
+          const next = new Set(prev)
+          groupsToSave.forEach((groupId) => {
+            next.delete(groupId)
+          })
+          return next
         })
-        return next
-      })
+      }
+      if (hasGroupOrderChanges) {
+        setGroupOrderDirty(false)
+        setGroups((prev) =>
+          prev.map((group, index) => ({
+            ...group,
+            order_index: index + 1,
+          })),
+        )
+      }
     } catch (error) {
       handleError(error)
       toast.error('Sıralama kaydedilemedi')
@@ -449,10 +519,10 @@ const startEditProcess = (process: Process) => {
   }
 
   useEffect(() => {
-    if (!dragging && dirtyGroups.size > 0 && !savingOrder) {
+    if (!dragging && !groupDraggingId && (dirtyGroups.size > 0 || groupOrderDirty) && !savingOrder) {
       void saveOrder({ silent: true })
     }
-  }, [dragging, dirtyGroups, savingOrder, saveOrder])
+  }, [dragging, groupDraggingId, dirtyGroups, groupOrderDirty, savingOrder, saveOrder])
 
   const deleteProcess = async (process: Process) => {
     if (!confirm(`"${process.name}" sürecini silmek istiyor musunuz?`)) return
@@ -781,7 +851,7 @@ const renderNewProcessRow = (groupId: string) => {
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>Süreç Listesi</CardTitle>
-            {dirtyGroups.size > 0 && (
+            {(dirtyGroups.size > 0 || groupOrderDirty) && (
               <Button size="sm" className="gap-2" onClick={() => saveOrder()} disabled={savingOrder}>
                 <Save className="h-4 w-4" />
                 {savingOrder ? 'Kaydediliyor...' : 'Sıralamayı Kaydet'}
@@ -818,14 +888,32 @@ const renderNewProcessRow = (groupId: string) => {
                           }}
                           onDrop={(e) => e.preventDefault()}
                         >
-                          <td className="py-3 px-4">
-                            <button
-                              type="button"
-                              onClick={() => toggleGroup(group.id)}
-                              className="text-gray-600"
-                            >
-                              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            </button>
+                          <td className="py-3 px-4 w-[64px]">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="text-gray-400 hover:text-gray-500 cursor-grab"
+                                draggable
+                                onDragStart={(event) => {
+                                  event.dataTransfer.effectAllowed = 'move'
+                                  event.dataTransfer.setData('text/plain', group.id)
+                                  setGroupDraggingId(group.id)
+                                }}
+                                onDragEnd={() => setGroupDraggingId(null)}
+                              >
+                                <GripVertical className="h-4 w-4" />
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => toggleGroup(group.id)}
+                                className="text-gray-600"
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
                           </td>
                           <td colSpan={3} className="py-3 px-4">
                             {editingGroupId === group.id ? (
@@ -976,22 +1064,48 @@ const renderNewProcessRow = (groupId: string) => {
                 {groups.map((group) => {
                   const isExpanded = expandedGroups[group.id] ?? true
                   return (
-                    <div key={group.id} className="border rounded-lg overflow-hidden">
+                    <div
+                      key={group.id}
+                      className="border rounded-lg overflow-hidden"
+                      onDragOver={(e) => {
+                        e.preventDefault()
+                        handleGroupDragOver(group.id)
+                      }}
+                      onDrop={(e) => e.preventDefault()}
+                    >
                       <div className="bg-gray-100 p-4">
                         <div className="flex items-center justify-between gap-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleGroup(group.id)}
-                            className="flex items-center gap-2 flex-1 text-left"
-                          >
-                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            <div>
-                              <p className="font-semibold text-gray-900">{group.name}</p>
-                              {group.description && (
-                                <p className="text-xs text-gray-500">{group.description}</p>
+                          <div className="flex items-center gap-2 flex-1">
+                            <span
+                              className="text-gray-400 hover:text-gray-500 cursor-grab"
+                              draggable
+                              onDragStart={(event) => {
+                                event.dataTransfer.effectAllowed = 'move'
+                                event.dataTransfer.setData('text/plain', group.id)
+                                setGroupDraggingId(group.id)
+                              }}
+                              onDragEnd={() => setGroupDraggingId(null)}
+                            >
+                              <GripVertical className="h-4 w-4" />
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleGroup(group.id)}
+                              className="flex items-center gap-2 flex-1 text-left"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
                               )}
-                            </div>
-                          </button>
+                              <div>
+                                <p className="font-semibold text-gray-900">{group.name}</p>
+                                {group.description && (
+                                  <p className="text-xs text-gray-500">{group.description}</p>
+                                )}
+                              </div>
+                            </button>
+                          </div>
                           <div className="flex gap-2">
                             {editingGroupId === group.id ? (
                               <>

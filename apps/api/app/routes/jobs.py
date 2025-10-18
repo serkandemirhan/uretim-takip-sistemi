@@ -99,26 +99,31 @@ def get_jobs():
 
         jobs_list = []
         for job in jobs:
-            # Get job steps with detailed info
+            # Get job steps - with full details
             steps_query = """
                 SELECT
                     js.id,
                     js.process_id,
                     js.status,
-                    js.order_index,
-                    NULL::text AS notes,
+                    COALESCE(js.order_index, 0) as order_index,
+                    js.assigned_to,
                     js.completed_at,
-                    NULL::uuid AS completed_by,
-                    NULL::text AS completed_by_name,
+                    js.production_notes,
+                    js.started_at,
                     p.name as process_name,
                     p.code as process_code,
-                    (SELECT COUNT(*) FROM files WHERE ref_type = 'job_step' AND ref_id = js.id) as file_count
+                    u.full_name as assigned_to_name
                 FROM job_steps js
                 LEFT JOIN processes p ON js.process_id = p.id
+                LEFT JOIN users u ON js.assigned_to = u.id
                 WHERE js.job_id = %s
-                ORDER BY js.order_index
+                ORDER BY COALESCE(js.order_index, 0)
             """
-            job_steps = execute_query(steps_query, (job['id'],))
+            try:
+                job_steps = execute_query(steps_query, (job['id'],))
+            except Exception as e:
+                print(f"Error fetching steps for job {job['id']}: {str(e)}")
+                job_steps = []
 
             jobs_list.append({
                 'id': str(job['id']),
@@ -141,14 +146,16 @@ def get_jobs():
                     'id': str(step['id']),
                     'process_id': str(step['process_id']),
                     'status': step['status'],
-                    'order_index': step['order_index'],
-                    'process_name': step['process_name'],
-                    'process_code': step['process_code'],
-                    'notes': step['notes'],
-                    'completed_at': step['completed_at'].isoformat() if step['completed_at'] else None,
-                    'completed_by': str(step['completed_by']) if step['completed_by'] else None,
-                    'completed_by_name': step['completed_by_name'],
-                    'file_count': step['file_count']
+                    'order_index': step.get('order_index', 0),
+                    'process_name': step.get('process_name'),
+                    'process_code': step.get('process_code'),
+                    'assigned_to': {
+                        'id': str(step['assigned_to']) if step.get('assigned_to') else None,
+                        'name': step.get('assigned_to_name')
+                    } if step.get('assigned_to') else None,
+                    'completed_at': step['completed_at'].isoformat() if step.get('completed_at') else None,
+                    'production_notes': step.get('production_notes'),
+                    'started_at': step['started_at'].isoformat() if step.get('started_at') else None,
                 } for step in job_steps]
             })
         

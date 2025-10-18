@@ -30,40 +30,39 @@ interface DetailedJobsTableProps {
 }
 
 function getStatusBadge(status: string) {
-  const config: Record<string, { label: string; color: string; icon: string }> = {
-    active: { label: 'Aktif', color: 'bg-green-100 text-green-800', icon: '🟢' },
-    in_progress: { label: 'Devam Ediyor', color: 'bg-blue-100 text-blue-800', icon: '🔵' },
-    at_risk: { label: 'Riskli', color: 'bg-yellow-100 text-yellow-800', icon: '🟡' },
-    delayed: { label: 'Gecikti', color: 'bg-red-100 text-red-800', icon: '🔴' },
-    on_hold: { label: 'Beklemede', color: 'bg-gray-100 text-gray-800', icon: '⏸️' },
-    completed: { label: 'Tamamlandı', color: 'bg-green-100 text-green-800', icon: '✅' },
+  const config: Record<string, { label: string; color: string }> = {
+    draft: { label: 'Taslak', color: 'bg-gray-100 text-gray-700' },
+    active: { label: 'Aktif', color: 'bg-blue-100 text-blue-700' },
+    in_progress: { label: 'Devam Ediyor', color: 'bg-blue-100 text-blue-700' },
+    on_hold: { label: 'Beklemede', color: 'bg-gray-100 text-gray-700' },
+    completed: { label: 'Tamamlandı', color: 'bg-green-100 text-green-700' },
+    canceled: { label: 'İptal', color: 'bg-red-100 text-red-700' },
   }
   const item = config[status] || config.active
   return (
     <Badge className={item.color}>
-      <span className="mr-1">{item.icon}</span>
       {item.label}
     </Badge>
   )
 }
 
 function getRiskBadge(level: string) {
-  const config: Record<string, { label: string; color: string; icon: string }> = {
-    low: { label: 'Düşük', color: 'bg-green-100 text-green-800', icon: '🟢' },
-    medium: { label: 'Orta', color: 'bg-yellow-100 text-yellow-800', icon: '🟡' },
-    high: { label: 'Yüksek', color: 'bg-red-100 text-red-800', icon: '🔴' },
+  const config: Record<string, { label: string; color: string }> = {
+    low: { label: 'Düşük', color: 'bg-green-100 text-green-700' },
+    medium: { label: 'Orta', color: 'bg-yellow-100 text-yellow-700' },
+    high: { label: 'Yüksek', color: 'bg-red-100 text-red-700' },
   }
   const item = config[level] || config.low
   return (
     <Badge className={item.color}>
-      {item.icon} {item.label}
+      {item.label}
     </Badge>
   )
 }
 
 export function DetailedJobsTable({ jobs }: DetailedJobsTableProps) {
   return (
-    <div className="space-y-3">
+    <div className="w-full space-y-3">
       {jobs.map((job) => (
         <div key={job.id} className="bg-white rounded-lg border hover:shadow-md transition-shadow">
           <div className="p-4">

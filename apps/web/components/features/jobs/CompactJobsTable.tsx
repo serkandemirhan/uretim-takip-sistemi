@@ -1,10 +1,13 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Eye, Edit, AlertTriangle } from 'lucide-react'
 import { formatDate } from '@/lib/utils/formatters'
+
+const STORAGE_KEY_WIDTHS = 'compactJobsTable_columnWidths'
 
 interface Job {
   id: string
@@ -22,21 +25,19 @@ interface CompactJobsTableProps {
 }
 
 function getStatusBadge(status: string) {
-  const config: Record<string, { label: string; color: string; icon: string }> = {
-    active: { label: 'Aktif', color: 'bg-green-100 text-green-800 border-green-300', icon: '🟢' },
-    in_progress: { label: 'Devam Ediyor', color: 'bg-blue-100 text-blue-800 border-blue-300', icon: '🔵' },
-    at_risk: { label: 'Riskli', color: 'bg-yellow-100 text-yellow-800 border-yellow-300', icon: '🟡' },
-    delayed: { label: 'Gecikti', color: 'bg-red-100 text-red-800 border-red-300', icon: '🔴' },
-    on_hold: { label: 'Beklemede', color: 'bg-gray-100 text-gray-800 border-gray-300', icon: '⏸️' },
-    completed: { label: 'Tamamlandı', color: 'bg-green-100 text-green-800 border-green-300', icon: '✅' },
-    canceled: { label: 'İptal', color: 'bg-gray-100 text-gray-500 border-gray-300', icon: '❌' },
+  const config: Record<string, { label: string; color: string }> = {
+    draft: { label: 'Taslak', color: 'bg-gray-100 text-gray-700' },
+    active: { label: 'Aktif', color: 'bg-blue-100 text-blue-700' },
+    in_progress: { label: 'Devam Ediyor', color: 'bg-blue-100 text-blue-700' },
+    on_hold: { label: 'Beklemede', color: 'bg-gray-100 text-gray-700' },
+    completed: { label: 'Tamamlandı', color: 'bg-green-100 text-green-700' },
+    canceled: { label: 'İptal', color: 'bg-red-100 text-red-700' },
   }
 
   const item = config[status] || config.active
 
   return (
-    <Badge className={`${item.color} border`}>
-      <span className="mr-1">{item.icon}</span>
+    <Badge className={item.color}>
       {item.label}
     </Badge>
   )
@@ -48,20 +49,121 @@ function isOverdue(dueDate: string) {
 }
 
 export function CompactJobsTable({ jobs }: CompactJobsTableProps) {
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+    no: 100,
+    title: 250,
+    customer: 200,
+    status: 150,
+    deadline: 150,
+    progress: 150,
+    assigned: 120,
+    actions: 120,
+  })
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null)
+
+  // Load saved column widths from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedWidths = localStorage.getItem(STORAGE_KEY_WIDTHS)
+      if (savedWidths) {
+        try {
+          const parsedWidths = JSON.parse(savedWidths)
+          setColumnWidths(prev => ({ ...prev, ...parsedWidths }))
+        } catch (e) {
+          console.error('Failed to parse saved column widths:', e)
+        }
+      }
+    }
+  }, [])
+
+  // Save column widths to localStorage when they change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_WIDTHS, JSON.stringify(columnWidths))
+    }
+  }, [columnWidths])
+
+  const handleMouseDown = (e: React.MouseEvent, column: string) => {
+    e.preventDefault()
+    setResizingColumn(column)
+
+    const startX = e.clientX
+    const startWidth = columnWidths[column]
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const diff = moveEvent.clientX - startX
+      const newWidth = Math.max(80, startWidth + diff)
+      setColumnWidths(prev => ({ ...prev, [column]: newWidth }))
+    }
+
+    const handleMouseUp = () => {
+      setResizingColumn(null)
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
   return (
-    <div className="bg-white rounded-lg border overflow-hidden">
-      <div className="overflow-x-auto">
+    <div className="w-full bg-white rounded-lg border overflow-hidden">
+      <div className="overflow-x-auto w-full">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="px-4 py-3 text-left font-medium text-gray-700">No</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-700">İş Adı</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-700">Müşteri</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-700">Durum</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-700">Deadline</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-700">İlerleme</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-700">Sorumlu</th>
-              <th className="px-4 py-3 text-center font-medium text-gray-700">Aksiyonlar</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.no }}>
+                No
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                  onMouseDown={(e) => handleMouseDown(e, 'no')}
+                />
+              </th>
+              <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.title }}>
+                İş Adı
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                  onMouseDown={(e) => handleMouseDown(e, 'title')}
+                />
+              </th>
+              <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.customer }}>
+                Müşteri
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                  onMouseDown={(e) => handleMouseDown(e, 'customer')}
+                />
+              </th>
+              <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.status }}>
+                Durum
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                  onMouseDown={(e) => handleMouseDown(e, 'status')}
+                />
+              </th>
+              <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.deadline }}>
+                Deadline
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                  onMouseDown={(e) => handleMouseDown(e, 'deadline')}
+                />
+              </th>
+              <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.progress }}>
+                İlerleme
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                  onMouseDown={(e) => handleMouseDown(e, 'progress')}
+                />
+              </th>
+              <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.assigned }}>
+                Sorumlu
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                  onMouseDown={(e) => handleMouseDown(e, 'assigned')}
+                />
+              </th>
+              <th className="px-4 py-3 text-center font-medium text-gray-700" style={{ width: columnWidths.actions }}>
+                Aksiyonlar
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">

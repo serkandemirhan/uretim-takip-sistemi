@@ -130,7 +130,7 @@ export default function NewJobPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="w-full max-w-full space-y-6">
       <Link href="/jobs">
         <Button variant="ghost" size="sm">
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -144,238 +144,240 @@ export default function NewJobPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Temel Bilgiler */}
-        <Card>
-          <CardHeader>
-            <CardTitle>İş Bilgileri</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Başlık *</Label>
-              <Input
-                id="title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Örn: Totem Baskısı - 6m"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="customer_id">Müşteri</Label>
-              <select
-                id="customer_id"
-                value={formData.customer_id}
-                onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                disabled={loading}
-              >
-                <option value="">Müşteri Seç (İsteğe Bağlı)</option>
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Açıklama</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="İş ile ilgili detaylar..."
-                rows={4}
-                disabled={loading}
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-6 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] items-start">
+          {/* Temel Bilgiler */}
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle>İş Bilgileri</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="due_date">Teslim Tarihi</Label>
+                <Label htmlFor="title">Başlık *</Label>
                 <Input
-                  id="due_date"
-                  type="date"
-                  value={formData.due_date}
-                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                  id="title"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Örn: Totem Baskısı - 6m"
+                  required
                   disabled={loading}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="priority">Öncelik</Label>
+                <Label htmlFor="customer_id">Müşteri</Label>
                 <select
-                  id="priority"
-                  value={formData.priority}
-                  onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                  id="customer_id"
+                  value={formData.customer_id}
+                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
                   disabled={loading}
                 >
-                  <option value="low">Düşük</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">Yüksek</option>
-                  <option value="urgent">Acil</option>
+                  <option value="">Müşteri Seç (İsteğe Bağlı)</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
                 </select>
               </div>
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Süreç Seçimi */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Workflow className="w-5 h-5" />
-                  Süreçler
-                </CardTitle>
-                <p className="text-sm text-gray-600 mt-1">
-                  Bu iş için hangi süreçler çalıştırılacak?
-                </p>
+              <div className="space-y-2">
+                <Label htmlFor="description">Açıklama</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="İş ile ilgili detaylar..."
+                  rows={4}
+                  disabled={loading}
+                />
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowProcessSelector(true)}
-                disabled={loading}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Süreç Ekle
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {selectedSteps.length === 0 ? (
-              <div className="text-center py-8 border-2 border-dashed rounded-lg">
-                <Workflow className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500 mb-3">Henüz süreç eklenmedi</p>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="due_date">Teslim Tarihi</Label>
+                  <Input
+                    id="due_date"
+                    type="date"
+                    value={formData.due_date}
+                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                    disabled={loading}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="priority">Öncelik</Label>
+                  <select
+                    id="priority"
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    disabled={loading}
+                  >
+                    <option value="low">Düşük</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">Yüksek</option>
+                    <option value="urgent">Acil</option>
+                  </select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Süreç Seçimi */}
+          <Card className="w-full h-full">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Workflow className="w-5 h-5" />
+                    Süreçler
+                  </CardTitle>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Bu iş için hangi süreçler çalıştırılacak?
+                  </p>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => setShowProcessSelector(true)}
+                  disabled={loading}
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  İlk Süreci Ekle
+                  Süreç Ekle
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {selectedSteps.map((step, index) => (
-                  <div key={index} className="border rounded-lg p-4 bg-gray-50">
-                    <div className="flex items-start gap-3">
-                      {/* Drag Handle */}
-                      <div className="pt-2">
-                        <GripVertical className="w-4 h-4 text-gray-400" />
-                      </div>
-
-                      {/* Order Badge */}
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-semibold text-sm flex-shrink-0 mt-1">
-                        {index + 1}
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 space-y-3">
-                        {/* Süreç Adı */}
-                        <div>
-                          <div className="font-medium text-gray-900">{step.process_name}</div>
-                          <code className="text-xs text-gray-500">{step.process_code}</code>
+            </CardHeader>
+            <CardContent>
+              {selectedSteps.length === 0 ? (
+                <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                  <Workflow className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-500 mb-3">Henüz süreç eklenmedi</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowProcessSelector(true)}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    İlk Süreci Ekle
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedSteps.map((step, index) => (
+                    <div key={index} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-start gap-3">
+                        {/* Drag Handle */}
+                        <div className="pt-2">
+                          <GripVertical className="w-4 h-4 text-gray-400" />
                         </div>
 
-                        {/* Atamalar */}
-                        <div className="grid gap-3 md:grid-cols-2">
-                          {/* Sorumlu Kullanıcı */}
-                          <div className="space-y-1">
-                            <Label className="text-xs">Sorumlu Kişi</Label>
-                            <select
-                              value={step.assigned_to}
-                              onChange={(e) => updateStep(index, 'assigned_to', e.target.value)}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
-                            >
-                              <option value="">Seçiniz...</option>
-                              {users.map(user => (
-                                <option key={user.id} value={user.id}>
-                                  {user.full_name}
-                                </option>
-                              ))}
-                            </select>
+                        {/* Order Badge */}
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-semibold text-sm flex-shrink-0 mt-1">
+                          {index + 1}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 space-y-3">
+                          {/* Süreç Adı */}
+                          <div>
+                            <div className="font-medium text-gray-900">{step.process_name}</div>
+                            <code className="text-xs text-gray-500">{step.process_code}</code>
                           </div>
 
-                          {/* Makine */}
-                          <div className="space-y-1">
-                            <Label className="text-xs">Makine</Label>
-                            <select
-                              value={step.machine_id}
-                              onChange={(e) => updateStep(index, 'machine_id', e.target.value)}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
-                            >
-                              <option value="">Seçiniz...</option>
-                              {machines.map(machine => (
-                                <option key={machine.id} value={machine.id}>
-                                  {machine.name}
-                                </option>
-                              ))}
-                            </select>
+                          {/* Atamalar */}
+                          <div className="grid gap-3 md:grid-cols-2">
+                            {/* Sorumlu Kullanıcı */}
+                            <div className="space-y-1">
+                              <Label className="text-xs">Sorumlu Kişi</Label>
+                              <select
+                                value={step.assigned_to}
+                                onChange={(e) => updateStep(index, 'assigned_to', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
+                              >
+                                <option value="">Seçiniz...</option>
+                                {users.map(user => (
+                                  <option key={user.id} value={user.id}>
+                                    {user.full_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Makine */}
+                            <div className="space-y-1">
+                              <Label className="text-xs">Makine</Label>
+                              <select
+                                value={step.machine_id}
+                                onChange={(e) => updateStep(index, 'machine_id', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
+                              >
+                                <option value="">Seçiniz...</option>
+                                {machines.map(machine => (
+                                  <option key={machine.id} value={machine.id}>
+                                    {machine.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Ek Ayarlar */}
+                          <div className="flex items-center gap-4 text-sm">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={step.is_parallel}
+                                onChange={(e) => updateStep(index, 'is_parallel', e.target.checked)}
+                                className="w-4 h-4 rounded"
+                              />
+                              <span className="text-gray-700">Paralel Çalışabilir</span>
+                            </label>
+
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs">Tahmini Süre (dk)</Label>
+                              <Input
+                                type="number"
+                                value={step.estimated_duration || ''}
+                                onChange={(e) => updateStep(index, 'estimated_duration', parseInt(e.target.value))}
+                                placeholder="60"
+                                className="w-20 h-7 text-sm"
+                              />
+                            </div>
                           </div>
                         </div>
 
-                        {/* Ek Ayarlar */}
-                        <div className="flex items-center gap-4 text-sm">
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={step.is_parallel}
-                              onChange={(e) => updateStep(index, 'is_parallel', e.target.checked)}
-                              className="w-4 h-4 rounded"
-                            />
-                            <span className="text-gray-700">Paralel Çalışabilir</span>
-                          </label>
-
-                          <div className="flex items-center gap-2">
-                            <Label className="text-xs">Tahmini Süre (dk)</Label>
-                            <Input
-                              type="number"
-                              value={step.estimated_duration || ''}
-                              onChange={(e) => updateStep(index, 'estimated_duration', parseInt(e.target.value))}
-                              placeholder="60"
-                              className="w-20 h-7 text-sm"
-                            />
-                          </div>
-                        </div>
+                        {/* Remove Button */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeStep(index)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
                       </div>
-
-                      {/* Remove Button */}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeStep(index)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
                     </div>
-                  </div>
-                ))}
+                  ))}
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowProcessSelector(true)}
-                  className="w-full border-dashed"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Başka Süreç Ekle
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowProcessSelector(true)}
+                    className="w-full border-dashed"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Başka Süreç Ekle
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Actions */}
         <div className="flex gap-3">

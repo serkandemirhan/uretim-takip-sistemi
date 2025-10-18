@@ -15,7 +15,12 @@
       "Read(//private/tmp/**)",
       "Bash(xargs kill:*)",
       "Bash(cat:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(lsof:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npx tsc:*)",
+      "Bash(kill:*)",
+      "Bash(psql:*)"
     ],
     "deny": [],
     "ask": []

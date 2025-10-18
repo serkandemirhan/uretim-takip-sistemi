@@ -635,7 +635,7 @@ const materialsGridTemplate =
               <span>Malzeme Listesi</span>
               <div className="flex items-center gap-2">
                 <Button
-                  variant={showManualItemForm ? 'secondary' : 'outline'}
+                  variant={showManualItemForm ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => {
                     if (showManualItemForm) {

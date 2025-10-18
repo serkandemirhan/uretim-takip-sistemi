@@ -21,8 +21,16 @@ def get_jobs():
         priority = request.args.get('priority', '')
         date_from = request.args.get('date_from', '')
         date_to = request.args.get('date_to', '')
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 20))
+        def safe_int(value, default):
+            """Convert query param to int, fallback to default on invalid input."""
+            try:
+                parsed = int(value)
+                return parsed if parsed > 0 else default
+            except (TypeError, ValueError):
+                return default
+
+        page = safe_int(request.args.get('page', 1), 1)
+        per_page = safe_int(request.args.get('per_page', 20), 20)
         
         query = """
             SELECT 
@@ -88,9 +96,30 @@ def get_jobs():
         query += f" LIMIT {per_page} OFFSET {offset}"
         
         jobs = execute_query(query, tuple(params))
-        
+
         jobs_list = []
         for job in jobs:
+            # Get job steps with detailed info
+            steps_query = """
+                SELECT
+                    js.id,
+                    js.process_id,
+                    js.status,
+                    js.order_index,
+                    NULL::text AS notes,
+                    js.completed_at,
+                    NULL::uuid AS completed_by,
+                    NULL::text AS completed_by_name,
+                    p.name as process_name,
+                    p.code as process_code,
+                    (SELECT COUNT(*) FROM files WHERE ref_type = 'job_step' AND ref_id = js.id) as file_count
+                FROM job_steps js
+                LEFT JOIN processes p ON js.process_id = p.id
+                WHERE js.job_id = %s
+                ORDER BY js.order_index
+            """
+            job_steps = execute_query(steps_query, (job['id'],))
+
             jobs_list.append({
                 'id': str(job['id']),
                 'job_number': job['job_number'],
@@ -99,6 +128,7 @@ def get_jobs():
                 'status': job['status'],
                 'priority': job['priority'],
                 'due_date': job['due_date'].isoformat() if job['due_date'] else None,
+                'delivery_date': job['due_date'].isoformat() if job['due_date'] else None,  # Alias for due_date
                 'created_at': job['created_at'].isoformat() if job['created_at'] else None,
                 'revision_no': job['revision_no'],
                 'customer_id': str(job['customer_id']) if job['customer_id'] else None,
@@ -106,7 +136,20 @@ def get_jobs():
                 'created_by_name': job['created_by_name'],
                 'total_steps': job['total_steps'],
                 'completed_steps': job['completed_steps'],
-                'progress': round((job['completed_steps'] / job['total_steps'] * 100) if job['total_steps'] > 0 else 0)
+                'progress': round((job['completed_steps'] / job['total_steps'] * 100) if job['total_steps'] > 0 else 0),
+                'steps': [{
+                    'id': str(step['id']),
+                    'process_id': str(step['process_id']),
+                    'status': step['status'],
+                    'order_index': step['order_index'],
+                    'process_name': step['process_name'],
+                    'process_code': step['process_code'],
+                    'notes': step['notes'],
+                    'completed_at': step['completed_at'].isoformat() if step['completed_at'] else None,
+                    'completed_by': str(step['completed_by']) if step['completed_by'] else None,
+                    'completed_by_name': step['completed_by_name'],
+                    'file_count': step['file_count']
+                } for step in job_steps]
             })
         
         return jsonify({

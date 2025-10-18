@@ -149,7 +149,7 @@ def update_customer(customer_id):
         setters.append("updated_at = NOW()")
         params.append(str(customer_id))
 
-        rows = execute_query(f"""
+        rows = execute_write(f"""
             UPDATE customers
                SET {', '.join(setters)}
              WHERE id = %s

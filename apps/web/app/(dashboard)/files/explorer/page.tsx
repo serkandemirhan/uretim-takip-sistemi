@@ -15,8 +15,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
-import { Download, FileIcon, Loader2, Trash2 } from 'lucide-react'
+import { Download, FileIcon, Loader2, Trash2, Grid3x3, List, FileText, FileImage, FileSpreadsheet, FileVideo, FileArchive, File } from 'lucide-react'
 import { handleApiError } from '@/lib/utils/error-handler'
+import { MultiSelect, MultiSelectOption } from '@/components/ui/multi-select'
 
 type ExplorerFile = {
   id: string
@@ -79,6 +80,77 @@ function formatBytes(bytes?: number | null) {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
 }
 
+function getFileIcon(filename: string, contentType?: string | null) {
+  const ext = filename.split('.').pop()?.toLowerCase()
+  const type = contentType?.toLowerCase() || ''
+
+  // Images
+  if (type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp'].includes(ext || '')) {
+    return FileImage
+  }
+
+  // PDFs
+  if (type === 'application/pdf' || ext === 'pdf') {
+    return FileText
+  }
+
+  // Word documents
+  if (type.includes('word') || ['doc', 'docx'].includes(ext || '')) {
+    return FileText
+  }
+
+  // Excel spreadsheets
+  if (type.includes('spreadsheet') || type.includes('excel') || ['xls', 'xlsx', 'csv'].includes(ext || '')) {
+    return FileSpreadsheet
+  }
+
+  // Videos
+  if (type.startsWith('video/') || ['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv'].includes(ext || '')) {
+    return FileVideo
+  }
+
+  // Archives
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext || '')) {
+    return FileArchive
+  }
+
+  // Text files
+  if (type.startsWith('text/') || ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts'].includes(ext || '')) {
+    return FileText
+  }
+
+  // Default
+  return File
+}
+
+function getFileIconColor(filename: string, contentType?: string | null) {
+  const ext = filename.split('.').pop()?.toLowerCase()
+  const type = contentType?.toLowerCase() || ''
+
+  if (type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp'].includes(ext || '')) {
+    return 'text-purple-500'
+  }
+  if (type === 'application/pdf' || ext === 'pdf') {
+    return 'text-red-500'
+  }
+  if (type.includes('word') || ['doc', 'docx'].includes(ext || '')) {
+    return 'text-blue-500'
+  }
+  if (type.includes('spreadsheet') || type.includes('excel') || ['xls', 'xlsx', 'csv'].includes(ext || '')) {
+    return 'text-green-500'
+  }
+  if (type.startsWith('video/') || ['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv'].includes(ext || '')) {
+    return 'text-pink-500'
+  }
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext || '')) {
+    return 'text-yellow-600'
+  }
+  if (type.startsWith('text/') || ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts'].includes(ext || '')) {
+    return 'text-gray-500'
+  }
+  return 'text-gray-400'
+}
+
 export default function FilesExplorerPage() {
   const [loading, setLoading] = useState(false)
   const [entries, setEntries] = useState<ExplorerFile[]>([])
@@ -88,6 +160,8 @@ export default function FilesExplorerPage() {
   const [selectedStep, setSelectedStep] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid')
+  const [selectedProcesses, setSelectedProcesses] = useState<string[]>([])
 
   useEffect(() => {
     void load()
@@ -190,15 +264,41 @@ export default function FilesExplorerPage() {
     return arr
   }, [selectedCustomerNode])
 
+  const processOptions = useMemo(() => {
+    const processMap = new Map<string, MultiSelectOption>()
+    entries.forEach((file) => {
+      if (file.process?.id && file.process?.name) {
+        processMap.set(file.process.id, {
+          value: file.process.id,
+          label: file.process.code ? `${file.process.code} • ${file.process.name}` : file.process.name,
+        })
+      }
+    })
+    return Array.from(processMap.values()).sort((a, b) => a.label.localeCompare(b.label))
+  }, [entries])
+
   const fileList = useMemo(() => {
     const text = filter.trim().toLowerCase()
 
     const filterFiles = (files: ExplorerFile[]) => {
-      if (!text) return files
-      return files.filter((file) =>
-        file.filename.toLowerCase().includes(text) ||
-        (file.folder_path || '').toLowerCase().includes(text),
-      )
+      let filtered = files
+
+      // Text filter
+      if (text) {
+        filtered = filtered.filter((file) =>
+          file.filename.toLowerCase().includes(text) ||
+          (file.folder_path || '').toLowerCase().includes(text),
+        )
+      }
+
+      // Process filter
+      if (selectedProcesses.length > 0) {
+        filtered = filtered.filter((file) =>
+          file.process?.id && selectedProcesses.includes(file.process.id)
+        )
+      }
+
+      return filtered
     }
 
     if (selectedCustomer === 'all') {
@@ -229,7 +329,7 @@ export default function FilesExplorerPage() {
 
     const step = job.steps.get(selectedStep)
     return step ? filterFiles(step.files) : []
-  }, [entries, explorerTree, filter, selectedCustomer, selectedJob, selectedStep])
+  }, [entries, explorerTree, filter, selectedCustomer, selectedJob, selectedStep, selectedProcesses])
 
   async function handleDownload(fileId: string) {
     try {
@@ -409,10 +509,37 @@ export default function FilesExplorerPage() {
           <CardHeader className="flex flex-col gap-3 py-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-sm">Dosyalar</CardTitle>
-              <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-                <Loader2 className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />
-                Yenile
-              </Button>
+              <div className="flex items-center gap-3">
+                <MultiSelect
+                  options={processOptions}
+                  selected={selectedProcesses}
+                  onChange={setSelectedProcesses}
+                  placeholder="Süreç filtrele..."
+                  className="w-[32rem]"
+                />
+                <div className="flex items-center gap-1 rounded-md border border-gray-200 p-1">
+                  <Button
+                    variant={viewMode === 'list' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('list')}
+                    className="h-7 px-2"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('grid')}
+                    className="h-7 px-2"
+                  >
+                    <Grid3x3 className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+                  <Loader2 className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />
+                  Yenile
+                </Button>
+              </div>
             </div>
             <Input
               value={filter}
@@ -421,105 +548,199 @@ export default function FilesExplorerPage() {
               className="h-8"
             />
           </CardHeader>
-          <Table>
-            <TableHeader className="bg-gray-50">
-              <TableRow>
-                <TableHead className="w-96">Ad</TableHead>
-                <TableHead className="w-48">Müşteri</TableHead>
-                <TableHead className="w-48">İş</TableHead>
-                <TableHead className="w-40">Süreç</TableHead>
-                <TableHead className="w-32">Boyut</TableHead>
-                <TableHead className="w-32">İçerik</TableHead>
-                <TableHead className="w-40">Yükleyen</TableHead>
-                <TableHead className="w-48">Tarih</TableHead>
-                <TableHead className="w-32 text-right">Aksiyonlar</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
+          {viewMode === 'list' ? (
+            <Table>
+              <TableHeader className="bg-gray-50">
                 <TableRow>
-                  <TableCell colSpan={9} className="py-12 text-center text-sm text-gray-500">
-                    Dosyalar yükleniyor...
-                  </TableCell>
+                  <TableHead className="w-96">Ad</TableHead>
+                  <TableHead className="w-48">Müşteri</TableHead>
+                  <TableHead className="w-48">İş</TableHead>
+                  <TableHead className="w-40">Süreç</TableHead>
+                  <TableHead className="w-32 text-right">Aksiyonlar</TableHead>
                 </TableRow>
-              ) : fileList.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="py-12 text-center text-sm text-gray-500">
-                    Dosya bulunamadı.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                fileList.map((file) => (
-                  <TableRow key={file.id} className="align-middle">
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <FileIcon className="h-4 w-4 text-gray-400" />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-gray-900" title={file.filename}>
-                            {file.filename}
-                          </p>
-                          <p className="text-xs text-gray-500" title={file.folder_path || undefined}>
-                            {file.folder_path || '-'}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{file.customer?.name || '-'}</TableCell>
-                    <TableCell>
-                      {file.job?.job_number ? (
-                        <span>{file.job.job_number}</span>
-                      ) : (
-                        '-' 
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {file.process?.name ? (
-                        <span>{file.process.code ? `${file.process.code} • ${file.process.name}` : file.process.name}</span>
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                    <TableCell>{formatBytes(file.file_size || 0)}</TableCell>
-                    <TableCell>{file.content_type || '-'}</TableCell>
-                    <TableCell>{file.uploaded_by?.name || '-'}</TableCell>
-                    <TableCell>
-                      {file.created_at ? new Date(file.created_at).toLocaleString('tr-TR') : '-'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDownload(file.id)}
-                          disabled={downloadingId === file.id}
-                          className="h-8 w-8"
-                        >
-                          {downloadingId === file.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Download className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(file.id)}
-                          disabled={deletingId === file.id}
-                          className="h-8 w-8 text-red-600 hover:text-red-700"
-                        >
-                          {deletingId === file.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-12 text-center text-sm text-gray-500">
+                      Dosyalar yükleniyor...
                     </TableCell>
                   </TableRow>
-                ))
+                ) : fileList.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-12 text-center text-sm text-gray-500">
+                      Dosya bulunamadı.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  fileList.map((file) => (
+                    <TableRow
+                      key={file.id}
+                      className="align-middle cursor-pointer hover:bg-gray-50 group relative"
+                      onClick={() => handleDownload(file.id)}
+                      title="İndirmek için tıklayın"
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            const IconComponent = getFileIcon(file.filename, file.content_type)
+                            const iconColor = getFileIconColor(file.filename, file.content_type)
+                            return <IconComponent className={cn('h-4 w-4', iconColor)} />
+                          })()}
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-gray-900" title={file.filename}>
+                              {file.filename}
+                            </p>
+                            <p className="text-xs text-gray-500" title={file.folder_path || undefined}>
+                              {file.folder_path || '-'}
+                            </p>
+                          </div>
+                        </div>
+                        {/* Hover tooltip */}
+                        <div className="absolute left-0 top-full mt-1 hidden group-hover:block z-50 bg-gray-900 text-white text-xs rounded-md shadow-lg p-3 min-w-[280px]">
+                          <div className="space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Boyut:</span>
+                              <span>{formatBytes(file.file_size || 0)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Tarih:</span>
+                              <span>{file.created_at ? new Date(file.created_at).toLocaleString('tr-TR') : '-'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Yükleyen:</span>
+                              <span>{file.uploaded_by?.name || '-'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{file.customer?.name || '-'}</TableCell>
+                      <TableCell>
+                        {file.job?.job_number ? (
+                          <span>{file.job.job_number}</span>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {file.process?.name ? (
+                          <span>{file.process.code ? `${file.process.code} • ${file.process.name}` : file.process.name}</span>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDownload(file.id)}
+                            disabled={downloadingId === file.id}
+                            className="h-8 w-8"
+                          >
+                            {downloadingId === file.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(file.id)}
+                            disabled={deletingId === file.id}
+                            className="h-8 w-8 text-red-600 hover:text-red-700"
+                          >
+                            {deletingId === file.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          ) : (
+            <CardContent>
+              {loading ? (
+                <div className="py-12 text-center text-sm text-gray-500">
+                  Dosyalar yükleniyor...
+                </div>
+              ) : fileList.length === 0 ? (
+                <div className="py-12 text-center text-sm text-gray-500">
+                  Dosya bulunamadı.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                  {fileList.map((file) => {
+                    const IconComponent = getFileIcon(file.filename, file.content_type)
+                    const iconColor = getFileIconColor(file.filename, file.content_type)
+                    return (
+                      <div
+                        key={file.id}
+                        className="group relative flex flex-col items-center p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-all"
+                        onClick={() => handleDownload(file.id)}
+                        title={file.filename}
+                      >
+                        <IconComponent className={cn('h-12 w-12 transition-transform group-hover:scale-110', iconColor)} />
+                        <p className="mt-2 text-center text-xs font-medium text-gray-900 line-clamp-2 w-full break-words">
+                          {file.filename}
+                        </p>
+                        <p className="mt-1 text-[10px] text-gray-500">
+                          {formatBytes(file.file_size || 0)}
+                        </p>
+
+                      {/* Hover tooltip */}
+                      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block z-50 bg-gray-900 text-white text-xs rounded-md shadow-lg p-3 min-w-[240px]">
+                        <div className="space-y-1">
+                          <div className="font-medium text-white mb-2 break-words">{file.filename}</div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-400">Boyut:</span>
+                            <span>{formatBytes(file.file_size || 0)}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-400">Tarih:</span>
+                            <span>{file.created_at ? new Date(file.created_at).toLocaleDateString('tr-TR') : '-'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-400">Yükleyen:</span>
+                            <span>{file.uploaded_by?.name || '-'}</span>
+                          </div>
+                          {file.customer?.name && (
+                            <div className="flex justify-between gap-4">
+                              <span className="text-gray-400">Müşteri:</span>
+                              <span className="truncate">{file.customer.name}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                        {/* Delete button - top right */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDelete(file.id)
+                          }}
+                          disabled={deletingId === file.id}
+                          className="absolute -top-2 -right-2 bg-white rounded-full p-1.5 shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50"
+                        >
+                          {deletingId === file.id ? (
+                            <Loader2 className="h-3 w-3 text-red-600 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3 w-3 text-red-600" />
+                          )}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
               )}
-            </TableBody>
-          </Table>
+            </CardContent>
+          )}
         </Card>
       </div>
     </div>

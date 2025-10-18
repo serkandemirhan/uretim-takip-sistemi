@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, ArrowUpCircle, ArrowDownCircle, Plus, Package, Upload } from 'lucide-react'
+import { Loader2, ArrowUpCircle, ArrowDownCircle, Plus, Package, Upload, X } from 'lucide-react'
 import { stockMovementsAPI, stocksAPI, jobsAPI } from '@/lib/api/client'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -55,6 +56,9 @@ type Job = {
 }
 
 export default function StockMovementsPage() {
+  const searchParams = useSearchParams()
+  const stockIdFilter = searchParams.get('stock_id')
+
   const [loading, setLoading] = useState(true)
   const [movements, setMovements] = useState<Movement[]>([])
   const [stocks, setStocks] = useState<Stock[]>([])
@@ -174,6 +178,10 @@ export default function StockMovementsPage() {
   }
 
   const selectedStock = stocks.find(s => s.id === form.stock_id)
+  const filteredStock = stockIdFilter ? stocks.find(s => s.id === stockIdFilter) : null
+  const filteredMovements = stockIdFilter
+    ? movements.filter(m => m.stock_id === stockIdFilter)
+    : movements
 
   return (
     <div className="p-6 space-y-6">
@@ -196,12 +204,39 @@ export default function StockMovementsPage() {
         </div>
       </div>
 
+      {/* Filter Info */}
+      {filteredStock && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Package className="h-5 w-5 text-blue-600" />
+                <div>
+                  <p className="font-medium text-blue-900">
+                    Filtre: {filteredStock.product_name}
+                  </p>
+                  <p className="text-sm text-blue-700">
+                    Ürün Kodu: {filteredStock.product_code} • Mevcut Stok: {filteredStock.current_quantity} {filteredStock.unit}
+                  </p>
+                </div>
+              </div>
+              <Link href="/stocks/movements">
+                <Button variant="ghost" size="sm" className="text-blue-700 hover:text-blue-900 hover:bg-blue-100">
+                  <X className="w-4 h-4 mr-1" />
+                  Filtreyi Kaldır
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Movements List */}
       <Card>
         <CardContent className="pt-6">
-          {movements.length === 0 ? (
+          {filteredMovements.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              Henüz hareket kaydı yok
+              {stockIdFilter ? 'Bu stok için hareket kaydı yok' : 'Henüz hareket kaydı yok'}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -221,7 +256,7 @@ export default function StockMovementsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {movements.map((movement) => (
+                  {filteredMovements.map((movement) => (
                     <tr key={movement.id} className="border-b hover:bg-muted/50">
                       <td className="p-2 text-sm">
                         {new Date(movement.created_at).toLocaleDateString('tr-TR')}

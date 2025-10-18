@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Loader2, Pencil, Plus, Trash2, AlertTriangle, Package, ArrowUpDown, ShoppingCart, Settings } from 'lucide-react'
 import { stocksAPI, stockMovementsAPI, jobsAPI } from '@/lib/api/client'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -60,6 +61,7 @@ const EMPTY_FORM: StockFormValues = {
 }
 
 export default function StocksInventoryPage() {
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [stocks, setStocks] = useState<Stock[]>([])
   const [filteredStocks, setFilteredStocks] = useState<Stock[]>([])
@@ -371,7 +373,9 @@ export default function StocksInventoryPage() {
                   {filteredStocks.map((stock) => (
                     <tr
                       key={stock.id}
-                      className={`border-b hover:bg-muted/50 ${stock.is_critical ? 'bg-orange-50' : ''}`}
+                      className={`border-b hover:bg-muted/50 cursor-pointer transition-colors ${stock.is_critical ? 'bg-orange-50' : ''}`}
+                      onClick={() => router.push(`/stocks/movements?stock_id=${stock.id}`)}
+                      title="Stok hareketlerini görüntülemek için tıklayın"
                     >
                       <td className="p-2 font-mono text-sm">{stock.product_code}</td>
                       <td className="p-2 font-medium">{stock.product_name}</td>
@@ -390,7 +394,7 @@ export default function StocksInventoryPage() {
                           : '-'}
                       </td>
                       <td className="p-2 text-sm">{stock.supplier_name || '-'}</td>
-                      <td className="p-2">
+                      <td className="p-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">
                           <Button
                             size="sm"

@@ -74,6 +74,7 @@ export default function JobsPage() {
       }
 
       const response = await jobsAPI.getAll(params)
+      console.log('Jobs response:', response.data?.[0]) // Debug: İlk job'ı görelim
       setJobs(response.data || [])
 
       if (response.meta) {

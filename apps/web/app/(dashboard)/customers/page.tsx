@@ -437,10 +437,7 @@ export default function CustomersPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Bayi Listesi</CardTitle>
-        </CardHeader>
-        <CardContent>
+              <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-10 text-sm text-gray-500">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -457,8 +454,7 @@ export default function CustomersPage() {
                     <th className="w-[14%] px-3 py-3">Telefon</th>
                     <th className="w-[16%] px-3 py-3">E-posta</th>
                     <th className="w-[12%] px-3 py-3">Şehir</th>
-                    <th className="w-[10%] px-3 py-3">Vergi Dairesi</th>
-                    <th className="w-[12%] px-3 py-3">Oluşturma</th>
+                    <th className="w-[18%] px-3 py-3">Adres</th>
                     <th className="w-[8%] px-3 py-3 text-right">İşlem</th>
                   </tr>
                 </thead>
@@ -466,7 +462,7 @@ export default function CustomersPage() {
                   {filtered.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={8}
                         className="py-8 text-center text-sm text-gray-500"
                       >
                         Kayıt bulunamadı
@@ -512,10 +508,7 @@ export default function CustomersPage() {
                             {customer.city || '—'}
                           </td>
                           <td className="px-3 py-3 text-gray-700">
-                            {customer.tax_office || '—'}
-                          </td>
-                          <td className="px-3 py-3 text-gray-700">
-                            {customer.created_at ? formatDate(customer.created_at) : '—'}
+                            {customer.address || '—'}
                           </td>
                           <td className="px-3 py-3">
                             <div className="flex justify-end gap-1">

@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { quotationsAPI, stocksAPI, customersAPI } from '@/lib/api/client'
+import { quotationsAPI, stocksAPI, customersAPI, unitsAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +20,26 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+
+type UnitOption = {
+  id: string
+  code: string
+  name: string
+  description?: string | null
+  is_active: boolean
+}
+
+const DEFAULT_CURRENCIES = ['TRY', 'EUR', 'USD']
+
+const createEmptyManualItem = () => ({
+  product_name: '',
+  product_code: '',
+  quantity: '1',
+  unit: '',
+  unit_cost: '',
+  notes: '',
+  currency: 'TRY',
+})
 
 export default function QuotationDetailPage() {
   const params = useParams()
@@ -42,14 +62,53 @@ export default function QuotationDetailPage() {
   const [selectedStockIds, setSelectedStockIds] = useState<Set<string>>(new Set())
   const [addingItems, setAddingItems] = useState(false)
   const [showStockPanel, setShowStockPanel] = useState(false)
+  const [showManualItemForm, setShowManualItemForm] = useState(false)
+  const [manualItem, setManualItem] = useState(createEmptyManualItem())
+  const [addingManualItem, setAddingManualItem] = useState(false)
+  const [unitOptions, setUnitOptions] = useState<UnitOption[]>([])
+  const [unitOptionsLoading, setUnitOptionsLoading] = useState(true)
 
   useEffect(() => {
     if (params.id) {
       loadQuotation()
       loadStocks()
       loadCustomers()
+      loadUnitOptions()
     }
   }, [params.id])
+
+  async function loadUnitOptions() {
+    try {
+      setUnitOptionsLoading(true)
+      const response = await unitsAPI.getAll()
+      const list = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response)
+          ? response
+          : []
+      setUnitOptions(list)
+    } catch (error) {
+      console.error('Ölçü birimleri yüklenemedi:', error)
+    } finally {
+      setUnitOptionsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!unitOptions || unitOptions.length === 0) {
+      return
+    }
+    setManualItem((prev) => {
+      if (prev.unit) {
+        return prev
+      }
+      const firstActive = unitOptions.find((unit) => unit.is_active)
+      if (firstActive) {
+        return { ...prev, unit: firstActive.code }
+      }
+      return prev
+    })
+  }, [unitOptions])
 
   async function loadQuotation() {
     try {
@@ -126,10 +185,83 @@ export default function QuotationDetailPage() {
     }
   }
 
+  function resetManualItemForm() {
+    setManualItem(createEmptyManualItem())
+  }
+
+  function handleManualItemChange(field: string, value: string) {
+    setManualItem((prev) => ({
+      ...prev,
+      [field]: field === 'currency' ? value.toUpperCase() : value,
+    }))
+  }
+
+  const manualItemTotal = (() => {
+    const quantity = parseFloat(manualItem.quantity)
+    const unitCost = parseFloat(manualItem.unit_cost)
+    if (Number.isNaN(quantity) || Number.isNaN(unitCost)) {
+      return 0
+    }
+    return quantity * unitCost
+  })()
+
+const materialsGridTemplate =
+  'grid grid-cols-[40px_minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1.6fr)_minmax(0,0.55fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1.1fr)_40px] gap-2'
+
+  async function handleAddManualItem() {
+    const productName = manualItem.product_name.trim()
+    if (!productName) {
+      toast.error('Ürün adı gerekli')
+      return
+    }
+    const currencyCode = (manualItem.currency || '').trim().toUpperCase()
+    if (!currencyCode) {
+      toast.error('Para birimi gerekli')
+      return
+    }
+    if (!manualItem.unit) {
+      toast.error('Lütfen birim seçin')
+      return
+    }
+
+    const quantityValue = parseFloat(manualItem.quantity)
+    const unitCostValue = parseFloat(manualItem.unit_cost)
+    const safeQuantity = Number.isFinite(quantityValue) && quantityValue > 0 ? quantityValue : 1
+    const safeUnitCost = Number.isFinite(unitCostValue) && unitCostValue >= 0 ? unitCostValue : 0
+
+    try {
+      setAddingManualItem(true)
+      await quotationsAPI.addItems(params.id as string, [
+        {
+          product_name: productName,
+          product_code: manualItem.product_code.trim() || undefined,
+          quantity: safeQuantity,
+          unit: manualItem.unit || undefined,
+          unit_cost: safeUnitCost,
+           currency: currencyCode,
+          notes: manualItem.notes.trim() || undefined,
+        },
+      ])
+
+      toast.success('Yeni satır eklendi')
+      resetManualItemForm()
+      await loadQuotation()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Satır eklenemedi')
+    } finally {
+      setAddingManualItem(false)
+    }
+  }
+
   async function handleUpdateItem(itemId: string, field: string, value: any) {
     try {
       const updateData: any = {}
-      updateData[field] = value
+      updateData[field] =
+        field === 'currency'
+          ? value
+            ? String(value).toUpperCase()
+            : null
+          : value
 
       await quotationsAPI.updateItem(params.id as string, itemId, updateData)
       await loadQuotation()
@@ -202,6 +334,110 @@ export default function QuotationDetailPage() {
     {}
   )
 
+  const items = quotation?.items || []
+  const totalCost = quotation?.total_cost || 0
+  const totalCostTry = quotation?.total_cost_try ?? totalCost
+  const currencyTotals: Array<{ currency: string; amount: number; amount_try: number }> =
+    quotation?.currency_totals ?? []
+  const versionLabel =
+    quotation?.version_label ??
+    `Ver${quotation?.version_major ?? 1}.${quotation?.version_minor ?? 0}`
+  const versionLabelDisplay = versionLabel.toUpperCase()
+  const lastUpdatedText = quotation?.updated_at
+    ? new Date(quotation.updated_at).toLocaleString('tr-TR')
+    : null
+
+  const normalizedUnitOptions = useMemo(
+    () =>
+      unitOptions.map((unit) => ({
+        value: unit.code,
+        label: unit.name || unit.code,
+        isActive: unit.is_active,
+      })),
+    [unitOptions],
+  )
+
+  const unitSelectOptions = useMemo(() => {
+    const map = new Map<string, { value: string; label: string; isActive: boolean }>()
+
+    normalizedUnitOptions.forEach((option) => {
+      map.set(option.value, option)
+    })
+
+    items.forEach((item: any) => {
+      const unitCode = item.unit
+      if (unitCode && !map.has(unitCode)) {
+        map.set(unitCode, {
+          value: unitCode,
+          label: `${unitCode} (pasif)`,
+          isActive: false,
+        })
+      }
+    })
+
+    if (manualItem.unit && !map.has(manualItem.unit)) {
+      map.set(manualItem.unit, {
+        value: manualItem.unit,
+        label: manualItem.unit,
+        isActive: true,
+      })
+    }
+
+    return Array.from(map.values())
+  }, [normalizedUnitOptions, items, manualItem.unit])
+
+  const unitSelectOptionsWithPlaceholder = useMemo(() => {
+    if (unitSelectOptions.length === 0) {
+      return [
+        {
+          value: '',
+          label: unitOptionsLoading ? 'Ölçü birimleri yükleniyor...' : 'Önce ölçü birimi tanımlayın',
+          isActive: false,
+        },
+      ]
+    }
+
+    return [
+      {
+        value: '',
+        label: 'Birim seçin',
+        isActive: true,
+      },
+      ...unitSelectOptions.map((option) => ({
+        ...option,
+        label: option.label + (option.isActive ? '' : ' (pasif)'),
+      })),
+    ]
+  }, [unitSelectOptions, unitOptionsLoading])
+
+  const currencyOptions = useMemo(() => {
+    const set = new Set(DEFAULT_CURRENCIES)
+    items.forEach((item: any) => {
+      if (item.currency) {
+        set.add(String(item.currency).toUpperCase())
+      }
+    })
+    if (quotation?.currency) {
+      set.add(String(quotation.currency).toUpperCase())
+    }
+    if (manualItem.currency) {
+      set.add(manualItem.currency.toUpperCase())
+    }
+    return Array.from(set)
+  }, [items, quotation?.currency, manualItem.currency])
+
+  const orderedCurrencyTotals = useMemo(() => {
+    const priority = new Map(DEFAULT_CURRENCIES.map((currency, index) => [currency, index]))
+    return [...currencyTotals].sort((a, b) => {
+      const aPriority = priority.has(a.currency) ? priority.get(a.currency)! : DEFAULT_CURRENCIES.length
+      const bPriority = priority.has(b.currency) ? priority.get(b.currency)! : DEFAULT_CURRENCIES.length
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority
+      }
+      return a.currency.localeCompare(b.currency)
+    })
+  }, [currencyTotals])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -220,9 +456,6 @@ export default function QuotationDetailPage() {
       </div>
     )
   }
-
-  const items = quotation.items || []
-  const totalCost = quotation.total_cost || 0
 
   return (
     <div className="space-y-6">
@@ -252,8 +485,16 @@ export default function QuotationDetailPage() {
               {getStatusLabel(quotation.status)}
             </Badge>
           </div>
-          <p className="text-gray-600">
-            {quotation.quotation_number} • Versiyon {quotation.version}
+          <p className="flex flex-wrap items-center gap-2 text-gray-600">
+            <span>{quotation.quotation_number}</span>
+            <span>•</span>
+            <span>{versionLabelDisplay}</span>
+            {lastUpdatedText && (
+              <>
+                <span>•</span>
+                <span>Değiştirilme: {lastUpdatedText}</span>
+              </>
+            )}
           </p>
         </div>
 
@@ -324,11 +565,38 @@ export default function QuotationDetailPage() {
           <CardContent className="pt-6">
             <div className="text-sm text-gray-500">Toplam Maliyet</div>
             <div className="text-2xl font-bold text-blue-600">
-              {Number(totalCost).toLocaleString('tr-TR', {
+              {Number(totalCostTry || 0).toLocaleString('tr-TR', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}{' '}
-              {quotation.currency || 'TRY'}
+              TRY
+            </div>
+            <div className="mt-3 space-y-1 text-sm text-gray-600">
+              {orderedCurrencyTotals.length === 0 ? (
+                <span>Henüz maliyet bilgisi yok</span>
+              ) : (
+                orderedCurrencyTotals.map((total) => (
+                  <div key={total.currency} className="flex items-center justify-between gap-2">
+                    <span>
+                      {Number(total.amount || 0).toLocaleString('tr-TR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{' '}
+                      {total.currency}
+                    </span>
+                    {total.currency !== 'TRY' && (
+                      <span className="text-xs text-gray-500">
+                        ≈{' '}
+                        {Number(total.amount_try || 0).toLocaleString('tr-TR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{' '}
+                        TRY
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
             <div className="text-xs text-gray-500">{items.length} ürün</div>
           </CardContent>
@@ -367,6 +635,19 @@ export default function QuotationDetailPage() {
               <span>Malzeme Listesi</span>
               <div className="flex items-center gap-2">
                 <Button
+                  variant={showManualItemForm ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    if (showManualItemForm) {
+                      resetManualItemForm()
+                    }
+                    setShowManualItemForm((prev) => !prev)
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Yeni Satır
+                </Button>
+                <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setShowStockPanel(!showStockPanel)}
@@ -379,100 +660,350 @@ export default function QuotationDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {items.length === 0 ? (
-              <p className="py-8 text-center text-sm text-gray-500">
-                Henüz ürün eklenmedi. Sağdaki listeden ürün ekleyin.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {/* Header Row */}
-                <div className="grid grid-cols-[40px_2fr_1fr_80px_1fr_1fr_40px] gap-2 border-b pb-2 text-xs font-semibold text-gray-600">
-                  <div className="text-center">#</div>
-                  <div>Ürün Adı</div>
-                  <div className="text-right">Miktar</div>
-                  <div className="text-center">Birim</div>
-                  <div className="text-right">Birim Fiyat</div>
-                  <div className="text-right">Toplam</div>
-                  <div></div>
-                </div>
+            <div className="space-y-3">
+              <div
+                className={`${materialsGridTemplate} border-b pb-2 text-xs font-semibold text-gray-600`}
+              >
+                <div className="text-center">#</div>
+                <div>Ürün Adı</div>
+                <div>Ürün Kodu</div>
+                <div>Açıklama</div>
+                <div className="text-right">Miktar</div>
+                <div className="text-center">Birim</div>
+                <div className="text-right">Birim Fiyat / Para Birimi</div>
+                <div className="text-right">Toplam</div>
+                <div></div>
+              </div>
 
-                {/* Items */}
-                {items.map((item: any, index: number) => (
-                  <div key={item.id} className="grid grid-cols-[40px_2fr_1fr_80px_1fr_1fr_40px] gap-2 items-center rounded border bg-gray-50 px-2 py-2 text-sm hover:bg-gray-100">
-                    <div className="flex justify-center">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
-                        {index + 1}
-                      </span>
-                    </div>
-                    <div className="truncate">
-                      <div className="font-medium text-gray-900 truncate">{item.product_name}</div>
-                      <div className="text-xs text-gray-500 truncate">
-                        {item.product_code && `${item.product_code}`}
-                        {item.category && ` • ${item.category}`}
-                      </div>
-                    </div>
-                    <div>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        value={item.quantity || ''}
-                        onChange={(e) =>
-                          handleUpdateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)
-                        }
-                        className="h-8 text-xs text-right"
-                      />
-                    </div>
-                    <div className="text-center text-xs text-gray-600">
-                      {item.unit || '-'}
-                    </div>
-                    <div>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={item.unit_cost || ''}
-                        onChange={(e) =>
-                          handleUpdateItem(item.id, 'unit_cost', parseFloat(e.target.value) || 0)
-                        }
-                        className="h-8 text-xs text-right"
-                      />
-                    </div>
-                    <div className="flex items-center justify-end rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
-                      {Number(item.total_cost || 0).toLocaleString('tr-TR', {
-                        minimumFractionDigits: 2,
-                      })}
-                    </div>
-                    <div className="flex justify-center">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteItem(item.id, item.product_name)}
-                        className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+              {showManualItemForm && (
+                <div
+                  className={`${materialsGridTemplate} items-center rounded border border-dashed border-blue-300 bg-blue-50/60 px-2 py-3 text-sm`}
+                >
+                  <div className="flex justify-center text-xs font-semibold uppercase text-blue-500">
+                    Yeni
                   </div>
-                ))}
-
-                {/* Summary */}
-                <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-blue-900">
-                      TOPLAM MALİYET
-                    </span>
-                    <span className="text-2xl font-bold text-blue-700">
-                      {Number(totalCost).toLocaleString('tr-TR', {
+                  <Input
+                    value={manualItem.product_name}
+                    onChange={(e) => handleManualItemChange('product_name', e.target.value)}
+                    placeholder="Ürün adı *"
+                    className="h-8 text-xs"
+                  />
+                  <Input
+                    value={manualItem.product_code}
+                    onChange={(e) => handleManualItemChange('product_code', e.target.value)}
+                    placeholder="Ürün kodu"
+                    className="h-8 text-xs"
+                  />
+                  <Input
+                    value={manualItem.notes}
+                    onChange={(e) => handleManualItemChange('notes', e.target.value)}
+                    placeholder="Açıklama"
+                    className="h-8 text-xs"
+                  />
+                  <Input
+                    value={manualItem.quantity}
+                    onChange={(e) => handleManualItemChange('quantity', e.target.value)}
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    className="h-8 text-xs text-right"
+                  />
+                  <select
+                    value={manualItem.unit}
+                    onChange={(e) => handleManualItemChange('unit', e.target.value)}
+                    className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs text-center"
+                    disabled={unitOptionsLoading || unitSelectOptions.length === 0}
+                  >
+                    {unitSelectOptionsWithPlaceholder.map((option) => (
+                      <option
+                        key={option.value || 'placeholder'}
+                        value={option.value}
+                        disabled={!option.value && unitSelectOptions.length === 0}
+                      >
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={manualItem.currency}
+                      onChange={(e) => handleManualItemChange('currency', e.target.value)}
+                      className="h-8 min-w-[80px] rounded-md border border-gray-300 bg-white px-2 text-xs"
+                    >
+                      {currencyOptions.map((currency) => (
+                        <option key={currency} value={currency}>
+                          {currency}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      value={manualItem.unit_cost}
+                      onChange={(e) => handleManualItemChange('unit_cost', e.target.value)}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="h-8 min-w-[110px] text-xs text-right"
+                    />
+                  </div>
+                  <div className="flex flex-col items-end rounded bg-white px-2 py-1 text-xs font-semibold text-blue-700">
+                    <span>
+                      {manualItemTotal.toLocaleString('tr-TR', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}{' '}
-                      {quotation.currency || 'TRY'}
+                      {manualItem.currency || 'TRY'}
                     </span>
                   </div>
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleAddManualItem}
+                      disabled={
+                        addingManualItem || unitSelectOptions.length === 0 || currencyOptions.length === 0
+                      }
+                    >
+                      {addingManualItem ? 'Ekleniyor...' : 'Ekle'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        resetManualItemForm()
+                        setShowManualItemForm(false)
+                      }}
+                      disabled={addingManualItem}
+                    >
+                      Vazgeç
+                    </Button>
+                  </div>
                 </div>
+              )}
+
+              {items.length === 0 ? (
+                <p className="rounded border border-dashed border-gray-300 py-6 text-center text-sm text-gray-500">
+                  Henüz ürün eklenmedi. Stok kartlarından veya «Yeni Satır» ile malzeme ekleyin.
+                </p>
+              ) : (
+                items.map((item: any, index: number) => {
+                  const quantityValue = Number(item.quantity ?? 0)
+                  const unitCostValue = Number(item.unit_cost ?? 0)
+                  const currencyCode = (item.currency || 'TRY').toUpperCase()
+                  const totalDisplay = Number(item.total_cost || 0).toLocaleString('tr-TR', {
+                    minimumFractionDigits: 2,
+                  })
+                  const totalDisplayTry = Number(item.total_cost_try || 0).toLocaleString('tr-TR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`${materialsGridTemplate} items-center rounded border bg-gray-50 px-2 py-3 text-sm hover:bg-gray-100`}
+                    >
+                      <div className="flex justify-center">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+                          {index + 1}
+                        </span>
+                      </div>
+                      <Input
+                        key={`${item.id}-name-${item.product_name ?? ''}`}
+                        defaultValue={item.product_name ?? ''}
+                        placeholder="Ürün adı"
+                        className="h-8 text-xs"
+                        onBlur={(e) => {
+                          const value = e.target.value.trim()
+                          const original = item.product_name ?? ''
+                          if (!value) {
+                            e.target.value = original
+                            toast.error('Ürün adı gerekli')
+                            return
+                          }
+                          if (value === original) return
+                          handleUpdateItem(item.id, 'product_name', value)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur()
+                          }
+                        }}
+                      />
+                      <Input
+                        key={`${item.id}-code-${item.product_code ?? ''}`}
+                        defaultValue={item.product_code ?? ''}
+                        placeholder="Ürün kodu"
+                        className="h-8 text-xs"
+                        onBlur={(e) => {
+                          const value = e.target.value.trim()
+                          const original = item.product_code ?? ''
+                          if (value === original) return
+                          handleUpdateItem(item.id, 'product_code', value || null)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur()
+                          }
+                        }}
+                      />
+                      <Input
+                        key={`${item.id}-notes-${item.notes ?? ''}`}
+                        defaultValue={item.notes ?? ''}
+                        placeholder="Açıklama"
+                        className="h-8 text-xs"
+                        onBlur={(e) => {
+                          const value = e.target.value.trim()
+                          const original = item.notes ?? ''
+                          if (value === original) return
+                          handleUpdateItem(item.id, 'notes', value || null)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur()
+                          }
+                        }}
+                      />
+                      <Input
+                        key={`${item.id}-quantity-${item.quantity ?? ''}`}
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        defaultValue={item.quantity ?? ''}
+                        className="h-8 text-xs text-right"
+                        onBlur={(e) => {
+                          const raw = e.target.value
+                          if (!raw.trim()) {
+                            e.target.value = item.quantity ?? ''
+                            return
+                          }
+                          const parsed = parseFloat(raw)
+                          if (Number.isNaN(parsed) || parsed < 0) {
+                            toast.error('Miktar geçersiz')
+                            e.target.value = item.quantity ?? ''
+                            return
+                          }
+                          if (parsed === quantityValue) return
+                          handleUpdateItem(item.id, 'quantity', parsed)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur()
+                          }
+                        }}
+                      />
+                      <select
+                        value={item.unit || ''}
+                        onChange={(e) => handleUpdateItem(item.id, 'unit', e.target.value || null)}
+                        className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs text-center"
+                      >
+                        {unitSelectOptionsWithPlaceholder.map((option) => (
+                          <option key={option.value || 'placeholder'} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={currencyCode}
+                          onChange={(e) => handleUpdateItem(item.id, 'currency', e.target.value)}
+                          className="h-8 min-w-[80px] rounded-md border border-gray-300 bg-white px-2 text-xs"
+                        >
+                          {currencyOptions.map((currency) => (
+                            <option key={`${item.id}-${currency}`} value={currency}>
+                              {currency}
+                            </option>
+                          ))}
+                        </select>
+                        <Input
+                          key={`${item.id}-unitcost-${item.unit_cost ?? ''}`}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          defaultValue={item.unit_cost ?? ''}
+                          className="h-8 min-w-[110px] text-xs text-right"
+                          onBlur={(e) => {
+                            const raw = e.target.value
+                            if (!raw.trim()) {
+                              e.target.value = item.unit_cost ?? ''
+                              return
+                            }
+                            const parsed = parseFloat(raw)
+                            if (Number.isNaN(parsed) || parsed < 0) {
+                              toast.error('Birim fiyat geçersiz')
+                              e.target.value = item.unit_cost ?? ''
+                              return
+                            }
+                            if (parsed === unitCostValue) return
+                            handleUpdateItem(item.id, 'unit_cost', parsed)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.currentTarget.blur()
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col items-end rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
+                        <span>
+                          {totalDisplay} {currencyCode}
+                        </span>
+                        {currencyCode !== 'TRY' && (
+                          <span className="text-[11px] font-normal text-gray-600">
+                            ≈ {totalDisplayTry} TRY
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex justify-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteItem(item.id, item.product_name)}
+                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+
+              <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-sm font-semibold text-blue-900">TOPLAM MALİYET (TRY)</span>
+                  <span className="text-2xl font-bold text-blue-700">
+                    {Number(totalCostTry || 0).toLocaleString('tr-TR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{' '}
+                    TRY
+                  </span>
+                </div>
+                {orderedCurrencyTotals.length > 0 && (
+                  <div className="mt-2 space-y-1 text-xs text-blue-900">
+                    {orderedCurrencyTotals.map((total) => (
+                      <div key={`summary-${total.currency}`} className="flex items-center justify-between gap-2">
+                        <span>
+                          {Number(total.amount || 0).toLocaleString('tr-TR', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{' '}
+                          {total.currency}
+                        </span>
+                        {total.currency !== 'TRY' && (
+                          <span className="text-[11px] text-blue-700/80">
+                            ≈ {Number(total.amount_try || 0).toLocaleString('tr-TR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}{' '}
+                            TRY
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </CardContent>
         </Card>
 

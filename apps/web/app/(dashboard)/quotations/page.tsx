@@ -7,6 +7,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
   Plus,
   Search,
   Eye,
@@ -214,93 +222,201 @@ export default function QuotationsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {filteredQuotations.map((quotation) => (
-            <Card key={quotation.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {quotation.name}
-                      </h3>
-                      <Badge className={getStatusColor(quotation.status)}>
-                        {getStatusLabel(quotation.status)}
-                      </Badge>
-                    </div>
-
-                    <div className="grid gap-2 text-sm text-gray-600 md:grid-cols-2 lg:grid-cols-4">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-gray-400" />
-                        <span className="font-mono">{quotation.quotation_number}</span>
-                      </div>
-
-                      {quotation.customer_name && (
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-gray-400" />
-                          <span>{quotation.customer_name}</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-gray-400" />
-                        <span>{quotation.created_by_name || 'Bilinmiyor'}</span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-gray-400" />
-                        <span>
+        <>
+          <Card className="hidden md:block">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Teklif</TableHead>
+                      <TableHead className="hidden lg:table-cell">Müşteri</TableHead>
+                      <TableHead className="hidden xl:table-cell">Oluşturan</TableHead>
+                      <TableHead className="hidden lg:table-cell">Tarih</TableHead>
+                      <TableHead className="hidden xl:table-cell text-center">Ürün</TableHead>
+                      <TableHead className="text-right">Toplam</TableHead>
+                      <TableHead>Durum</TableHead>
+                      <TableHead className="text-right">İşlemler</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredQuotations.map((quotation) => (
+                      <TableRow
+                        key={quotation.id}
+                        onClick={() => router.push(`/quotations/${quotation.id}`)}
+                        className="cursor-pointer"
+                      >
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <span className="font-semibold text-gray-900">
+                              {quotation.name}
+                            </span>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                              {quotation.quotation_number && (
+                                <span className="font-mono">{quotation.quotation_number}</span>
+                              )}
+                              <span>{quotation.item_count || 0} ürün</span>
+                            </div>
+                            {quotation.description && (
+                              <p className="text-xs text-gray-500 line-clamp-1">
+                                {quotation.description}
+                              </p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          {quotation.customer_name || '-'}
+                        </TableCell>
+                        <TableCell className="hidden xl:table-cell">
+                          {quotation.created_by_name || 'Bilinmiyor'}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
                           {quotation.created_at
                             ? new Date(quotation.created_at).toLocaleDateString('tr-TR')
                             : '-'}
+                        </TableCell>
+                        <TableCell className="hidden xl:table-cell text-center">
+                          <span className="font-medium text-gray-700">
+                            {quotation.item_count || 0}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <span className="font-semibold text-blue-600">
+                            {quotation.total_cost
+                              ? `${Number(quotation.total_cost).toLocaleString('tr-TR', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })} ${quotation.currency || 'TRY'}`
+                              : '0.00 TRY'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          <Badge className={getStatusColor(quotation.status)}>
+                            {getStatusLabel(quotation.status)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="w-px text-right">
+                          <div className="flex justify-end gap-2">
+                            <Link
+                              href={`/quotations/${quotation.id}`}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <Button variant="outline" size="sm">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                            {quotation.status === 'draft' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleDelete(quotation.id, quotation.name)
+                                }}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-4 md:hidden">
+            {filteredQuotations.map((quotation) => (
+              <Card key={quotation.id} className="transition-shadow hover:shadow-md">
+                <CardContent className="pt-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="mb-2 flex items-center gap-3">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {quotation.name}
+                        </h3>
+                        <Badge className={getStatusColor(quotation.status)}>
+                          {getStatusLabel(quotation.status)}
+                        </Badge>
+                      </div>
+
+                      <div className="grid gap-2 text-sm text-gray-600">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-gray-400" />
+                          <span className="font-mono">{quotation.quotation_number}</span>
+                        </div>
+
+                        {quotation.customer_name && (
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-gray-400" />
+                            <span>{quotation.customer_name}</span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-gray-400" />
+                          <span>{quotation.created_by_name || 'Bilinmiyor'}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-gray-400" />
+                          <span>
+                            {quotation.created_at
+                              ? new Date(quotation.created_at).toLocaleDateString('tr-TR')
+                              : '-'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-4 text-sm">
+                        <span className="text-gray-600">
+                          <span className="font-semibold">{quotation.item_count || 0}</span>{' '}
+                          ürün
+                        </span>
+                        <span className="text-gray-600">•</span>
+                        <span className="font-semibold text-blue-600">
+                          {quotation.total_cost
+                            ? `${Number(quotation.total_cost).toLocaleString('tr-TR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })} ${quotation.currency || 'TRY'}`
+                            : '0.00 TRY'}
                         </span>
                       </div>
+
+                      {quotation.description && (
+                        <p className="mt-2 text-sm text-gray-500 line-clamp-2">
+                          {quotation.description}
+                        </p>
+                      )}
                     </div>
 
-                    <div className="mt-3 flex items-center gap-4 text-sm">
-                      <span className="text-gray-600">
-                        <span className="font-semibold">{quotation.item_count || 0}</span> ürün
-                      </span>
-                      <span className="text-gray-600">•</span>
-                      <span className="font-semibold text-blue-600">
-                        {quotation.total_cost
-                          ? `${Number(quotation.total_cost).toLocaleString('tr-TR', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })} ${quotation.currency || 'TRY'}`
-                          : '0.00 TRY'}
-                      </span>
+                    <div className="flex gap-2">
+                      <Link href={`/quotations/${quotation.id}`}>
+                        <Button variant="outline" size="sm">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                      {quotation.status === 'draft' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(quotation.id, quotation.name)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
-
-                    {quotation.description && (
-                      <p className="mt-2 text-sm text-gray-500 line-clamp-2">
-                        {quotation.description}
-                      </p>
-                    )}
                   </div>
-
-                  <div className="flex gap-2">
-                    <Link href={`/quotations/${quotation.id}`}>
-                      <Button variant="outline" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </Link>
-                    {quotation.status === 'draft' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(quotation.id, quotation.name)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Create Dialog */}

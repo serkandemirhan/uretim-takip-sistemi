@@ -652,90 +652,130 @@ export default function CustomerDetailPage() {
       </Link>
 
       <Card>
-        <CardHeader className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <CardTitle className="text-2xl font-bold text-gray-900">{customer.name}</CardTitle>
-            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-500">
-              {customer.short_code && (
-                <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-semibold uppercase text-gray-600">
-                  {customer.short_code}
-                </span>
-              )}
-              {customer.code && <span>Kod: {customer.code}</span>}
-              {customer.created_at && <span>Oluşturma: {formatDate(customer.created_at)}</span>}
-            </div>
-          </div>
-          <Button variant="outline" className="gap-2" onClick={openCustomerPanel}>
-            <Pencil className="h-4 w-4" />
-            Bilgileri Düzenle
-          </Button>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-3 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-gray-400" />
-              <span>{customer.contact_person || 'Yetkili belirtilmemiş'}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Phone className="h-4 w-4 text-gray-400" />
-              <span>
-                {[customer.phone, customer.phone_secondary, customer.gsm].filter(Boolean).join(' / ') ||
-                  'Telefon belirtilmemiş'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-gray-400" />
-              <span>{customer.email || 'E-posta belirtilmemiş'}</span>
-            </div>
-          </div>
-          <div className="space-y-3 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-gray-400" />
-              <span>
-                {customer.tax_office
-                  ? `${customer.tax_office} • ${customer.tax_number || 'No belirtilmemiş'}`
-                  : 'Vergi bilgisi belirtilmemiş'}
-              </span>
-            </div>
-            <div className="flex items-start gap-2">
-              <MapPin className="mt-0.5 h-4 w-4 text-gray-400" />
-              <span>
-                {customer.address ? (
-                  <>
-                    {customer.address}
-                    {(customer.city || customer.postal_code) && (
-                      <>
-                        <br />
-                        {customer.postal_code && `${customer.postal_code} `}
-                        {customer.city}
-                      </>
-                    )}
-                  </>
-                ) : (
-                  'Adres belirtilmemiş'
+        <CardHeader>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-2xl font-bold text-gray-900">{customer.name}</CardTitle>
+              <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-500">
+                {customer.short_code && (
+                  <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-semibold uppercase text-gray-600">
+                    {customer.short_code}
+                  </span>
                 )}
-              </span>
-            </div>
-            {customer.notes && (
-              <div className="rounded-md bg-gray-50 p-3 text-xs text-gray-600">
-                <p className="font-semibold text-gray-700">Notlar</p>
-                <p className="mt-1 whitespace-pre-wrap">{customer.notes}</p>
+                {customer.code && <span>Kod: {customer.code}</span>}
+                {customer.created_at && <span>Oluşturma: {formatDate(customer.created_at)}</span>}
               </div>
-            )}
+            </div>
+            <Button variant="outline" className="gap-2" onClick={openCustomerPanel}>
+              <Pencil className="h-4 w-4" />
+              Bilgileri Düzenle
+            </Button>
           </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-3">
+              <h3 className="text-xs font-semibold uppercase text-gray-500">İletişim Bilgileri</h3>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex items-start gap-2">
+                  <User className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-500">Yetkili Kişi</p>
+                    <p className="font-medium">{customer.contact_person || '—'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Phone className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-500">Telefon</p>
+                    <p className="font-medium">{customer.phone || '—'}</p>
+                    {customer.phone_secondary && (
+                      <p className="font-medium text-gray-500">{customer.phone_secondary}</p>
+                    )}
+                    {customer.gsm && (
+                      <p className="font-medium text-gray-500">{customer.gsm}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Mail className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-500">E-posta</p>
+                    <p className="font-medium">{customer.email || '—'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-xs font-semibold uppercase text-gray-500">Vergi Bilgileri</h3>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex items-start gap-2">
+                  <Building2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-500">Vergi Dairesi</p>
+                    <p className="font-medium">{customer.tax_office || '—'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Building2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-500">Vergi No</p>
+                    <p className="font-medium">{customer.tax_number || '—'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-xs font-semibold uppercase text-gray-500">Adres Bilgileri</h3>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-500">Şehir</p>
+                    <p className="font-medium">{customer.city || '—'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-500">Posta Kodu</p>
+                    <p className="font-medium">{customer.postal_code || '—'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-500">Adres</p>
+                    <p className="font-medium">{customer.address || '—'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {customer.notes && (
+            <div className="rounded-md border bg-gray-50 p-4">
+              <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500">Notlar</h3>
+              <p className="whitespace-pre-wrap text-sm text-gray-600">{customer.notes}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle>Bayi Listesi</CardTitle>
-            <p className="text-sm text-gray-500">Bu müşteriye bağlı {dealerCount} bayi</p>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>Bayi Listesi</CardTitle>
+              <p className="text-sm text-gray-500">Bu müşteriye bağlı {dealerCount} bayi</p>
+            </div>
+            <Button onClick={openDealerCreatePanel} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Yeni Bayi
+            </Button>
           </div>
-          <Button onClick={openDealerCreatePanel} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Yeni Bayi
-          </Button>
         </CardHeader>
         <CardContent>
           {dealerCount === 0 ? (
@@ -747,13 +787,13 @@ export default function CustomerDetailPage() {
               <table className="w-full table-fixed text-left text-sm">
                 <thead>
                   <tr className="border-b bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="w-[22%] px-3 py-3">Bayi</th>
-                    <th className="w-[16%] px-3 py-3">Yetkili</th>
-                    <th className="w-[16%] px-3 py-3">Telefon</th>
-                    <th className="w-[18%] px-3 py-3">E-posta</th>
-                    <th className="w-[14%] px-3 py-3">Şehir</th>
-                    <th className="w-[14%] px-3 py-3">Vergi Dairesi</th>
-                    <th className="w-[10%] px-3 py-3 text-right">İşlem</th>
+                    <th className="w-[20%] px-3 py-3">Bayi</th>
+                    <th className="w-[14%] px-3 py-3">Yetkili</th>
+                    <th className="w-[14%] px-3 py-3">Telefon</th>
+                    <th className="w-[16%] px-3 py-3">E-posta</th>
+                    <th className="w-[12%] px-3 py-3">Şehir</th>
+                    <th className="w-[16%] px-3 py-3">Adres</th>
+                    <th className="w-[8%] px-3 py-3 text-right">İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -782,7 +822,7 @@ export default function CustomerDetailPage() {
                           {[dealer.district, dealer.city].filter(Boolean).join(' / ') || '—'}
                         </td>
                         <td className="px-3 py-3 text-gray-700">
-                          {dealer.tax_office || '—'}
+                          {dealer.address || '—'}
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex justify-end gap-1">

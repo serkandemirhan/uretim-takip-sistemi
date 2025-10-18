@@ -706,12 +706,38 @@ export const quotationsAPI = {
   },
 
   // Kalem işlemleri
-  addItems: async (quotationId: string, items: Array<{ stock_id: string; quantity?: number }>) => {
+  addItems: async (
+    quotationId: string,
+    items: Array<{
+      stock_id?: string
+      product_code?: string
+      product_name?: string
+      category?: string
+      quantity?: number
+      unit?: string
+      unit_cost?: number
+      currency?: string
+      notes?: string
+    }>,
+  ) => {
     const response = await apiClient.post(`/api/quotations/${quotationId}/items`, { items })
     return response.data
   },
 
-  updateItem: async (quotationId: string, itemId: string, data: { quantity?: number; unit_cost?: number; notes?: string }) => {
+  updateItem: async (
+    quotationId: string,
+    itemId: string,
+    data: {
+      quantity?: number
+      unit_cost?: number
+      product_code?: string | null
+      product_name?: string
+      category?: string | null
+      unit?: string | null
+      notes?: string | null
+      currency?: string | null
+    },
+  ) => {
     const response = await apiClient.put(`/api/quotations/${quotationId}/items/${itemId}`, data)
     return response.data
   },
@@ -723,6 +749,32 @@ export const quotationsAPI = {
 
   reorderItems: async (quotationId: string, itemIds: string[]) => {
     const response = await apiClient.post(`/api/quotations/${quotationId}/items/reorder`, { item_ids: itemIds })
+    return response.data
+  },
+}
+
+// Units API
+export const unitsAPI = {
+  getAll: async (params?: { include_inactive?: boolean }) => {
+    const response = await apiClient.get('/api/units', { params })
+    return response.data
+  },
+
+  create: async (data: { code: string; name: string; description?: string; is_active?: boolean }) => {
+    const response = await apiClient.post('/api/units', data)
+    return response.data
+  },
+
+  update: async (
+    id: string,
+    data: { code?: string; name?: string; description?: string; is_active?: boolean },
+  ) => {
+    const response = await apiClient.put(`/api/units/${id}`, data)
+    return response.data
+  },
+
+  deactivate: async (id: string) => {
+    const response = await apiClient.delete(`/api/units/${id}`)
     return response.data
   },
 }

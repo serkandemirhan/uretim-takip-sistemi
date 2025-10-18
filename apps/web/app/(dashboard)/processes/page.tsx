@@ -635,42 +635,6 @@ const renderProcessRow = (process: Process, groupId: string) => {
           )}
         </td>
         <td className="py-3 px-4 text-sm text-gray-500">
-          {isEditing ? (
-            <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input
-                type="checkbox"
-                checked={Boolean(processForm.is_machine_based)}
-                onChange={(e) =>
-                  setProcessForm((prev) => ({ ...prev, is_machine_based: e.target.checked }))
-                }
-              />
-              Makine gerektirir
-            </label>
-          ) : process.is_machine_based ? (
-            'Evet'
-          ) : (
-            'Hayır'
-          )}
-        </td>
-        <td className="py-3 px-4 text-sm text-gray-500">
-          {isEditing ? (
-            <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input
-                type="checkbox"
-                checked={Boolean(processForm.is_production)}
-                onChange={(e) =>
-                  setProcessForm((prev) => ({ ...prev, is_production: e.target.checked }))
-                }
-              />
-              Üretim adımı
-            </label>
-          ) : process.is_production ? (
-            'Evet'
-          ) : (
-            'Hayır'
-          )}
-        </td>
-        <td className="py-3 px-4 text-sm text-gray-500">
           <select
             className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm"
             value={process.group_id ?? ''}
@@ -756,32 +720,6 @@ const renderNewProcessRow = (groupId: string) => {
         />
       </td>
       <td className="py-3 px-4 text-sm text-gray-500">
-        <label className="flex items-center gap-2 text-xs text-gray-600">
-          <input
-            type="checkbox"
-            checked={newProcessForm.is_machine_based}
-            onChange={(e) =>
-              setNewProcessForm((prev) => ({ ...prev, is_machine_based: e.target.checked }))
-            }
-            disabled={creatingProcess}
-          />
-          Makine gerektirir
-        </label>
-      </td>
-      <td className="py-3 px-4 text-sm text-gray-500">
-        <label className="flex items-center gap-2 text-xs text-gray-600">
-          <input
-            type="checkbox"
-            checked={newProcessForm.is_production}
-            onChange={(e) =>
-              setNewProcessForm((prev) => ({ ...prev, is_production: e.target.checked }))
-            }
-            disabled={creatingProcess}
-          />
-          Üretim adımı
-        </label>
-      </td>
-      <td className="py-3 px-4 text-sm text-gray-500">
         <span className="text-xs uppercase text-gray-500">{groupName}</span>
       </td>
       <td className="py-3 px-4 text-right">
@@ -810,7 +748,7 @@ const renderNewProcessRow = (groupId: string) => {
           <CardTitle>Yeni Grup Oluştur</CardTitle>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto] items-end" onSubmit={createGroup}>
+          <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] items-end" onSubmit={createGroup}>
             <div className="space-y-2">
               <Label htmlFor="group_name">Grup Adı *</Label>
               <Input
@@ -832,7 +770,7 @@ const renderNewProcessRow = (groupId: string) => {
                 disabled={creatingGroup}
               />
             </div>
-            <Button type="submit" disabled={creatingGroup} className="mt-2 md:mt-0">
+            <Button type="submit" disabled={creatingGroup} className="mt-2 sm:mt-0">
               {creatingGroup ? 'Ekleniyor...' : 'Grup Oluştur'}
             </Button>
           </form>
@@ -856,14 +794,12 @@ const renderNewProcessRow = (groupId: string) => {
             <div className="p-8 text-center text-gray-500">Yükleniyor…</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border text-sm">
+              <table className="hidden lg:table w-full border text-sm">
                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                   <tr>
                     <th className="py-2 px-4 w-[32px]"></th>
                     <th className="py-2 px-4 text-left">Süreç</th>
                     <th className="py-2 px-4 text-left">Kod</th>
-                    <th className="py-2 px-4 text-left">Makine</th>
-                    <th className="py-2 px-4 text-left">Üretim</th>
                     <th className="py-2 px-4 text-left">Grup</th>
                     <th className="py-2 px-4 text-right">İşlem</th>
                   </tr>
@@ -891,7 +827,7 @@ const renderNewProcessRow = (groupId: string) => {
                               {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                             </button>
                           </td>
-                          <td colSpan={5} className="py-3 px-4">
+                          <td colSpan={3} className="py-3 px-4">
                             {editingGroupId === group.id ? (
                                 <div className="grid gap-3 md:grid-cols-[2fr_3fr_auto] items-center">
                                 <Input
@@ -967,7 +903,7 @@ const renderNewProcessRow = (groupId: string) => {
                             }}
                             onDrop={(e) => e.preventDefault()}
                           >
-                            <td colSpan={7} className="py-4 px-4 text-center text-xs text-gray-500">
+                            <td colSpan={5} className="py-4 px-4 text-center text-xs text-gray-500">
                               Bu gruba henüz süreç eklenmemiş.
                             </td>
                           </tr>
@@ -997,9 +933,9 @@ const renderNewProcessRow = (groupId: string) => {
                         )}
                       </button>
                     </td>
-                    <td colSpan={6} className="py-3 px-4 text-sm font-semibold text-gray-900">
+                    <td colSpan={4} className="py-3 px-4 text-sm font-semibold text-gray-900">
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span>Gruba Atanmamış Süreçler ({ungrouped.length})</span>
+                        <span>Atanmamış Süreçler ({ungrouped.length})</span>
                         <Button
                           size="sm"
                           variant="outline"
@@ -1027,13 +963,439 @@ const renderNewProcessRow = (groupId: string) => {
                         }}
                         onDrop={(e) => e.preventDefault()}
                       >
-                        <td colSpan={7} className="py-4 px-4 text-center text-xs text-gray-500">
+                        <td colSpan={5} className="py-4 px-4 text-center text-xs text-gray-500">
                           Grupsuz süreç yok.
                         </td>
                       </tr>
                     ))}
                 </tbody>
               </table>
+
+              {/* Mobile View */}
+              <div className="lg:hidden space-y-4">
+                {groups.map((group) => {
+                  const isExpanded = expandedGroups[group.id] ?? true
+                  return (
+                    <div key={group.id} className="border rounded-lg overflow-hidden">
+                      <div className="bg-gray-100 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(group.id)}
+                            className="flex items-center gap-2 flex-1 text-left"
+                          >
+                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            <div>
+                              <p className="font-semibold text-gray-900">{group.name}</p>
+                              {group.description && (
+                                <p className="text-xs text-gray-500">{group.description}</p>
+                              )}
+                            </div>
+                          </button>
+                          <div className="flex gap-2">
+                            {editingGroupId === group.id ? (
+                              <>
+                                <Button variant="outline" size="sm" onClick={cancelGroupEdit} disabled={savingGroup}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" onClick={saveGroup} disabled={savingGroup}>
+                                  <Save className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => startNewProcess(group.id)}
+                                  className="border-dashed border-blue-200 text-blue-600"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => startGroupEdit(group)}>
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-red-600"
+                                  onClick={() => deleteGroup(group)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {editingGroupId === group.id && (
+                          <div className="mt-3 space-y-2">
+                            <Input
+                              value={groupEditForm.name}
+                              onChange={(e) => setGroupEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                              placeholder="Grup adı"
+                            />
+                            <Input
+                              value={groupEditForm.description}
+                              onChange={(e) => setGroupEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                              placeholder="Açıklama"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      {isExpanded && (
+                        <div className="divide-y">
+                          {group.processes.length === 0 && newProcessTarget !== group.id ? (
+                            <div className="p-4 text-center text-sm text-gray-500">
+                              Bu gruba henüz süreç eklenmemiş.
+                            </div>
+                          ) : (
+                            <>
+                              {group.processes.map((process) => {
+                                const isEditing = editingProcessId === process.id
+                                return (
+                                  <div key={process.id} className="p-4 bg-white">
+                                    <div className="flex items-start gap-3">
+                                      <GripVertical className="h-5 w-5 text-gray-400 mt-1 flex-shrink-0" />
+                                      <div className="flex-1 space-y-3">
+                                        {isEditing ? (
+                                          <>
+                                            <Input
+                                              value={processForm.name ?? ''}
+                                              onChange={(e) => setProcessForm((prev) => ({ ...prev, name: e.target.value }))}
+                                              placeholder="Süreç adı"
+                                            />
+                                            <Input
+                                              value={processForm.code ?? ''}
+                                              onChange={(e) => setProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                                              placeholder="Kod"
+                                            />
+                                            <select
+                                              className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm"
+                                              value={process.group_id ?? ''}
+                                              onChange={(e) => handleGroupChange(process, e.target.value)}
+                                            >
+                                              {groupOptions.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                  {option.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div>
+                                              <p className="font-medium text-gray-900">{process.name}</p>
+                                              <span className="inline-block mt-1 rounded bg-gray-100 px-2 py-1 text-xs uppercase text-gray-700">
+                                                {process.code}
+                                              </span>
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                              <select
+                                                className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm"
+                                                value={process.group_id ?? ''}
+                                                onChange={(e) => handleGroupChange(process, e.target.value)}
+                                                disabled={savingProcessId === process.id}
+                                              >
+                                                {groupOptions.map((option) => (
+                                                  <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                          </>
+                                        )}
+                                        <div className="flex gap-2">
+                                          {isEditing ? (
+                                            <>
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={cancelProcessEdit}
+                                                disabled={savingProcessId === process.id}
+                                                className="flex-1"
+                                              >
+                                                <X className="h-4 w-4 mr-1" />
+                                                İptal
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                onClick={() => saveProcess(process.id)}
+                                                disabled={savingProcessId === process.id}
+                                                className="flex-1"
+                                              >
+                                                <Save className="h-4 w-4 mr-1" />
+                                                Kaydet
+                                              </Button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => startEditProcess(process)}
+                                                className="flex-1"
+                                              >
+                                                <Edit className="h-4 w-4 mr-1" />
+                                                Düzenle
+                                              </Button>
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex-1 text-red-600"
+                                                onClick={() => deleteProcess(process)}
+                                              >
+                                                <Trash2 className="h-4 w-4 mr-1" />
+                                                Sil
+                                              </Button>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                              {newProcessTarget === group.id && (
+                                <div className="p-4 bg-blue-50">
+                                  <div className="space-y-3">
+                                    <Input
+                                      autoFocus
+                                      value={newProcessForm.name}
+                                      onChange={(e) => setNewProcessForm((prev) => ({ ...prev, name: e.target.value }))}
+                                      placeholder="Süreç adı"
+                                      disabled={creatingProcess}
+                                    />
+                                    <Input
+                                      value={newProcessForm.code}
+                                      onChange={(e) =>
+                                        setNewProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))
+                                      }
+                                      placeholder="Kod"
+                                      disabled={creatingProcess}
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={cancelNewProcess}
+                                        disabled={creatingProcess}
+                                        className="flex-1"
+                                      >
+                                        <X className="h-4 w-4 mr-1" />
+                                        İptal
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleCreateProcess(group.id)}
+                                        disabled={creatingProcess}
+                                        className="flex-1"
+                                      >
+                                        <Save className="h-4 w-4 mr-1" />
+                                        {creatingProcess ? 'Ekleniyor...' : 'Ekle'}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {/* Ungrouped Processes - Mobile */}
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-gray-100 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup('__ungrouped__')}
+                        className="flex items-center gap-2 flex-1 text-left"
+                      >
+                        {expandedGroups['__ungrouped__'] ?? true ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                        <p className="font-semibold text-gray-900">
+                          Atanmamış Süreçler ({ungrouped.length})
+                        </p>
+                      </button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => startNewProcess('__ungrouped__')}
+                        className="border-dashed border-blue-200 text-blue-600"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  {(expandedGroups['__ungrouped__'] ?? true) && (
+                    <div className="divide-y">
+                      {ungrouped.length === 0 && newProcessTarget !== '__ungrouped__' ? (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          Grupsuz süreç yok.
+                        </div>
+                      ) : (
+                        <>
+                          {ungrouped.map((process) => {
+                            const isEditing = editingProcessId === process.id
+                            return (
+                              <div key={process.id} className="p-4 bg-white">
+                                <div className="flex items-start gap-3">
+                                  <GripVertical className="h-5 w-5 text-gray-400 mt-1 flex-shrink-0" />
+                                  <div className="flex-1 space-y-3">
+                                    {isEditing ? (
+                                      <>
+                                        <Input
+                                          value={processForm.name ?? ''}
+                                          onChange={(e) => setProcessForm((prev) => ({ ...prev, name: e.target.value }))}
+                                          placeholder="Süreç adı"
+                                        />
+                                        <Input
+                                          value={processForm.code ?? ''}
+                                          onChange={(e) => setProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                                          placeholder="Kod"
+                                        />
+                                        <select
+                                          className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm"
+                                          value={process.group_id ?? ''}
+                                          onChange={(e) => handleGroupChange(process, e.target.value)}
+                                        >
+                                          {groupOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                              {option.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div>
+                                          <p className="font-medium text-gray-900">{process.name}</p>
+                                          <span className="inline-block mt-1 rounded bg-gray-100 px-2 py-1 text-xs uppercase text-gray-700">
+                                            {process.code}
+                                          </span>
+                                        </div>
+                                        <div className="text-sm text-gray-600">
+                                          <select
+                                            className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm"
+                                            value={process.group_id ?? ''}
+                                            onChange={(e) => handleGroupChange(process, e.target.value)}
+                                            disabled={savingProcessId === process.id}
+                                          >
+                                            {groupOptions.map((option) => (
+                                              <option key={option.value} value={option.value}>
+                                                {option.label}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      </>
+                                    )}
+                                    <div className="flex gap-2">
+                                      {isEditing ? (
+                                        <>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={cancelProcessEdit}
+                                            disabled={savingProcessId === process.id}
+                                            className="flex-1"
+                                          >
+                                            <X className="h-4 w-4 mr-1" />
+                                            İptal
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            onClick={() => saveProcess(process.id)}
+                                            disabled={savingProcessId === process.id}
+                                            className="flex-1"
+                                          >
+                                            <Save className="h-4 w-4 mr-1" />
+                                            Kaydet
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => startEditProcess(process)}
+                                            className="flex-1"
+                                          >
+                                            <Edit className="h-4 w-4 mr-1" />
+                                            Düzenle
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="flex-1 text-red-600"
+                                            onClick={() => deleteProcess(process)}
+                                          >
+                                            <Trash2 className="h-4 w-4 mr-1" />
+                                            Sil
+                                          </Button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                          {newProcessTarget === '__ungrouped__' && (
+                            <div className="p-4 bg-blue-50">
+                              <div className="space-y-3">
+                                <Input
+                                  autoFocus
+                                  value={newProcessForm.name}
+                                  onChange={(e) => setNewProcessForm((prev) => ({ ...prev, name: e.target.value }))}
+                                  placeholder="Süreç adı"
+                                  disabled={creatingProcess}
+                                />
+                                <Input
+                                  value={newProcessForm.code}
+                                  onChange={(e) =>
+                                    setNewProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))
+                                  }
+                                  placeholder="Kod"
+                                  disabled={creatingProcess}
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={cancelNewProcess}
+                                    disabled={creatingProcess}
+                                    className="flex-1"
+                                  >
+                                    <X className="h-4 w-4 mr-1" />
+                                    İptal
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleCreateProcess('__ungrouped__')}
+                                    disabled={creatingProcess}
+                                    className="flex-1"
+                                  >
+                                    <Save className="h-4 w-4 mr-1" />
+                                    {creatingProcess ? 'Ekleniyor...' : 'Ekle'}
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

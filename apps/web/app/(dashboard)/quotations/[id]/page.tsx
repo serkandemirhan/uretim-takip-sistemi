@@ -17,6 +17,7 @@ import {
   Search,
   Package,
   Calculator,
+  Download,
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -67,6 +68,7 @@ export default function QuotationDetailPage() {
   const [addingManualItem, setAddingManualItem] = useState(false)
   const [unitOptions, setUnitOptions] = useState<UnitOption[]>([])
   const [unitOptionsLoading, setUnitOptionsLoading] = useState(true)
+  const [downloading, setDownloading] = useState(false)
 
   useEffect(() => {
     if (params.id) {
@@ -205,8 +207,98 @@ export default function QuotationDetailPage() {
     return quantity * unitCost
   })()
 
-const materialsGridTemplate =
-  'grid grid-cols-[40px_minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1.6fr)_minmax(0,0.55fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1.1fr)_40px] gap-2'
+  function formatCsvValue(value: unknown): string {
+    if (value === null || value === undefined) return ''
+    const str = String(value)
+    if (/[";,\n]/.test(str)) {
+      return `"${str.replace(/"/g, '""')}"`
+    }
+    return str
+  }
+
+  function handleExportCsv() {
+    if (!items.length) {
+      toast.error('Dışa aktarılacak malzeme bulunmuyor')
+      return
+    }
+
+    try {
+      setDownloading(true)
+
+      const headers = [
+        '#',
+        'Ürün Adı',
+        'Ürün Kodu',
+        'Açıklama',
+        'Miktar',
+        'Birim',
+        'Birim Fiyat',
+        'Para Birimi',
+        'Toplam',
+        'Toplam (TRY)',
+      ]
+
+      const rows = items.map((item: any, index: number) => [
+        index + 1,
+        item.product_name || '',
+        item.product_code || '',
+        item.notes || '',
+        item.quantity ?? '',
+        item.unit || '',
+        item.unit_cost ?? '',
+        (item.currency || 'TRY').toUpperCase(),
+        item.total_cost ?? '',
+        item.total_cost_try ?? '',
+      ])
+
+      const summaryRows = orderedCurrencyTotals.map((total) => [
+        '',
+        `Toplam ${total.currency}`,
+        '',
+        '',
+        '',
+        '',
+        '',
+        total.currency,
+        total.amount,
+        total.amount_try,
+      ])
+
+      const finalRows = [
+        headers,
+        ...rows,
+        new Array(headers.length).fill(''),
+        ...summaryRows,
+        ['', 'Toplam TRY', '', '', '', '', '', '', '', Number(totalCostTry || 0)],
+      ]
+
+      const csvContent = finalRows
+        .map((row) => row.map(formatCsvValue).join(';'))
+        .join('\r\n')
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+
+      const filename = `${quotation?.quotation_number || 'teklif'}-malzeme-listesi.csv`
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast.success('Malzeme listesi CSV olarak indirildi')
+    } catch (error) {
+      console.error('CSV export error', error)
+      toast.error('Dışa aktarma sırasında bir sorun oluştu')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const materialsGridTemplate =
+    'grid grid-cols-[40px_minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1.6fr)_minmax(0,0.55fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1.1fr)_40px] gap-2'
 
   async function handleAddManualItem() {
     const productName = manualItem.product_name.trim()
@@ -635,6 +727,15 @@ const materialsGridTemplate =
               <span>Malzeme Listesi</span>
               <div className="flex items-center gap-2">
                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportCsv}
+                  disabled={downloading || items.length === 0}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  {downloading ? 'Dışa aktarılıyor...' : 'CSV Dışa Aktar'}
+                </Button>
+                <Button
                   variant={showManualItemForm ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => {
@@ -676,12 +777,11 @@ const materialsGridTemplate =
               </div>
 
               {showManualItemForm && (
-                <div
-                  className={`${materialsGridTemplate} items-center rounded border border-dashed border-blue-300 bg-blue-50/60 px-2 py-3 text-sm`}
-                >
-                  <div className="flex justify-center text-xs font-semibold uppercase text-blue-500">
-                    Yeni
-                  </div>
+                <div className="rounded border border-dashed border-blue-300 bg-blue-50/60 p-4 text-sm">
+                  <div className={`${materialsGridTemplate} items-start gap-3`}>
+                    <div className="flex justify-center text-xs font-semibold uppercase text-blue-500">
+                      Yeni
+                    </div>
                   <Input
                     value={manualItem.product_name}
                     onChange={(e) => handleManualItemChange('product_name', e.target.value)}
@@ -754,27 +854,30 @@ const materialsGridTemplate =
                       {manualItem.currency || 'TRY'}
                     </span>
                   </div>
-                  <div className="flex justify-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={handleAddManualItem}
-                      disabled={
-                        addingManualItem || unitSelectOptions.length === 0 || currencyOptions.length === 0
-                      }
-                    >
-                      {addingManualItem ? 'Ekleniyor...' : 'Ekle'}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        resetManualItemForm()
-                        setShowManualItemForm(false)
-                      }}
-                      disabled={addingManualItem}
-                    >
-                      Vazgeç
-                    </Button>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <div className="flex items-center gap-2 rounded-full border border-blue-200 bg-white px-3 py-1.5 shadow-sm">
+                      <Button
+                        size="sm"
+                        onClick={handleAddManualItem}
+                        disabled={
+                          addingManualItem || unitSelectOptions.length === 0 || currencyOptions.length === 0
+                        }
+                      >
+                        {addingManualItem ? 'Ekleniyor...' : 'Ekle'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          resetManualItemForm()
+                          setShowManualItemForm(false)
+                        }}
+                        disabled={addingManualItem}
+                      >
+                        Vazgeç
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}

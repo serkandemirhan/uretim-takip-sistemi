@@ -83,7 +83,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
             code: p.code,
             order_index: p.order_index ?? 0,
           })),
-      })).sort((a, b) => a.name.localeCompare(b.name))
+      })).sort((a: ProcessGroup, b: ProcessGroup) => a.name.localeCompare(b.name))
 
       setProcessGroups(groups)
     } catch (error) {

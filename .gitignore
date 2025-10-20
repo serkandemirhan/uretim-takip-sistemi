@@ -21,8 +21,12 @@ build/
 # Env ve loglar
 .env
 .env.*
+.env.supabase
 *.log
-*.md
 
 # macOS
 .DS_Store
+
+# Supabase sync outputs
+supabase_sync_*/
+backup_*.sql

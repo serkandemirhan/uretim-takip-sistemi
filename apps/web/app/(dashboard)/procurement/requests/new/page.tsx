@@ -13,7 +13,7 @@ import { ArrowLeft, Plus, X, Search, Package } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { handleApiError } from '@/lib/utils/error-handler'
-import { PriorityBadge } from '@/components/features/procurement/PriorityBadge'
+import PriorityBadge from '@/components/features/procurement/PriorityBadge'
 
 interface MaterialItem {
   product_id: string

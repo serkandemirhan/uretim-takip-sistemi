@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import { useParams } from 'next/navigation'
 import { jobsAPI, usersAPI, processesAPI, machinesAPI, customersAPI, filesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -1082,7 +1082,7 @@ async function handleCancel() {
       }
     }
 
-    const actionButtons: JSX.Element[] = []
+    const actionButtons: ReactElement[] = []
 
     if (canActivate) {
       actionButtons.push(

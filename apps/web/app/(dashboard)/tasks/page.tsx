@@ -220,49 +220,125 @@ export default function TasksPage() {
           })}
         </div>
       ) : (
-        <>
-          {inProgressTasks.length > 0 && (
-            <div>
-              <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
-                <Play className="h-5 w-5 text-yellow-600" />
-                Devam Eden Görevler
-              </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {inProgressTasks.map((task) => (
-                  <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
-                ))}
-              </div>
-            </div>
-          )}
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[120px]">Durum</TableHead>
+                  <TableHead>İş No</TableHead>
+                  <TableHead>İş Başlığı</TableHead>
+                  <TableHead>Süreç</TableHead>
+                  <TableHead>Müşteri</TableHead>
+                  <TableHead>Makine</TableHead>
+                  <TableHead className="w-[120px]">Termin</TableHead>
+                  <TableHead className="w-[120px]">Süre</TableHead>
+                  <TableHead className="w-[100px]">Miktar</TableHead>
+                  <TableHead className="w-[100px] text-right">İşlemler</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tasks.map((task) => {
+                  const statusMap: Record<TaskStatus, { label: string; class: string }> = {
+                    ready: { label: 'Hazır', class: 'bg-blue-100 text-blue-700' },
+                    in_progress: { label: 'Devam Ediyor', class: 'bg-yellow-100 text-yellow-700' },
+                    completed: { label: 'Tamamlandı', class: 'bg-green-100 text-green-700' },
+                  }
 
-          {readyTasks.length > 0 && (
-            <div>
-              <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
-                <AlertCircle className="h-5 w-5 text-blue-600" />
-                Bekleyen Görevler
-              </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {readyTasks.map((task) => (
-                  <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
-                ))}
-              </div>
-            </div>
-          )}
+                  const statusKey = (typeof task.status === 'string' && task.status in statusMap
+                    ? task.status
+                    : 'ready') as TaskStatus
+                  const statusBadge = statusMap[statusKey]
 
-          {completedTasks.length > 0 && (
-            <div>
-              <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                Tamamlanan Görevler
-              </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {completedTasks.map((task) => (
-                  <TaskCard key={task.id} task={task} onUpdate={loadTasks} />
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+                  // Acil iş kontrolü
+                  const isUrgent = task.job.due_date && new Date(task.job.due_date).getTime() - new Date().getTime() < 24 * 60 * 60 * 1000
+                  const isOverdue = task.job.due_date && new Date(task.job.due_date) < new Date()
+
+                  // Geçen süre hesaplama
+                  const getElapsedTime = () => {
+                    if (task.status !== 'in_progress' || !task.started_at) return null
+                    const start = new Date(task.started_at)
+                    const now = new Date()
+                    const diff = now.getTime() - start.getTime()
+                    const hours = Math.floor(diff / (1000 * 60 * 60))
+                    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+                    return hours > 0 ? `${hours}sa ${minutes}dk` : `${minutes}dk`
+                  }
+
+                  const elapsedTime = getElapsedTime()
+
+                  return (
+                    <TableRow
+                      key={task.id}
+                      className={`hover:bg-gray-50 cursor-pointer ${
+                        isOverdue ? 'bg-red-50' : isUrgent ? 'bg-orange-50' : ''
+                      }`}
+                    >
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <Badge className={statusBadge.class}>
+                            {statusBadge.label}
+                          </Badge>
+                          {isOverdue && (
+                            <Badge className="bg-red-100 text-red-700 text-xs">
+                              GECİKMİŞ
+                            </Badge>
+                          )}
+                          {isUrgent && !isOverdue && (
+                            <Badge className="bg-orange-100 text-orange-700 text-xs">
+                              ACİL
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{task.job.job_number}</TableCell>
+                      <TableCell className="font-medium">{task.job.title}</TableCell>
+                      <TableCell>{task.process.name}</TableCell>
+                      <TableCell className="text-sm text-gray-600">{task.job.customer_name || '-'}</TableCell>
+                      <TableCell className="text-sm text-gray-600">{task.machine?.name || '-'}</TableCell>
+                      <TableCell>
+                        {task.job.due_date ? (
+                          <div className={`text-sm flex items-center gap-1 ${
+                            isOverdue ? 'text-red-600 font-medium' : isUrgent ? 'text-orange-600 font-medium' : 'text-gray-600'
+                          }`}>
+                            <Clock className="w-3 h-3" />
+                            {formatDate(task.job.due_date)}
+                          </div>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {elapsedTime ? (
+                          <div className="text-sm text-yellow-700 font-medium flex items-center gap-1">
+                            <Clock className="w-3 h-3 animate-pulse" />
+                            {elapsedTime}
+                          </div>
+                        ) : task.estimated_duration ? (
+                          <div className="text-sm text-gray-500">
+                            {task.estimated_duration} dk
+                          </div>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {task.status === 'completed' && task.production_quantity ? (
+                          <div className="text-sm text-green-700 font-medium">
+                            {task.production_quantity} {task.production_unit}
+                          </div>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Link href={`/tasks/${task.id}`}>
+                          <Button size="sm" variant="outline">
+                            Detay
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

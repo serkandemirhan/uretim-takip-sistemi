@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Upload, File as FileIcon, X, Loader2, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils/cn'
 
 
 type QueueItem = {
@@ -22,6 +23,7 @@ interface FileUploadProps {
   onUploadComplete?: () => void
   maxFiles?: number
   disabled?: boolean
+  className?: string
 }
 
 export function FileUpload({
@@ -30,6 +32,7 @@ export function FileUpload({
   onUploadComplete,
   maxFiles = 10,
   disabled = false,
+  className,
 }: FileUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [queue, setQueue] = useState<QueueItem[]>([])
@@ -165,7 +168,7 @@ export function FileUpload({
   }
 
   return (
-    <div className="space-y-4">
+    <div className={cn('space-y-4', className)}>
       {/* Drop zone */}
       <div
         className={`w-full rounded-lg border-2 border-dashed p-4 text-center transition-colors ${

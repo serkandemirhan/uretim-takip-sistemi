@@ -160,7 +160,7 @@ export default function FilesExplorerPage() {
   const [selectedStep, setSelectedStep] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid')
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
   const [selectedProcesses, setSelectedProcesses] = useState<string[]>([])
 
   useEffect(() => {
@@ -515,7 +515,7 @@ export default function FilesExplorerPage() {
                   selected={selectedProcesses}
                   onChange={setSelectedProcesses}
                   placeholder="Süreç filtrele..."
-                  className="w-[32rem]"
+                  className="w-64"
                 />
                 <div className="flex items-center gap-1 rounded-md border border-gray-200 p-1">
                   <Button

@@ -137,6 +137,16 @@ export const jobsAPI = {
     return response.data
   },
 
+  activateStep: async (stepId: string) => {
+    const response = await apiClient.post(`/api/jobs/steps/${stepId}/activate`)
+    return response.data
+  },
+
+  reopenStep: async (stepId: string, data?: { reason?: string }) => {
+    const response = await apiClient.post(`/api/jobs/steps/${stepId}/reopen`, data || {})
+    return response.data
+  },
+
   addStepNote: async (stepId: string, data: { note: string }) => {
     const response = await apiClient.post(`/api/jobs/steps/${stepId}/notes`, data)
     return response.data
@@ -152,6 +162,12 @@ export const jobsAPI = {
   // YENİ: Revizyon oluştur
   createRevision: async (id: string, data: any) => {
     const response = await apiClient.post(`/api/jobs/${id}/revise`, data)
+    return response.data
+  },
+
+  // YENİ: İş hikayesi/timeline
+  getTimeline: async (id: string) => {
+    const response = await apiClient.get(`/api/jobs/${id}/timeline`)
     return response.data
   },
 }
@@ -343,6 +359,14 @@ export const tasksAPI = {
   // YENİ: Üretim istatistikleri
   getStats: async () => {
     const response = await apiClient.get('/api/tasks/stats')
+    return response.data
+  },
+
+  // YENİ: Gelişmiş performans metrikleri
+  getPerformance: async (period?: number) => {
+    const response = await apiClient.get('/api/tasks/performance', {
+      params: period ? { period } : undefined
+    })
     return response.data
   },
 }

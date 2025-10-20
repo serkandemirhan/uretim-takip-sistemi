@@ -11,6 +11,7 @@ interface Job {
   job_number: string
   title: string
   customer_name: string
+  dealer_name?: string | null
   progress: number
   delivery_date?: string | null
   steps?: Array<{
@@ -83,6 +84,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
     no: 80,
     title: 180,
     customer: 150,
+    dealer: 150,
     delivery: 120,
     progress: 120,
   })
@@ -151,7 +153,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
       setColumnWidths(prev => ({ ...prev, ...processWidths }))
 
       // Initialize column order - check localStorage first
-      const defaultOrder = ['no', 'title', 'customer', 'delivery', ...groups.map(g => g.id), 'progress']
+      const defaultOrder = ['no', 'title', 'customer', 'dealer', 'delivery', ...groups.map(g => g.id), 'progress']
 
       if (typeof window !== 'undefined') {
         const savedOrder = localStorage.getItem(STORAGE_KEY_ORDER)
@@ -348,6 +350,28 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                     </th>
                   )
                 }
+                if (colId === 'dealer') {
+                  return (
+                    <th
+                      key="dealer"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, 'dealer')}
+                      onDragOver={(e) => handleDragOver(e, 'dealer')}
+                      onDrop={(e) => handleDrop(e, 'dealer')}
+                      onDragEnd={handleDragEnd}
+                      className={`px-3 py-3 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                        draggingColumn === 'dealer' ? 'opacity-50' : ''
+                      } ${dragOverColumn === 'dealer' ? 'bg-blue-100' : ''}`}
+                      style={{ width: columnWidths.dealer }}
+                    >
+                      Bayi
+                      <div
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                        onMouseDown={(e) => handleMouseDown(e, 'dealer')}
+                      />
+                    </th>
+                  )
+                }
                 if (colId === 'delivery') {
                   return (
                     <th
@@ -456,6 +480,15 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                     <td key="customer" className="px-3 py-3">
                       <div className="text-sm text-gray-700">
                         {job.customer_name || '—'}
+                      </div>
+                    </td>
+                  )
+                }
+                if (colId === 'dealer') {
+                  return (
+                    <td key="dealer" className="px-3 py-3">
+                      <div className="text-sm text-gray-700">
+                        {job.dealer_name || '—'}
                       </div>
                     </td>
                   )

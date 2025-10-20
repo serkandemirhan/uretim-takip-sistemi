@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  ShoppingCart,
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -66,6 +67,7 @@ export default function DashboardLayout({
     { name: 'İşler', href: '/jobs', icon: Briefcase, roles: ['yonetici', 'musteri_temsilcisi'] },
     { name: 'Müşteriler', href: '/customers', icon: Building2, roles: ['yonetici', 'musteri_temsilcisi'] },
     { name: 'Teklifler', href: '/quotations', icon: ClipboardList, roles: ['yonetici', 'musteri_temsilcisi', 'satinalma'] },
+    { name: 'Satın Alma', href: '/procurement/requests', icon: ShoppingCart, roles: ['yonetici', 'musteri_temsilcisi', 'satinalma', 'depocu'] },
     { name: 'Stoklar', href: '/stocks/inventory', icon: Package, roles: ['yonetici', 'depocu', 'satinalma'] },
     { name: 'Görevlerim', href: '/tasks', icon: CheckSquare, roles: ['operator'] },
     { name: 'Görevler', href: '/tasks/all', icon: CheckSquare, roles: ['yonetici'] },
@@ -216,7 +218,7 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">{children}</main>
+        <main className="flex-1 w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">{children}</main>
       </div>
     </div>
   )

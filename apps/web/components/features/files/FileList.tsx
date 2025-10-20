@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { LucideIcon } from 'lucide-react'
+import { cn } from '@/lib/utils/cn'
 
 interface FileListProps {
   files?: any[]
@@ -29,6 +30,7 @@ interface FileListProps {
   itemWidth?: number
   refType?: 'job' | 'job_step' | 'stock_movement' | 'user'
   refId?: string
+  className?: string
 }
 
 export function FileList({
@@ -40,6 +42,7 @@ export function FileList({
   itemWidth = 112,
   refType,
   refId,
+  className,
 }: FileListProps) {
   const providedFiles = useMemo(() => files ?? [], [files])
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -240,7 +243,7 @@ export function FileList({
 
   if (loading && items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center space-y-2 py-8 text-gray-500">
+      <div className={cn('flex flex-col items-center justify-center space-y-2 py-8 text-gray-500', className)}>
         <Loader2 className="h-6 w-6 animate-spin" />
         <p>Dosyalar yükleniyor...</p>
       </div>
@@ -249,7 +252,7 @@ export function FileList({
 
   if (items.length === 0) {
     return (
-      <div className="py-8 text-center text-gray-500">
+      <div className={cn('py-8 text-center text-gray-500', className)}>
         <File className="mx-auto mb-2 h-12 w-12 text-gray-400" />
         <p>Henüz dosya yüklenmemiş</p>
       </div>
@@ -259,7 +262,7 @@ export function FileList({
   if (variant === 'grid') {
     return (
       <div
-        className="grid gap-2"
+        className={cn('grid gap-2', className)}
         style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${itemWidth}px, 1fr))` }}
       >
         {items.map((file) => {
@@ -320,7 +323,7 @@ export function FileList({
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className={cn('space-y-1.5', className)}>
       {items.map((file) => {
         const { Icon, iconClass, bgClass, extension } = resolveFileVisuals(
           file.filename,

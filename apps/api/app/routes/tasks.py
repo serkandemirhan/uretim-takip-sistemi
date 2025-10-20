@@ -307,6 +307,145 @@ def get_production_stats():
         
     except Exception as e:
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@tasks_bp.route('/performance', methods=['GET'])
+@token_required
+def get_performance_metrics():
+    """Gelişmiş performans metrikleri (Dashboard için)"""
+    try:
+        user_id = request.current_user['user_id']
+        period = request.args.get('period', '30')  # 7, 30, 90 gün
+
+        # Toplam istatistikler
+        stats_query = """
+            SELECT
+                COUNT(*) as total_completed,
+                SUM(EXTRACT(EPOCH FROM (completed_at - started_at))/3600) as total_hours,
+                AVG(EXTRACT(EPOCH FROM (completed_at - started_at))/60) as avg_duration_minutes,
+                COUNT(DISTINCT job_id) as total_jobs,
+                SUM(production_quantity) as total_production
+            FROM job_steps
+            WHERE assigned_to = %s
+            AND status = 'completed'
+            AND completed_at >= CURRENT_DATE - INTERVAL '%s days'
+        """
+
+        stats = execute_query_one(stats_query, (user_id, int(period)))
+
+        # En hızlı ve en yavaş görevler
+        fastest_query = """
+            SELECT
+                js.id,
+                p.name as process_name,
+                j.job_number,
+                EXTRACT(EPOCH FROM (js.completed_at - js.started_at))/3600 as duration_hours
+            FROM job_steps js
+            JOIN processes p ON js.process_id = p.id
+            JOIN jobs j ON js.job_id = j.id
+            WHERE js.assigned_to = %s
+            AND js.status = 'completed'
+            AND js.completed_at >= CURRENT_DATE - INTERVAL '%s days'
+            ORDER BY duration_hours ASC
+            LIMIT 1
+        """
+
+        slowest_query = """
+            SELECT
+                js.id,
+                p.name as process_name,
+                j.job_number,
+                EXTRACT(EPOCH FROM (js.completed_at - js.started_at))/3600 as duration_hours
+            FROM job_steps js
+            JOIN processes p ON js.process_id = p.id
+            JOIN jobs j ON js.job_id = j.id
+            WHERE js.assigned_to = %s
+            AND js.status = 'completed'
+            AND js.completed_at >= CURRENT_DATE - INTERVAL '%s days'
+            ORDER BY duration_hours DESC
+            LIMIT 1
+        """
+
+        fastest = execute_query_one(fastest_query, (user_id, int(period)))
+        slowest = execute_query_one(slowest_query, (user_id, int(period)))
+
+        # Trend analizi (haftalık karşılaştırma)
+        trend_query = """
+            SELECT
+                COUNT(*) as this_period_count,
+                AVG(EXTRACT(EPOCH FROM (completed_at - started_at))/60) as this_period_avg
+            FROM job_steps
+            WHERE assigned_to = %s
+            AND status = 'completed'
+            AND completed_at >= CURRENT_DATE - INTERVAL '%s days'
+        """
+
+        previous_trend_query = """
+            SELECT
+                COUNT(*) as prev_period_count,
+                AVG(EXTRACT(EPOCH FROM (completed_at - started_at))/60) as prev_period_avg
+            FROM job_steps
+            WHERE assigned_to = %s
+            AND status = 'completed'
+            AND completed_at >= CURRENT_DATE - INTERVAL '%s days'
+            AND completed_at < CURRENT_DATE - INTERVAL '%s days'
+        """
+
+        this_period = execute_query_one(trend_query, (user_id, int(period)))
+        prev_period = execute_query_one(previous_trend_query, (user_id, int(period) * 2, int(period)))
+
+        # Trend hesaplama
+        speed_trend = None
+        if this_period and prev_period and prev_period.get('prev_period_avg'):
+            this_avg = float(this_period.get('this_period_avg', 0))
+            prev_avg = float(prev_period.get('prev_period_avg', 0))
+            if prev_avg > 0:
+                speed_trend = round(((prev_avg - this_avg) / prev_avg) * 100, 1)  # Pozitif = daha hızlı
+
+        # Başarı oranı (estimated vs actual)
+        success_query = """
+            SELECT
+                COUNT(*) FILTER (WHERE
+                    estimated_duration IS NOT NULL AND
+                    EXTRACT(EPOCH FROM (completed_at - started_at))/60 <= estimated_duration
+                )::float / NULLIF(COUNT(*), 0) * 100 as success_rate
+            FROM job_steps
+            WHERE assigned_to = %s
+            AND status = 'completed'
+            AND completed_at >= CURRENT_DATE - INTERVAL '%s days'
+            AND estimated_duration IS NOT NULL
+        """
+
+        success = execute_query_one(success_query, (user_id, int(period)))
+
+        return jsonify({
+            'data': {
+                'total_completed': stats['total_completed'] if stats else 0,
+                'total_hours': round(float(stats['total_hours']), 1) if stats and stats['total_hours'] else 0,
+                'avg_duration_minutes': round(float(stats['avg_duration_minutes'])) if stats and stats['avg_duration_minutes'] else 0,
+                'total_jobs': stats['total_jobs'] if stats else 0,
+                'total_production': float(stats['total_production']) if stats and stats['total_production'] else 0,
+                'fastest_task': {
+                    'process_name': fastest['process_name'],
+                    'job_number': fastest['job_number'],
+                    'duration_hours': round(float(fastest['duration_hours']), 1)
+                } if fastest else None,
+                'slowest_task': {
+                    'process_name': slowest['process_name'],
+                    'job_number': slowest['job_number'],
+                    'duration_hours': round(float(slowest['duration_hours']), 1)
+                } if slowest else None,
+                'speed_trend_percentage': speed_trend,
+                'success_rate': round(float(success['success_rate'])) if success and success['success_rate'] else None,
+                'period_days': int(period)
+            }
+        }), 200
+
+    except Exception as e:
+        print(f"Error getting performance metrics: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
 @tasks_bp.route('', methods=['GET'])
 @token_required
 def list_tasks():

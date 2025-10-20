@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS job_step_notes (
 CREATE INDEX IF NOT EXISTS idx_job_step_notes_step_id ON job_step_notes (job_step_id);
 
 -- Table: jobs
-CREATE TABLE IF NOT EXISTS jobs (id uuid NOT NULL DEFAULT uuid_generate_v4(), job_number character varying(50) NOT NULL, customer_id uuid, title character varying(255) NOT NULL, description text, status character varying(50) DEFAULT 'draft'::character varying, priority character varying(50) DEFAULT 'normal'::character varying, due_date date, revision_no integer DEFAULT 1, created_by uuid, created_at timestamp without time zone DEFAULT now(), updated_at timestamp without time zone DEFAULT now());
+CREATE TABLE IF NOT EXISTS jobs (id uuid NOT NULL DEFAULT uuid_generate_v4(), job_number character varying(50) NOT NULL, customer_id uuid, dealer_id uuid, title character varying(255) NOT NULL, description text, status character varying(50) DEFAULT 'draft'::character varying, priority character varying(50) DEFAULT 'normal'::character varying, due_date date, revision_no integer DEFAULT 1, created_by uuid, created_at timestamp without time zone DEFAULT now(), updated_at timestamp without time zone DEFAULT now());
 
 CREATE TABLE IF NOT EXISTS machine_processes (id uuid NOT NULL DEFAULT uuid_generate_v4(), machine_id uuid NOT NULL, process_id uuid NOT NULL, created_at timestamp without time zone DEFAULT now());
 

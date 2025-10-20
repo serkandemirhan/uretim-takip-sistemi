@@ -37,11 +37,13 @@ def get_jobs():
                 j.id, j.job_number, j.title, j.description, j.status, 
                 j.priority, j.due_date, j.created_at, j.revision_no,
                 c.id as customer_id, c.name as customer_name,
+                d.id as dealer_id, d.name as dealer_name,
                 u.full_name as created_by_name,
                 COUNT(js.id) as total_steps,
                 COUNT(js.id) FILTER (WHERE js.status = 'completed') as completed_steps
             FROM jobs j
             LEFT JOIN customers c ON j.customer_id = c.id
+            LEFT JOIN customer_dealers d ON j.dealer_id = d.id
             LEFT JOIN users u ON j.created_by = u.id
             LEFT JOIN job_steps js ON j.id = js.job_id
             WHERE 1=1
@@ -83,7 +85,7 @@ def get_jobs():
             query += " AND j.created_at <= %s"
             params.append(date_to + ' 23:59:59')
         
-        query += " GROUP BY j.id, c.id, u.full_name"
+        query += " GROUP BY j.id, c.id, d.id, u.full_name"
         query += " ORDER BY j.created_at DESC"
         
         # Toplam sayı
@@ -109,9 +111,13 @@ def get_jobs():
                     js.assigned_to,
                     js.completed_at,
                     js.production_notes,
+                    js.requirements,
                     js.started_at,
+                    js.due_date,
+                    js.due_time,
                     p.name as process_name,
                     p.code as process_code,
+                    p.description as process_description,
                     u.full_name as assigned_to_name
                 FROM job_steps js
                 LEFT JOIN processes p ON js.process_id = p.id
@@ -138,6 +144,8 @@ def get_jobs():
                 'revision_no': job['revision_no'],
                 'customer_id': str(job['customer_id']) if job['customer_id'] else None,
                 'customer_name': job['customer_name'],
+                'dealer_id': str(job['dealer_id']) if job.get('dealer_id') else None,
+                'dealer_name': job.get('dealer_name'),
                 'created_by_name': job['created_by_name'],
                 'total_steps': job['total_steps'],
                 'completed_steps': job['completed_steps'],
@@ -147,14 +155,18 @@ def get_jobs():
                     'process_id': str(step['process_id']),
                     'status': step['status'],
                     'order_index': step.get('order_index', 0),
+                    'due_date': step['due_date'].isoformat() if step.get('due_date') else None,
+                    'due_time': step['due_time'].isoformat() if step.get('due_time') else None,
                     'process_name': step.get('process_name'),
                     'process_code': step.get('process_code'),
+                    'process_description': step.get('process_description'),
                     'assigned_to': {
                         'id': str(step['assigned_to']) if step.get('assigned_to') else None,
                         'name': step.get('assigned_to_name')
                     } if step.get('assigned_to') else None,
                     'completed_at': step['completed_at'].isoformat() if step.get('completed_at') else None,
                     'production_notes': step.get('production_notes'),
+                    'requirements': step.get('requirements'),
                     'started_at': step['started_at'].isoformat() if step.get('started_at') else None,
                 } for step in job_steps]
             })
@@ -184,9 +196,11 @@ def get_job(job_id):
             SELECT 
                 j.*,
                 c.id as customer_id, c.name as customer_name,
+                d.id as dealer_id, d.name as dealer_name,
                 u.id as created_by_id, u.full_name as created_by_name
             FROM jobs j
             LEFT JOIN customers c ON j.customer_id = c.id
+            LEFT JOIN customer_dealers d ON j.dealer_id = d.id
             LEFT JOIN users u ON j.created_by = u.id
             WHERE j.id = %s
         """
@@ -199,7 +213,7 @@ def get_job(job_id):
         steps_query = """
             SELECT 
                 js.*,
-                p.name as process_name, p.code as process_code,
+                p.name as process_name, p.code as process_code, p.description as process_description,
                 u.full_name as assigned_to_name,
                 m.name as machine_name
             FROM job_steps js
@@ -246,6 +260,10 @@ def get_job(job_id):
                     'id': str(job['customer_id']) if job['customer_id'] else None,
                     'name': job['customer_name']
                 } if job['customer_id'] else None,
+                'dealer': {
+                    'id': str(job['dealer_id']) if job.get('dealer_id') else None,
+                    'name': job.get('dealer_name')
+                } if job.get('dealer_id') else None,
                 'created_by': {
                     'id': str(job['created_by_id']) if job['created_by_id'] else None,
                     'name': job['created_by_name']
@@ -255,7 +273,8 @@ def get_job(job_id):
                     'process': {
                         'id': str(step['process_id']),
                         'name': step['process_name'],
-                        'code': step['process_code']
+                        'code': step['process_code'],
+                        'description': step['process_description']
                     },
                     'order_index': step['order_index'],
                     'status': step['status'],
@@ -267,11 +286,14 @@ def get_job(job_id):
                         'id': str(step['machine_id']) if step['machine_id'] else None,
                         'name': step['machine_name']
                     } if step['machine_id'] else None,
+                    'due_date': step['due_date'].isoformat() if step.get('due_date') else None,
+                    'due_time': step['due_time'].isoformat() if step.get('due_time') else None,
                     'started_at': step['started_at'].isoformat() if step['started_at'] else None,
                     'completed_at': step['completed_at'].isoformat() if step['completed_at'] else None,
                     'production_quantity': float(step['production_quantity']) if step['production_quantity'] else None,
                     'production_unit': step['production_unit'],
                     'production_notes': step['production_notes'],
+                    'requirements': step.get('requirements'),
                     'block_reason': step.get('block_reason'),
                     'blocked_at': step['blocked_at'].isoformat() if step.get('blocked_at') else None,
                     'status_before_block': step.get('status_before_block'),
@@ -308,16 +330,18 @@ def create_job():
         
         # Insert job
         insert_job_query = """
-            INSERT INTO jobs (job_number, customer_id, title, description, status, priority, due_date, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO jobs (job_number, customer_id, dealer_id, title, description, status, priority, due_date, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id, job_number
         """
         
         customer_id = data.get('customer_id') if data.get('customer_id') else None
+        dealer_id = data.get('dealer_id') if data.get('dealer_id') else None
         
         params = (
             job_number,
             customer_id,
+            dealer_id,
             data.get('title'),
             data.get('description'),
             'draft',  # Her zaman draft olarak başlar
@@ -333,12 +357,36 @@ def create_job():
         # Süreçleri ekle (eğer varsa)
         if data.get('steps'):
             for idx, step in enumerate(data['steps']):
+                due_date_value = step.get('due_date')
+                due_time_value = step.get('due_time')
+                parsed_due_date = None
+                parsed_due_time = None
+
+                if due_date_value not in (None, '', 'null'):
+                    try:
+                        parsed_due_date = datetime.strptime(str(due_date_value).strip(), '%Y-%m-%d').date()
+                    except ValueError:
+                        conn.close()
+                        return jsonify({'error': 'Adım termin tarihi geçersiz'}), 400
+
+                if due_time_value not in (None, '', 'null'):
+                    raw_time = str(due_time_value).strip()
+                    try:
+                        if raw_time.count(':') == 1:
+                            parsed_due_time = datetime.strptime(raw_time, '%H:%M').time()
+                        else:
+                            parsed_due_time = datetime.strptime(raw_time, '%H:%M:%S').time()
+                    except ValueError:
+                        conn.close()
+                        return jsonify({'error': 'Adım termin saati geçersiz'}), 400
+
                 insert_step_query = """
                     INSERT INTO job_steps (
-                        job_id, process_id, order_index, assigned_to, machine_id, 
-                        status, is_parallel, estimated_duration
+                        job_id, process_id, order_index, assigned_to, machine_id,
+                        status, is_parallel, estimated_duration,
+                        due_date, due_time, requirements
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 step_params = (
                     job_id,
@@ -348,7 +396,10 @@ def create_job():
                     step.get('machine_id') if step.get('machine_id') else None,
                     'pending',  # Tüm süreçler pending başlar
                     step.get('is_parallel', False),
-                    step.get('estimated_duration')
+                    step.get('estimated_duration'),
+                    parsed_due_date,
+                    parsed_due_time,
+                    step.get('requirements') if step.get('requirements') else None
                 )
                 cursor.execute(insert_step_query, step_params)
         
@@ -535,6 +586,75 @@ def complete_step(step_id):
         
     except Exception as e:
         print(f"Error completing step: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@jobs_bp.route('/steps/<step_id>/activate', methods=['POST'])
+@token_required
+def activate_step(step_id):
+    """Beklemedeki süreci hazır statüsüne getir"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT js.id, js.status, js.assigned_to
+            FROM job_steps js
+            WHERE js.id = %s
+            """,
+            (step_id,)
+        )
+
+        step = cursor.fetchone()
+
+        if not step:
+            conn.close()
+            return jsonify({'error': 'Süreç adımı bulunamadı'}), 404
+
+        if step['status'] != 'pending':
+            conn.close()
+            return jsonify({'error': 'Yalnızca beklemedeki süreçler hazır duruma getirilebilir'}), 400
+
+        current_user = getattr(request, 'current_user', None) or {}
+        current_role = current_user.get('role')
+        current_user_id = current_user.get('user_id')
+        is_manager = current_role in ('yonetici', 'admin')
+        assigned_to = step.get('assigned_to')
+
+        if not is_manager:
+            if not assigned_to or not current_user_id or str(assigned_to) != str(current_user_id):
+                conn.close()
+                return jsonify({'error': 'Bu adımı hazır duruma getirme yetkiniz yok'}), 403
+
+        cursor.execute(
+            """
+            UPDATE job_steps
+            SET status = 'ready',
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id
+            """,
+            (step_id,),
+        )
+
+        updated = cursor.fetchone()
+        conn.commit()
+        conn.close()
+
+        if not updated:
+            return jsonify({'error': 'Süreç güncellenemedi'}), 500
+
+        return jsonify({'message': 'Süreç hazır duruma getirildi'}), 200
+
+    except Exception as e:
+        print(f"Error activating step: {str(e)}")
+        try:
+            if 'conn' in locals() and conn:
+                conn.rollback()
+                conn.close()
+        except Exception:
+            pass
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
 
 @jobs_bp.route('/steps/<step_id>/start', methods=['POST'])
@@ -744,6 +864,154 @@ def resume_step(step_id):
 
     except Exception as e:
         print(f"Error resuming step: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@jobs_bp.route('/steps/<step_id>/reopen', methods=['POST'])
+@token_required
+def reopen_step(step_id):
+    """Tamamlanan süreci yeniden aç"""
+    try:
+        data = request.get_json() or {}
+        reason = (data.get('reason') or '').strip()
+        if not reason:
+            reason = 'Süreç yeniden açıldı'
+
+        current_user = getattr(request, 'current_user', None) or {}
+        user_id = current_user.get('user_id')
+        current_role = current_user.get('role')
+        is_manager = current_role in ('yonetici', 'admin')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT js.id, js.job_id, js.status, js.assigned_to, js.started_at, js.completed_at,
+                   js.actual_duration, js.production_quantity, js.production_unit, js.production_notes,
+                   j.revision_no, j.status AS job_status, j.title AS job_title,
+                   j.description AS job_description, j.due_date AS job_due_date, j.priority AS job_priority
+            FROM job_steps js
+            JOIN jobs j ON js.job_id = j.id
+            WHERE js.id = %s
+            """,
+            (step_id,),
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            conn.close()
+            return jsonify({'error': 'Süreç adımı bulunamadı'}), 404
+
+        if row['status'] != 'completed':
+            conn.close()
+            return jsonify({'error': 'Sadece tamamlanan süreçler yeniden açılabilir'}), 400
+
+        assigned_to = row.get('assigned_to')
+
+        if not is_manager:
+            if not assigned_to or not user_id or str(assigned_to) != str(user_id):
+                conn.close()
+                return jsonify({'error': 'Bu adımı yeniden açma yetkiniz yok'}), 403
+
+        job_id = row['job_id']
+        current_revision = row['revision_no'] or 0
+        new_revision = current_revision + 1
+
+        new_job_status = row['job_status']
+        if new_job_status in ('completed', 'canceled'):
+            new_job_status = 'active'
+
+        cursor.execute(
+            """
+            UPDATE jobs
+            SET revision_no = %s,
+                status = %s
+            WHERE id = %s
+            RETURNING id
+            """,
+            (new_revision, new_job_status, job_id),
+        )
+
+        if not cursor.fetchone():
+            conn.rollback()
+            conn.close()
+            return jsonify({'error': 'İş güncellenemedi'}), 500
+
+        cursor.execute(
+            """
+            UPDATE job_steps
+            SET status = 'ready',
+                started_at = NULL,
+                completed_at = NULL,
+                actual_duration = NULL,
+                production_quantity = NULL,
+                production_unit = NULL,
+                production_notes = NULL,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id
+            """,
+            (step_id,),
+        )
+
+        if not cursor.fetchone():
+            conn.rollback()
+            conn.close()
+            return jsonify({'error': 'Süreç güncellenemedi'}), 500
+
+        if user_id:
+            change_payload = {
+                'revision_no': new_revision,
+                'reason': reason,
+                'step_id': str(step_id),
+                'step_status': {'old': 'completed', 'new': 'ready'},
+            }
+
+            previous_job_status = row['job_status']
+            if previous_job_status != new_job_status:
+                change_payload['job_status'] = {
+                    'old': previous_job_status,
+                    'new': new_job_status,
+                }
+
+            if row.get('completed_at'):
+                change_payload['previous_completed_at'] = row['completed_at'].isoformat()
+
+            cursor.execute(
+                """
+                INSERT INTO audit_logs (user_id, action, entity_type, entity_id, changes)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id,
+                    'step_reopened',
+                    'job',
+                    job_id,
+                    import_json.dumps(change_payload),
+                ),
+            )
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'message': 'Süreç yeniden açıldı. Yeni revizyon oluşturuldu.',
+            'data': {
+                'revision_no': new_revision,
+                'job_status': new_job_status,
+            },
+        }), 200
+
+    except Exception as e:
+        print(f"Error reopening step: {str(e)}")
+        try:
+            if 'conn' in locals() and conn:
+                conn.rollback()
+                conn.close()
+        except Exception:
+            pass
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
 
 
@@ -1030,6 +1298,10 @@ def update_job(job_id):
             update_fields.append("customer_id = %s")
             params.append(data['customer_id'] if data['customer_id'] else None)
         
+        if 'dealer_id' in data:
+            update_fields.append("dealer_id = %s")
+            params.append(data['dealer_id'] if data['dealer_id'] else None)
+        
         if 'due_date' in data:
             update_fields.append("due_date = %s")
             params.append(data['due_date'] if data['due_date'] else None)
@@ -1292,7 +1564,6 @@ def cancel_job(job_id):
 
 @jobs_bp.route('/steps/<step_id>', methods=['PATCH'])
 @token_required
-@role_required(['yonetici'])
 def update_job_step(step_id):
     """Süreç adımını güncelle (atanan kişi, makine, paralellik vb.)"""
     try:
@@ -1302,7 +1573,11 @@ def update_job_step(step_id):
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT status FROM job_steps WHERE id = %s",
+            """
+            SELECT status, assigned_to
+            FROM job_steps
+            WHERE id = %s
+            """,
             (step_id,)
         )
         step = cursor.fetchone()
@@ -1314,6 +1589,17 @@ def update_job_step(step_id):
         if step['status'] in ('completed', 'canceled'):
             conn.close()
             return jsonify({'error': 'Bu süreç adımı güncellenemez'}), 400
+
+        current_user = getattr(request, 'current_user', None) or {}
+        current_role = current_user.get('role')
+        current_user_id = current_user.get('user_id')
+        is_manager = current_role in ('yonetici', 'admin')
+        assigned_to = step.get('assigned_to')
+
+        if not is_manager:
+            if not assigned_to or not current_user_id or str(assigned_to) != str(current_user_id):
+                conn.close()
+                return jsonify({'error': 'Bu işlem için yetkiniz yok'}), 403
 
         def _nullable(value):
             if value is None:
@@ -1364,6 +1650,52 @@ def update_job_step(step_id):
                 update_fields.append("estimated_duration = %s")
                 params.append(duration_int)
 
+        if 'due_date' in data:
+            due_date_value = data.get('due_date')
+            if due_date_value in (None, '', 'null'):
+                update_fields.append("due_date = %s")
+                params.append(None)
+            else:
+                try:
+                    parsed_due_date = datetime.strptime(str(due_date_value).strip(), '%Y-%m-%d').date()
+                except ValueError:
+                    conn.close()
+                    return jsonify({'error': 'due_date geçersiz'}), 400
+                update_fields.append("due_date = %s")
+                params.append(parsed_due_date)
+
+        if 'due_time' in data:
+            due_time_value = data.get('due_time')
+            if due_time_value in (None, '', 'null'):
+                update_fields.append("due_time = %s")
+                params.append(None)
+            else:
+                raw_time = str(due_time_value).strip()
+                try:
+                    if raw_time.count(':') == 1:
+                        parsed_due_time = datetime.strptime(raw_time, '%H:%M').time()
+                    else:
+                        parsed_due_time = datetime.strptime(raw_time, '%H:%M:%S').time()
+                except ValueError:
+                    conn.close()
+                    return jsonify({'error': 'due_time geçersiz'}), 400
+                update_fields.append("due_time = %s")
+                params.append(parsed_due_time)
+
+        if 'order_index' in data:
+            try:
+                new_index = int(data.get('order_index'))
+            except (TypeError, ValueError):
+                conn.close()
+                return jsonify({'error': 'order_index geçersiz'}), 400
+            update_fields.append("order_index = %s")
+            params.append(new_index)
+
+        if 'requirements' in data:
+            requirements_value = data.get('requirements')
+            update_fields.append("requirements = %s")
+            params.append(_nullable(requirements_value))
+
         if not update_fields:
             conn.close()
             return jsonify({'error': 'Güncellenecek alan bulunamadı'}), 400
@@ -1408,6 +1740,27 @@ def add_job_step(job_id):
         
         if not data.get('process_id'):
             return jsonify({'error': 'Süreç ID gerekli'}), 400
+
+        due_date_value = data.get('due_date')
+        due_time_value = data.get('due_time')
+        parsed_due_date = None
+        parsed_due_time = None
+
+        if due_date_value not in (None, '', 'null'):
+            try:
+                parsed_due_date = datetime.strptime(str(due_date_value).strip(), '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'error': 'due_date geçersiz'}), 400
+
+        if due_time_value not in (None, '', 'null'):
+            raw_time = str(due_time_value).strip()
+            try:
+                if raw_time.count(':') == 1:
+                    parsed_due_time = datetime.strptime(raw_time, '%H:%M').time()
+                else:
+                    parsed_due_time = datetime.strptime(raw_time, '%H:%M:%S').time()
+            except ValueError:
+                return jsonify({'error': 'due_time geçersiz'}), 400
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1425,10 +1778,11 @@ def add_job_step(job_id):
         # Yeni adım ekle
         cursor.execute("""
             INSERT INTO job_steps (
-                job_id, process_id, order_index, assigned_to, 
-                machine_id, status, is_parallel, estimated_duration
+                job_id, process_id, order_index, assigned_to,
+                machine_id, status, is_parallel, estimated_duration,
+                due_date, due_time, requirements
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
             job_id,
@@ -1438,7 +1792,10 @@ def add_job_step(job_id):
             data.get('machine_id'),
             'pending',
             data.get('is_parallel', False),
-            data.get('estimated_duration')
+            data.get('estimated_duration'),
+            parsed_due_date,
+            parsed_due_time,
+            data.get('requirements') if data.get('requirements') else None
         ))
         
         result = cursor.fetchone()
@@ -1483,7 +1840,139 @@ def delete_job_step(step_id):
         conn.close()
         
         return jsonify({'message': 'Süreç silindi'}), 200
-        
+
     except Exception as e:
         print(f"Error deleting step: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@jobs_bp.route('/<job_id>/timeline', methods=['GET'])
+@token_required
+def get_job_timeline(job_id):
+    """İşin zaman çizelgeli hikayesini getir (audit_logs + job_step_notes + step transitions)"""
+    try:
+        # Audit logs, step notes ve step transitions'ı birleştir
+        query = """
+            -- Audit logs
+            SELECT
+                'audit' as source,
+                al.created_at as timestamp,
+                al.action as event_type,
+                u.full_name as actor_name,
+                u.username as actor_username,
+                al.changes as details,
+                NULL as step_id,
+                NULL as process_name
+            FROM audit_logs al
+            LEFT JOIN users u ON al.user_id = u.id
+            WHERE al.entity_id = %s AND al.entity_type = 'job'
+
+            UNION ALL
+
+            -- Job step notes
+            SELECT
+                'note' as source,
+                jsn.created_at as timestamp,
+                'note_added' as event_type,
+                u.full_name as actor_name,
+                u.username as actor_username,
+                jsonb_build_object('note', jsn.note) as details,
+                js.id as step_id,
+                p.name as process_name
+            FROM job_step_notes jsn
+            LEFT JOIN users u ON jsn.user_id = u.id
+            LEFT JOIN job_steps js ON jsn.job_step_id = js.id
+            LEFT JOIN processes p ON js.process_id = p.id
+            WHERE js.job_id = %s
+
+            UNION ALL
+
+            -- Step started events
+            SELECT
+                'step_started' as source,
+                js.started_at as timestamp,
+                'step_started' as event_type,
+                u.full_name as actor_name,
+                u.username as actor_username,
+                jsonb_build_object(
+                    'process', p.name,
+                    'process_code', p.code,
+                    'machine', m.name
+                ) as details,
+                js.id as step_id,
+                p.name as process_name
+            FROM job_steps js
+            LEFT JOIN processes p ON js.process_id = p.id
+            LEFT JOIN users u ON js.assigned_to = u.id
+            LEFT JOIN machines m ON js.machine_id = m.id
+            WHERE js.job_id = %s AND js.started_at IS NOT NULL
+
+            UNION ALL
+
+            -- Step completed events
+            SELECT
+                'step_completed' as source,
+                js.completed_at as timestamp,
+                'step_completed' as event_type,
+                u.full_name as actor_name,
+                u.username as actor_username,
+                jsonb_build_object(
+                    'process', p.name,
+                    'process_code', p.code,
+                    'production_quantity', js.production_quantity,
+                    'production_unit', js.production_unit,
+                    'production_notes', js.production_notes,
+                    'machine', m.name
+                ) as details,
+                js.id as step_id,
+                p.name as process_name
+            FROM job_steps js
+            LEFT JOIN processes p ON js.process_id = p.id
+            LEFT JOIN users u ON js.assigned_to = u.id
+            LEFT JOIN machines m ON js.machine_id = m.id
+            WHERE js.job_id = %s AND js.completed_at IS NOT NULL
+
+            UNION ALL
+
+            -- Step blocked events
+            SELECT
+                'step_blocked' as source,
+                js.blocked_at as timestamp,
+                'step_blocked' as event_type,
+                u.full_name as actor_name,
+                u.username as actor_username,
+                jsonb_build_object(
+                    'process', p.name,
+                    'process_code', p.code,
+                    'block_reason', js.block_reason
+                ) as details,
+                js.id as step_id,
+                p.name as process_name
+            FROM job_steps js
+            LEFT JOIN processes p ON js.process_id = p.id
+            LEFT JOIN users u ON js.assigned_to = u.id
+            WHERE js.job_id = %s AND js.status = 'blocked' AND js.blocked_at IS NOT NULL
+
+            ORDER BY timestamp DESC
+        """
+
+        timeline = execute_query(query, (job_id, job_id, job_id, job_id, job_id))
+
+        timeline_list = []
+        for event in timeline:
+            timeline_list.append({
+                'source': event['source'],
+                'timestamp': event['timestamp'].isoformat() if event['timestamp'] else None,
+                'event_type': event['event_type'],
+                'actor_name': event['actor_name'],
+                'actor_username': event['actor_username'],
+                'details': event['details'] or {},
+                'step_id': str(event['step_id']) if event['step_id'] else None,
+                'process_name': event['process_name']
+            })
+
+        return jsonify({'data': timeline_list}), 200
+
+    except Exception as e:
+        print(f"Error getting job timeline: {str(e)}")
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500

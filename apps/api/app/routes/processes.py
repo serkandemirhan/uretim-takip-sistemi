@@ -219,6 +219,13 @@ def update_process(process_id):
             update_fields.append("name = %s")
             params.append(data['name'])
         
+        if 'code' in data:
+            new_code = (data.get('code') or '').strip()
+            if not new_code:
+                return jsonify({'error': 'Dosya ismi boş olamaz'}), 400
+            update_fields.append("code = %s")
+            params.append(new_code.upper())
+        
         if 'description' in data:
             update_fields.append("description = %s")
             params.append(data['description'])

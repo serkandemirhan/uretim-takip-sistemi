@@ -9,11 +9,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { ArrowLeft, Play, CheckCircle, Clock, AlertCircle, Cpu, Building2 } from 'lucide-react'
+import { ArrowLeft, Play, CheckCircle, Clock, AlertCircle, Cpu, Building2, Timer, TrendingUp, FileText, Plus, Pause, X, Package } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { formatDateTime, formatDate } from '@/lib/utils/formatters'
 import { handleApiError } from '@/lib/utils/error-handler'
+import { ActivityTimeline } from '@/components/features/tasks/ActivityTimeline'
+import { FileList } from '@/components/features/files/FileList'
+import { filesAPI } from '@/lib/api/client'
 
 export default function TaskDetailPage() {
   const params = useParams()
@@ -21,13 +24,54 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
-  
+  const [elapsedTime, setElapsedTime] = useState<string>('')
+  const [files, setFiles] = useState<any[]>([])
+  const [notes, setNotes] = useState<any[]>([])
+
   // Tamamlama formu
   const [productionData, setProductionData] = useState({
     production_quantity: '',
     production_unit: '',
     production_notes: '',
   })
+
+  // Not ekleme
+  const [showNoteForm, setShowNoteForm] = useState(false)
+  const [noteText, setNoteText] = useState('')
+  const [addingNote, setAddingNote] = useState(false)
+
+  // Durdurma
+  const [showPauseForm, setShowPauseForm] = useState(false)
+  const [pauseReason, setPauseReason] = useState('')
+  const [pausing, setPausing] = useState(false)
+
+  // Üretim ekleme
+  const [showProductionForm, setShowProductionForm] = useState(false)
+  const [productionEntry, setProductionEntry] = useState({
+    quantity: '',
+    unit: 'adet'
+  })
+
+  // Geçen süre hesaplama
+  useEffect(() => {
+    if (!task || task.status !== 'in_progress' || !task.started_at) return
+
+    const updateElapsedTime = () => {
+      const start = new Date(task.started_at)
+      const now = new Date()
+      const diff = now.getTime() - start.getTime()
+
+      const hours = Math.floor(diff / (1000 * 60 * 60))
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+      setElapsedTime(`${hours}sa ${minutes}dk`)
+    }
+
+    updateElapsedTime()
+    const interval = setInterval(updateElapsedTime, 60000) // Her dakika güncelle
+
+    return () => clearInterval(interval)
+  }, [task])
 
   useEffect(() => {
     if (params.id) {
@@ -40,7 +84,7 @@ export default function TaskDetailPage() {
       setLoading(true)
       const response = await tasksAPI.getById(params.id as string)
       setTask(response.data)
-      
+
       // Eğer daha önce veri girildiyse form'u doldur
       if (response.data.production_quantity) {
         setProductionData({
@@ -49,11 +93,111 @@ export default function TaskDetailPage() {
           production_notes: response.data.production_notes || '',
         })
       }
+
+      // Dosyaları yükle
+      if (response.data.job?.id) {
+        loadFiles(response.data.job.id, response.data.process?.id)
+      }
+
+      // Notları yükle
+      loadNotes()
     } catch (error) {
       handleApiError(error, 'Task load')
       toast.error('Görev yüklenirken hata oluştu')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadFiles(jobId: string, processId?: string) {
+    try {
+      console.log('Loading files for job:', jobId, 'process:', processId)
+      const response = await filesAPI.getFilesByJob(jobId)
+      const data = response?.data || response || {}
+      console.log('Files response:', data)
+
+      // İş dosyaları ve bu sürece ait dosyaları birleştir
+      const jobFiles = Array.isArray(data.job_files) ? data.job_files : []
+      const processFiles = Array.isArray(data.process_files)
+        ? data.process_files.find((pf: any) => pf.process_id === processId)?.files || []
+        : []
+
+      console.log('Job files:', jobFiles.length, 'Process files:', processFiles.length)
+      setFiles([...jobFiles, ...processFiles])
+    } catch (error) {
+      console.error('Files load error:', error)
+      handleApiError(error, 'Files load')
+      // Dosya yükleme hatası kullanıcıya gösterilmesin, kritik değil
+    }
+  }
+
+  async function loadNotes() {
+    try {
+      const response = await fetch(`http://localhost:5001/api/jobs/steps/${params.id}/notes`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+      const data = await response.json()
+      setNotes(data.notes || [])
+    } catch (error) {
+      console.error('Notes load error:', error)
+    }
+  }
+
+  async function handleAddNote() {
+    if (!noteText.trim()) {
+      toast.error('Lütfen bir not girin')
+      return
+    }
+
+    try {
+      setAddingNote(true)
+      await fetch(`http://localhost:5001/api/jobs/steps/${params.id}/notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ note: noteText })
+      })
+
+      toast.success('Not eklendi')
+      setNoteText('')
+      setShowNoteForm(false)
+      await loadNotes()
+    } catch (error: any) {
+      toast.error('Not eklenirken hata oluştu')
+    } finally {
+      setAddingNote(false)
+    }
+  }
+
+  async function handlePause() {
+    if (!pauseReason.trim()) {
+      toast.error('Lütfen bir sebep girin')
+      return
+    }
+
+    try {
+      setPausing(true)
+      await fetch(`http://localhost:5001/api/jobs/steps/${params.id}/pause`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ reason: pauseReason })
+      })
+
+      toast.success('Süreç durduruldu')
+      setPauseReason('')
+      setShowPauseForm(false)
+      await loadTask()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Süreç durdurulamadı')
+    } finally {
+      setPausing(false)
     }
   }
 
@@ -67,6 +211,7 @@ export default function TaskDetailPage() {
       await tasksAPI.start(params.id as string)
       toast.success('Görev başlatıldı!')
       loadTask()
+      loadNotes()
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Görev başlatılamadı')
     } finally {
@@ -125,7 +270,7 @@ export default function TaskDetailPage() {
   const statusBadge = getStatusBadge(task.status)
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6">
       {/* Back Button */}
       <Link href="/tasks">
         <Button variant="ghost" size="sm">
@@ -150,233 +295,298 @@ export default function TaskDetailPage() {
             </code>
           </p>
         </div>
-
-        {/* Action Buttons */}
-        {task.status === 'ready' && (
-          <Button 
-            onClick={handleStart}
-            disabled={actionLoading}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Play className="w-4 h-4 mr-2" />
-            Görevi Başlat
-          </Button>
-        )}
       </div>
 
-      {/* İş Bilgileri */}
-      <Card>
-        <CardHeader>
-          <CardTitle>İş Bilgileri</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">İş Başlığı</p>
-              <p className="font-medium text-lg">{task.job.title}</p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">İş Numarası</p>
-                <p className="font-mono text-sm">{task.job.job_number}</p>
-              </div>
-
-              {task.job.due_date && (
+      {/* 2 Kolonlu Layout */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+        {/* SOL KOLON */}
+        <div className="space-y-6">
+          {/* İş Bilgileri */}
+          <Card>
+            <CardHeader>
+              <CardTitle>İş Bilgileri</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Teslim Tarihi</p>
-                  <p className="font-medium">{formatDate(task.job.due_date)}</p>
+                  <p className="text-sm text-gray-600 mb-1">İş Başlığı</p>
+                  <p className="font-medium text-lg">{task.job.title}</p>
                 </div>
-              )}
-            </div>
 
-            {task.job.customer_name && (
-              <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-700">{task.job.customer_name}</span>
+                <div className="grid gap-3 grid-cols-2">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">İş Numarası</p>
+                    <p className="font-mono text-sm font-medium">{task.job.job_number}</p>
+                  </div>
+
+                  {task.job.due_date && (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Teslim Tarihi</p>
+                      <p className="text-sm font-medium">{formatDate(task.job.due_date)}</p>
+                    </div>
+                  )}
+                </div>
+
+                {task.job.customer_name && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Müşteri</p>
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm font-medium">{task.job.customer_name}</span>
+                    </div>
+                  </div>
+                )}
+
+                {task.job.created_by_name && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">İşi Oluşturan</p>
+                    <p className="text-sm font-medium">{task.job.created_by_name}</p>
+                  </div>
+                )}
               </div>
-            )}
+            </CardContent>
+          </Card>
 
-            {task.job.description && (
-              <div>
-                <p className="text-sm text-gray-600 mb-1">İş Açıklaması</p>
+          {/* İş Açıklaması */}
+          {task.job.description && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">İş Açıklaması</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <p className="text-sm text-gray-700 whitespace-pre-wrap">{task.job.description}</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              </CardContent>
+            </Card>
+          )}
 
-      {/* Süreç Detayları */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Süreç Detayları</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            {task.machine && (
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Makine</p>
-                <div className="flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-gray-400" />
-                  <span className="font-medium">{task.machine.name}</span>
-                </div>
-                <p className="text-xs text-gray-500 font-mono mt-1">{task.machine.code}</p>
+          {/* Üretim Notları Hikayesi */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Üretim Notları</CardTitle>
+                {task.status === 'in_progress' && !showNoteForm && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowNoteForm(true)}
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Not Ekle
+                  </Button>
+                )}
               </div>
-            )}
-
-            {task.estimated_duration && (
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Tahmini Süre</p>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-gray-400" />
-                  <span className="font-medium">{task.estimated_duration} dakika</span>
-                </div>
-              </div>
-            )}
-
-            {task.started_at && (
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Başlangıç Zamanı</p>
-                <p className="font-medium">{formatDateTime(task.started_at)}</p>
-              </div>
-            )}
-
-            {task.completed_at && (
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Tamamlanma Zamanı</p>
-                <p className="font-medium">{formatDateTime(task.completed_at)}</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Üretim Girişi / Tamamlama Formu */}
-      {task.status === 'in_progress' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              Üretim Girişi ve Tamamlama
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleComplete} className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="production_quantity">Üretim Miktarı</Label>
-                  <Input
-                    id="production_quantity"
-                    type="number"
-                    step="0.01"
-                    value={productionData.production_quantity}
-                    onChange={(e) => setProductionData({ ...productionData, production_quantity: e.target.value })}
-                    placeholder="Örn: 25"
-                    disabled={actionLoading}
+            </CardHeader>
+            <CardContent>
+              {/* Not Ekleme Formu */}
+              {showNoteForm && (
+                <div className="mb-4 p-4 border rounded-lg bg-gray-50">
+                  <Label className="text-sm font-medium mb-2 block">Yeni Not</Label>
+                  <Textarea
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    placeholder="Üretim notu girin..."
+                    rows={3}
+                    className="mb-3"
                   />
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setShowNoteForm(false)
+                        setNoteText('')
+                      }}
+                      disabled={addingNote}
+                    >
+                      İptal
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAddNote}
+                      disabled={addingNote || !noteText.trim()}
+                    >
+                      {addingNote ? 'Ekleniyor...' : 'Kaydet'}
+                    </Button>
+                  </div>
                 </div>
+              )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="production_unit">Birim</Label>
-                  <Input
-                    id="production_unit"
-                    value={productionData.production_unit}
-                    onChange={(e) => setProductionData({ ...productionData, production_unit: e.target.value })}
-                    placeholder="Örn: m², adet, kg"
-                    disabled={actionLoading}
-                  />
+              {/* Notlar Listesi */}
+              {notes.length > 0 ? (
+                <div className="space-y-3">
+                  {notes.map((note: any) => (
+                    <div key={note.id} className="border-l-4 border-blue-500 pl-4 py-2">
+                      <div className="flex items-start justify-between mb-1">
+                        <p className="text-sm font-medium text-gray-900">{note.author_name || 'Bilinmeyen'}</p>
+                        <p className="text-xs text-gray-500">{formatDateTime(note.created_at)}</p>
+                      </div>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.note}</p>
+                    </div>
+                  ))}
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="production_notes">Üretim Notları</Label>
-                <Textarea
-                  id="production_notes"
-                  value={productionData.production_notes}
-                  onChange={(e) => setProductionData({ ...productionData, production_notes: e.target.value })}
-                  placeholder="Üretim sırasında yapılan işlemler, sorunlar veya özel notlar..."
-                  rows={4}
-                  disabled={actionLoading}
-                />
-                <p className="text-xs text-gray-500">
-                  Örn: "İlk baskı renk farkı nedeniyle tekrarlandı. 2. baskı onaylandı."
+              ) : (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  Henüz not eklenmemiş.
                 </p>
-              </div>
+              )}
+            </CardContent>
+          </Card>
 
-              <div className="pt-4 border-t">
-                <Button 
-                  type="submit"
+          {/* Süreç Dosyaları */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Süreç Dosyaları
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {files.length > 0 ? (
+                <FileList files={files} onDelete={() => loadFiles(task.job.id, task.process?.id)} />
+              ) : (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  Bu sürece ait dosya bulunmuyor.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* SAĞ KOLON */}
+        <div className="space-y-6">
+          {/* Süreç Detayları */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Süreç Detayları</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {task.machine && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Makine</p>
+                    <div className="flex items-center gap-2">
+                      <Cpu className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm font-medium">{task.machine.name}</span>
+                    </div>
+                  </div>
+                )}
+
+                {task.estimated_duration && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Tahmini Süre</p>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm font-medium">{task.estimated_duration} dakika</span>
+                    </div>
+                  </div>
+                )}
+
+                {task.started_at && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Başlangıç</p>
+                    <p className="text-sm font-medium">{formatDateTime(task.started_at)}</p>
+                  </div>
+                )}
+
+                {task.completed_at && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Tamamlanma</p>
+                    <p className="text-sm font-medium">{formatDateTime(task.completed_at)}</p>
+                  </div>
+                )}
+
+                {task.status === 'in_progress' && elapsedTime && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Geçen Süre</p>
+                    <div className="flex items-center gap-2">
+                      <Timer className="w-4 h-4 text-yellow-600 animate-pulse" />
+                      <span className="text-sm font-medium text-yellow-700">{elapsedTime}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Aksiyon Butonları */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Aksiyonlar</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Başlat Butonu */}
+              {task.status === 'ready' && (
+                <Button
+                  onClick={handleStart}
                   disabled={actionLoading}
-                  className="w-full bg-green-600 hover:bg-green-700"
+                  className="w-full bg-blue-600 hover:bg-blue-700"
                 >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  {actionLoading ? 'Tamamlanıyor...' : 'Görevi Tamamla'}
+                  <Play className="w-4 h-4 mr-2" />
+                  Görevi Başlat
                 </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Tamamlanmış Görev Bilgileri */}
-      {task.status === 'completed' && (
-        <Card className="bg-green-50 border-green-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-green-800">
-              <CheckCircle className="w-5 h-5" />
-              Tamamlanmış Görev
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {task.production_quantity && (
-                <div>
-                  <p className="text-sm text-green-700 mb-1">Üretim Miktarı</p>
-                  <p className="font-medium text-green-900">
-                    {task.production_quantity} {task.production_unit}
-                  </p>
-                </div>
               )}
 
-              {task.production_notes && (
-                <div>
-                  <p className="text-sm text-green-700 mb-1">Üretim Notları</p>
-                  <p className="text-sm text-green-900 whitespace-pre-wrap">
-                    {task.production_notes}
-                  </p>
-                </div>
+              {task.status === 'in_progress' && (
+                <>
+                  {/* Süreci Durdur */}
+                  {!showPauseForm ? (
+                    <Button
+                      type="button"
+                      onClick={() => setShowPauseForm(true)}
+                      variant="outline"
+                      className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
+                    >
+                      <Pause className="w-4 h-4 mr-2" />
+                      Süreci Durdur
+                    </Button>
+                  ) : (
+                    <div className="p-4 border rounded-lg bg-orange-50 space-y-3">
+                      <Label className="text-sm font-medium">Durdurma Sebebi</Label>
+                      <Textarea
+                        value={pauseReason}
+                        onChange={(e) => setPauseReason(e.target.value)}
+                        placeholder="Neden durduruluyor?"
+                        rows={3}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setShowPauseForm(false)
+                            setPauseReason('')
+                          }}
+                          disabled={pausing}
+                          className="flex-1"
+                        >
+                          İptal
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handlePause}
+                          disabled={pausing || !pauseReason.trim()}
+                          className="flex-1 bg-orange-600 hover:bg-orange-700"
+                        >
+                          {pausing ? 'Durduruluyor...' : 'Durdur'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
-              {task.completed_at && (
-                <div>
-                  <p className="text-sm text-green-700 mb-1">Tamamlanma Zamanı</p>
-                  <p className="font-medium text-green-900">
-                    {formatDateTime(task.completed_at)}
-                  </p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Hazır Durumu Uyarısı */}
-      {task.status === 'ready' && (
-        <Card className="bg-blue-50 border-blue-200">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-              <div>
-                <h3 className="font-medium text-blue-900 mb-1">Görev Hazır</h3>
-                <p className="text-sm text-blue-700">
-                  Bu görev başlatılmaya hazır. Görevi başlatmak için yukarıdaki butona tıklayın.
-                  Görevi başlattığınızda süre ölçümü başlayacaktır.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* İş Hikayesi / Timeline */}
+      {task.job && task.job.id && (
+        <ActivityTimeline jobId={task.job.id} />
       )}
     </div>
   )

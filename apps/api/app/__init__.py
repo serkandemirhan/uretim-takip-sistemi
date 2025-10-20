@@ -54,6 +54,9 @@ def create_app():
     from app.routes.currency_settings import currency_settings_bp
     from app.routes.units import units_bp
     from app.routes.quotations import quotations_bp
+    from app.routes.purchase_requests import purchase_requests_bp
+    from app.routes.goods_receipts import goods_receipts_bp
+    from app.routes.job_materials import job_materials_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(users_bp)
@@ -75,6 +78,9 @@ def create_app():
     app.register_blueprint(currency_settings_bp)
     app.register_blueprint(quotations_bp)
     app.register_blueprint(units_bp)
+    app.register_blueprint(purchase_requests_bp)
+    app.register_blueprint(goods_receipts_bp)
+    app.register_blueprint(job_materials_bp)
 
     # Root endpoint
     @app.route('/', methods=['GET'])

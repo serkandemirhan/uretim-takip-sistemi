@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Calendar,
+  AlarmClock,
   User,
   Building2,
   ArrowLeft,
@@ -22,6 +23,8 @@ import {
   XCircle,
   Edit,
   ChevronDown,
+  ChevronsDown,
+  ChevronsUp,
   Settings,
   Package,
   FileText,
@@ -39,6 +42,33 @@ import { handleApiError, debugLog } from '@/lib/utils/error-handler'
 
 import { FileUpload } from '@/components/features/files/FileUpload'
 import { FileList } from '@/components/features/files/FileList'
+
+const MINUTES_PER_HOUR = 60
+const HOURS_PER_DAY = 24
+const MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR
+
+function splitDurationMinutes(totalMinutes?: number | null) {
+  if (totalMinutes == null) {
+    return { days: 1, hours: 0 }
+  }
+  const safeMinutes = Math.max(0, Number(totalMinutes) || 0)
+  const days = Math.floor(safeMinutes / MINUTES_PER_DAY)
+  const hours = Math.floor((safeMinutes % MINUTES_PER_DAY) / MINUTES_PER_HOUR)
+  return { days, hours }
+}
+
+function combineDurationMinutes(days: number | string | null | undefined, hours: number | string | null | undefined) {
+  const safeDays = Math.max(0, Math.floor(Number(days) || 0))
+  const safeHoursRaw = Math.max(0, Math.floor(Number(hours) || 0))
+  const extraDays = Math.floor(safeHoursRaw / HOURS_PER_DAY)
+  const normalizedHours = safeHoursRaw % HOURS_PER_DAY
+  return (safeDays + extraDays) * MINUTES_PER_DAY + normalizedHours * MINUTES_PER_HOUR
+}
+
+function formatDurationLabel(totalMinutes?: number | null) {
+  const { days, hours } = splitDurationMinutes(totalMinutes)
+  return `${days} gün ${hours} saat`
+}
 
 
 
@@ -61,14 +91,19 @@ export default function JobDetailPage() {
     due_date: '',
     priority: 'normal',
   })
-  const [stepForms, setStepForms] = useState<any[]>([])
-  const [newStep, setNewStep] = useState({
-    process_id: '',
-    assigned_to: '',
-    machine_id: '',
-    estimated_duration: '',
-    is_parallel: false,
-  })
+const [stepForms, setStepForms] = useState<any[]>([])
+const [newStep, setNewStep] = useState({
+  process_id: '',
+  assigned_to: '',
+  machine_id: '',
+  is_parallel: false,
+  due_date: '',
+  due_time: '',
+  estimated_duration: MINUTES_PER_DAY,
+  estimated_duration_days: 1,
+  estimated_duration_hours: 0,
+  requirements: '',
+})
   const [completionForms, setCompletionForms] = useState<
     Record<string, { quantity: string; unit: string; notes: string }>
   >({})
@@ -117,6 +152,30 @@ export default function JobDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing])
 
+  useEffect(() => {
+    if (!job || referenceLoaded) {
+      return
+    }
+
+    const role = currentUser?.role
+    const userId = currentUser?.id ? String(currentUser.id) : null
+    const isManager = role === 'yonetici' || role === 'admin'
+    const isAssignee =
+      !!userId &&
+      Array.isArray(job.steps) &&
+      job.steps.some((step: any) => {
+        const assignedId =
+          step?.assigned_to?.id ??
+          (typeof step?.assigned_to === 'string' ? step.assigned_to : null)
+        return assignedId && String(assignedId) === userId
+      })
+
+    if (isManager || isAssignee) {
+      void ensureReferences()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job, currentUser, referenceLoaded])
+
 async function loadJob() {
   setLoading(true)
   try {
@@ -128,6 +187,7 @@ async function loadJob() {
       if (!payload?.id) throw new Error('job missing')
       setJob(payload)
       setCompletionForms(normalizeCompletionForms(payload.steps || []))
+      hydrateStepForms(payload.steps || [])
       if (isEditing) {
         initializeJobForm(payload)
       }
@@ -181,6 +241,72 @@ function normalizeCompletionForms(steps: any[]) {
   return forms
 }
 
+function normalizeDate(value?: string | null) {
+  if (!value) return ''
+  if (value.includes('T')) {
+    return value.split('T')[0] || ''
+  }
+  if (value.includes(' ')) {
+    return value.split(' ')[0] || ''
+  }
+  return value.trim()
+}
+
+function normalizeTime(value?: string | null) {
+  if (!value) return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const [hours = '', minutes = ''] = trimmed.split(':')
+  if (!hours) return ''
+  const normalizedMinutes = minutes ? minutes : '00'
+  return `${hours.padStart(2, '0')}:${normalizedMinutes.padStart(2, '0')}`
+}
+
+function getDefaultStepDueDate(jobDueDate?: string | null) {
+  const normalizedJobDate = normalizeDate(jobDueDate)
+  if (normalizedJobDate) {
+    return normalizedJobDate
+  }
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  return tomorrow.toISOString().slice(0, 10)
+}
+
+function hydrateStepForms(steps: any[]) {
+  setStepForms(
+    steps.map((step: any) => ({
+      id: step.id,
+      process_id: step.process?.id || '',
+      assigned_to: step.assigned_to?.id || '',
+      machine_id: step.machine?.id || '',
+      is_parallel: !!step.is_parallel,
+      status: step.status,
+      name: step.process?.name || '',
+      due_date: normalizeDate(step.due_date),
+      due_time: normalizeTime(step.due_time),
+      requirements: step.requirements || '',
+      original_due_date: normalizeDate(step.due_date),
+      original_due_time: normalizeTime(step.due_time),
+      original_assigned_to: step.assigned_to?.id || '',
+      original_machine_id: step.machine?.id || '',
+      ...(() => {
+        const rawMinutes =
+          step.estimated_duration != null ? Number(step.estimated_duration) : null
+        const { days, hours } = splitDurationMinutes(rawMinutes)
+        const combined = combineDurationMinutes(days, hours)
+        const originalMinutes =
+          step.estimated_duration != null ? Number(step.estimated_duration) : combined
+        return {
+          estimated_duration_days: days,
+          estimated_duration_hours: hours,
+          estimated_duration_minutes: combined,
+          original_estimated_duration_minutes: originalMinutes,
+        }
+      })(),
+    })),
+  )
+}
+
 function initializeJobForm(jobData: any) {
   setJobForm({
     title: jobData.title || '',
@@ -190,25 +316,18 @@ function initializeJobForm(jobData: any) {
     priority: jobData.priority || 'normal',
   })
   const steps = (jobData.steps || []) as any[]
-  setStepForms(
-    steps.map((step: any) => ({
-      id: step.id,
-      process_id: step.process?.id || '',
-      assigned_to: step.assigned_to?.id || '',
-      machine_id: step.machine?.id || '',
-      estimated_duration:
-        step.estimated_duration != null ? String(step.estimated_duration) : '',
-      is_parallel: !!step.is_parallel,
-      status: step.status,
-      name: step.process?.name || '',
-    })),
-  )
+  hydrateStepForms(steps)
   setNewStep({
     process_id: '',
     assigned_to: '',
     machine_id: '',
-    estimated_duration: '',
     is_parallel: false,
+    due_date: '',
+    due_time: '',
+    estimated_duration: MINUTES_PER_DAY,
+    estimated_duration_days: 1,
+    estimated_duration_hours: 0,
+    requirements: '',
   })
   setCompletionForms(normalizeCompletionForms(steps))
 }
@@ -240,24 +359,9 @@ async function ensureReferences() {
   }
 }
 
-function toggleEditing() {
-  if (!isEditing) {
-    if (job) {
-      initializeJobForm(job)
-    }
-    void ensureReferences()
-    setIsEditing(true)
-  } else {
-    setIsEditing(false)
-  }
-}
+function toggleEditing() {}
 
-function cancelEditing() {
-  if (job) {
-    initializeJobForm(job)
-  }
-  setIsEditing(false)
-}
+function cancelEditing() {}
 
 async function handleSaveJob() {
   if (!job) return
@@ -326,16 +430,78 @@ async function handleSaveJob() {
 }
 
 function handleStepFieldChange(stepId: string, field: string, value: any) {
-  setStepForms((prev) =>
-    prev.map((step) =>
-      step.id === stepId
-        ? {
+  const nextValue =
+    field === 'due_date'
+      ? normalizeDate(value)
+      : field === 'due_time'
+        ? normalizeTime(value)
+        : value
+  setStepForms((prev) => {
+    let found = false
+    const updated = prev.map((step) => {
+      if (step.id === stepId) {
+        found = true
+        if (field === 'estimated_duration_days' || field === 'estimated_duration_hours') {
+          const numeric = Math.max(0, Math.floor(Number(nextValue) || 0))
+          const nextStep = {
             ...step,
-            [field]: value,
+            [field]: numeric,
           }
-        : step,
-    ),
-  )
+          const totalMinutes = combineDurationMinutes(
+            nextStep.estimated_duration_days,
+            nextStep.estimated_duration_hours,
+          )
+          const normalized = splitDurationMinutes(totalMinutes)
+          return {
+            ...nextStep,
+            estimated_duration_days: normalized.days,
+            estimated_duration_hours: normalized.hours,
+            estimated_duration_minutes: totalMinutes,
+          }
+        }
+        return {
+          ...step,
+          [field]: nextValue,
+        }
+      }
+      return step
+    })
+    if (found) {
+      return updated
+    }
+
+    const baseStep = job?.steps?.find((item: any) => item.id === stepId)
+    const baseMinutes = baseStep?.estimated_duration != null ? Number(baseStep.estimated_duration) : null
+    let { days, hours } = splitDurationMinutes(baseMinutes)
+    if (field === 'estimated_duration_days') {
+      days = Math.max(0, Math.floor(Number(nextValue) || 0))
+    }
+    if (field === 'estimated_duration_hours') {
+      hours = Math.max(0, Math.floor(Number(nextValue) || 0))
+    }
+    const combined = combineDurationMinutes(days, hours)
+    const normalized = splitDurationMinutes(combined)
+    const fallback = {
+      id: stepId,
+      process_id: baseStep?.process?.id || '',
+      assigned_to: baseStep?.assigned_to?.id || '',
+      machine_id: baseStep?.machine?.id || '',
+      estimated_duration_days: normalized.days,
+      estimated_duration_hours: normalized.hours,
+      estimated_duration_minutes: combined,
+      original_estimated_duration_minutes: baseMinutes ?? combined,
+      is_parallel: !!baseStep?.is_parallel,
+      status: baseStep?.status,
+      name: baseStep?.process?.name || '',
+      due_date: field === 'due_date' ? nextValue : normalizeDate(baseStep?.due_date),
+      due_time: field === 'due_time' ? nextValue : normalizeTime(baseStep?.due_time),
+      original_due_date: normalizeDate(baseStep?.due_date),
+      original_due_time: normalizeTime(baseStep?.due_time),
+      original_assigned_to: baseStep?.assigned_to?.id || '',
+      original_machine_id: baseStep?.machine?.id || '',
+    }
+    return [...updated, fallback]
+  })
 }
 
 function handleCompletionFieldChange(stepId: string, field: string, value: string) {
@@ -355,13 +521,25 @@ async function handleStepSave(stepId: string) {
   const form = stepForms.find((step) => step.id === stepId)
   if (!form) return
 
+  const dueDate = normalizeDate(form.due_date)
+  const dueTime = normalizeTime(form.due_time)
+
+  if (!dueDate || !dueTime) {
+    toast.error('Her süreç için termin tarihi ve saati zorunludur')
+    return
+  }
+
   const payload: any = {
     assigned_to: form.assigned_to || null,
     machine_id: form.machine_id || null,
     is_parallel: form.is_parallel,
-    estimated_duration: form.estimated_duration
-      ? Number(form.estimated_duration)
-      : null,
+    estimated_duration: combineDurationMinutes(
+      form.estimated_duration_days,
+      form.estimated_duration_hours,
+    ),
+    due_date: dueDate,
+    due_time: dueTime,
+    requirements: form.requirements || null,
   }
 
   if (form.process_id) {
@@ -380,33 +558,50 @@ async function handleStepSave(stepId: string) {
   }
 }
 
-async function handleAddStep(e: React.FormEvent) {
-  e.preventDefault()
+async function handleAddStep(e?: React.FormEvent, directProcessId?: string) {
+  e?.preventDefault()
   if (!job) return
 
-  if (!newStep.process_id) {
+  const processId = directProcessId || newStep.process_id
+  if (!processId) {
     toast.error('Önce eklenecek süreci seçin')
     return
   }
 
   try {
     setAddingStep(true)
+    const defaultDueDate = newStep.due_date
+      ? normalizeDate(newStep.due_date)
+      : getDefaultStepDueDate(job.due_date)
+    const defaultDueTime = newStep.due_time
+      ? normalizeTime(newStep.due_time)
+      : '23:59'
+    const durationMinutes = combineDurationMinutes(
+      newStep.estimated_duration_days,
+      newStep.estimated_duration_hours,
+    )
     await jobsAPI.addStep(job.id, {
-      process_id: newStep.process_id,
+      process_id: processId,
       assigned_to: newStep.assigned_to || null,
       machine_id: newStep.machine_id || null,
       is_parallel: newStep.is_parallel,
-      estimated_duration: newStep.estimated_duration
-        ? Number(newStep.estimated_duration)
-        : null,
+      estimated_duration: durationMinutes,
+      due_date: defaultDueDate,
+      due_time: defaultDueTime,
+      requirements: newStep.requirements || null,
     })
     toast.success('Yeni süreç eklendi')
     setNewStep({
       process_id: '',
       assigned_to: '',
       machine_id: '',
-      estimated_duration: '',
       is_parallel: false,
+      due_date: '',
+      due_time: '',
+      estimated_duration: MINUTES_PER_DAY,
+      estimated_duration_days: 1,
+      estimated_duration_hours: 0,
+      requirements: '',
     })
     await loadJob()
   } catch (err: any) {
@@ -417,10 +612,27 @@ async function handleAddStep(e: React.FormEvent) {
 }
 
 function handleNewStepChange(field: string, value: any) {
-  setNewStep((prev) => ({
-    ...prev,
-    [field]: value,
-  }))
+  setNewStep((prev) => {
+    if (field === 'estimated_duration_days' || field === 'estimated_duration_hours') {
+      const numeric = Math.max(0, Math.floor(Number(value) || 0))
+      const next = {
+        ...prev,
+        [field]: numeric,
+      }
+      const combined = combineDurationMinutes(next.estimated_duration_days, next.estimated_duration_hours)
+      const normalized = splitDurationMinutes(combined)
+      return {
+        ...next,
+        estimated_duration_days: normalized.days,
+        estimated_duration_hours: normalized.hours,
+        estimated_duration: combined,
+      }
+    }
+    return {
+      ...prev,
+      [field]: value,
+    }
+  })
 }
 
 const processOptions = useMemo(
@@ -618,6 +830,31 @@ async function handleCancel() {
     }
   }
 
+  async function handleActivateStep(stepId: string) {
+    setStepActionLoading((prev) => ({ ...prev, [stepId]: true }))
+    try {
+      await jobsAPI.activateStep(stepId)
+      await loadJob()
+    } catch (error: any) {
+      const message = error?.response?.data?.error || 'Süreç hazır duruma getirilemedi'
+      toast.error(message)
+    } finally {
+      setStepActionLoading((prev) => ({ ...prev, [stepId]: false }))
+    }
+  }
+
+  async function handleReopenStep(stepId: string, reason?: string) {
+    setStepActionLoading((prev) => ({ ...prev, [stepId]: true }))
+    try {
+      await jobsAPI.reopenStep(stepId, { reason })
+      await loadJob()
+    } catch (error) {
+      throw error
+    } finally {
+      setStepActionLoading((prev) => ({ ...prev, [stepId]: false }))
+    }
+  }
+
   async function handleAddStepNote(stepId: string, note: string) {
     try {
       await jobsAPI.addStepNote(stepId, { note })
@@ -663,18 +900,23 @@ async function handleCancel() {
     disabled,
     onDelete,
     canDelete,
+    canAdjustSchedule,
     users,
     machines,
     processOptions,
     completionForm,
     onCompletionChange,
     onStartStep,
+    onActivateStep,
     onCompleteStep,
     actionLoading,
     canUploadFiles,
     canDeleteFiles,
     onPauseStep,
     onResumeStep,
+    onReopenStep,
+    isStepCompleted = false,
+    isStepCanceled = false,
     notes,
     onAddNote,
     isOpen,
@@ -689,18 +931,23 @@ async function handleCancel() {
     disabled?: boolean
     onDelete?: (stepId: string, processName?: string) => void
     canDelete?: boolean
+    canAdjustSchedule: boolean
     users: any[]
     machines: any[]
     processOptions: { value: string; label: string }[]
     completionForm?: { quantity: string; unit: string; notes: string }
     onCompletionChange?: (stepId: string, field: string, value: string) => void
     onStartStep?: (stepId: string) => void
+    onActivateStep?: (stepId: string) => Promise<void> | void
     onCompleteStep?: (step: any) => void
     actionLoading?: boolean
     canUploadFiles: boolean
     canDeleteFiles: boolean
     onPauseStep?: (stepId: string, reason: string) => Promise<void> | void
     onResumeStep?: (stepId: string) => Promise<void> | void
+    onReopenStep?: (stepId: string, reason?: string) => Promise<void> | void
+    isStepCompleted?: boolean
+    isStepCanceled?: boolean
     notes?: any[]
     onAddNote?: (stepId: string, note: string) => Promise<void> | void
     isOpen: boolean
@@ -720,6 +967,9 @@ async function handleCancel() {
 
     const processName = step.process?.name || 'Süreç'
     const processCode = step.process?.code || ''
+    const processDescription =
+      step.process?.description || (step as any).process_description || ''
+    const requirements = step.requirements || (step as any).requirements || ''
     const assignedUser = step.assigned_to
     const assignedName =
       assignedUser?.full_name || assignedUser?.name || 'Atanmamış'
@@ -740,12 +990,26 @@ async function handleCancel() {
     const machineName = step.machine?.name || 'Belirlenmedi'
     const formatDateTime = (value?: string | null) =>
       value ? new Date(value).toLocaleString('tr-TR') : '-'
-    const estimatedDuration = step.estimated_duration
-      ? `${step.estimated_duration} dk`
-      : '-'
-    const actualDuration = step.actual_duration
-      ? `${step.actual_duration} dk`
-      : '-'
+    const originalStepDurationMinutes = step.estimated_duration != null ? Number(step.estimated_duration) : null
+    const initialDurationSplit = splitDurationMinutes(
+      editForm?.estimated_duration_minutes ?? originalStepDurationMinutes,
+    )
+    const rawDurationDays = editForm?.estimated_duration_days ?? initialDurationSplit.days
+    const rawDurationHours = editForm?.estimated_duration_hours ?? initialDurationSplit.hours
+    const currentDurationMinutes = combineDurationMinutes(rawDurationDays, rawDurationHours)
+    const normalizedCurrent = splitDurationMinutes(currentDurationMinutes)
+    const currentDurationDays = normalizedCurrent.days
+    const currentDurationHours = normalizedCurrent.hours
+    const originalDurationMinutes =
+      editForm?.original_estimated_duration_minutes ??
+      (originalStepDurationMinutes != null
+        ? originalStepDurationMinutes
+        : currentDurationMinutes)
+    const estimatedDurationLabel = formatDurationLabel(originalDurationMinutes)
+    const actualDuration =
+      step.actual_duration != null
+        ? formatDurationLabel(Number(step.actual_duration))
+        : '-'
     const productionValue =
       step.production_quantity != null && step.production_quantity !== ''
         ? `${step.production_quantity} ${step.production_unit || ''}`.trim()
@@ -758,8 +1022,134 @@ async function handleCancel() {
       : Array.isArray(step.notes)
         ? step.notes
         : []
+    const dueDateValue = editForm?.due_date ?? normalizeDate(step.due_date)
+    const dueTimeValue = editForm?.due_time ?? normalizeTime(step.due_time)
+    const scheduleForm = {
+      due_date: dueDateValue,
+      due_time: dueTimeValue,
+    }
+    const originalDueDate = editForm?.original_due_date ?? dueDateValue
+    const originalDueTime = editForm?.original_due_time ?? dueTimeValue
+    const currentAssignedTo = editForm?.assigned_to ?? (step.assigned_to?.id || '')
+    const originalAssignedTo = editForm?.original_assigned_to ?? (step.assigned_to?.id || '')
+    const currentMachineId = editForm?.machine_id ?? (step.machine?.id || '')
+    const originalMachineId = editForm?.original_machine_id ?? (step.machine?.id || '')
+
+    const hasScheduleChanges =
+      canAdjustSchedule &&
+      (scheduleForm.due_date !== originalDueDate || scheduleForm.due_time !== originalDueTime)
+    const hasAssignmentChanges =
+      canAdjustSchedule && currentAssignedTo !== originalAssignedTo
+    const hasMachineChanges = canAdjustSchedule && currentMachineId !== originalMachineId
+    const hasDurationChanges =
+      canAdjustSchedule && currentDurationMinutes !== originalDurationMinutes
+    const hasPendingChanges =
+      hasScheduleChanges || hasAssignmentChanges || hasMachineChanges || hasDurationChanges
+    const plannedDateDisplay = (() => {
+      if (!dueDateValue) return '-'
+      const dateObj = new Date(`${dueDateValue}T00:00:00`)
+      const dateLabel = Number.isNaN(dateObj.getTime())
+        ? dueDateValue
+        : dateObj.toLocaleDateString('tr-TR')
+      return dueTimeValue ? `${dateLabel} ${dueTimeValue}` : dateLabel
+    })()
 
     const canStart = onStartStep && ['ready', 'pending'].includes(step.status)
+    const canActivate = onActivateStep && canAdjustSchedule && step.status === 'pending'
+    const canReopen = onReopenStep && canAdjustSchedule && step.status === 'completed'
+    const canTogglePause = onPauseStep && ['ready', 'in_progress'].includes(step.status)
+    const canResume = onResumeStep && step.status === 'blocked'
+    const isStepCompletedFlag = Boolean(isStepCompleted ?? (step.status === 'completed'))
+    const isStepCanceledFlag = Boolean(isStepCanceled ?? (step.status === 'canceled'))
+    const fieldsDisabled = disabled || isStepCompletedFlag || isStepCanceledFlag
+
+    const handleReopenClick = async () => {
+      if (!onReopenStep) return
+      let reasonInput = ''
+      if (typeof window !== 'undefined') {
+        const response = window.prompt('Süreç yeniden açılacak. Sebep girin (opsiyonel):', '')
+        if (response === null) {
+          return
+        }
+        reasonInput = (response || '').trim()
+      }
+      try {
+        await onReopenStep(step.id, reasonInput)
+        toast.success('Süreç yeniden açıldı (revizyon güncellendi)')
+      } catch (error: any) {
+        const message = error?.response?.data?.error || 'Süreç yeniden açılamadı'
+        toast.error(message)
+      }
+    }
+
+    const actionButtons: JSX.Element[] = []
+
+    if (canActivate) {
+      actionButtons.push(
+        <Button
+          key="activate"
+          type="button"
+          onClick={() => onActivateStep && onActivateStep(step.id)}
+          disabled={fieldsDisabled || !!actionLoading}
+        >
+          {actionLoading ? 'Aktifleştiriliyor...' : 'Süreci Aktif Et'}
+        </Button>,
+      )
+    }
+
+    if (canStart) {
+      actionButtons.push(
+        <Button
+          key="start"
+          type="button"
+          onClick={() => onStartStep && onStartStep(step.id)}
+          disabled={fieldsDisabled || !!actionLoading}
+        >
+          {actionLoading ? 'Başlatılıyor...' : 'Süreci Başlat'}
+        </Button>,
+      )
+    }
+
+    if (canTogglePause) {
+      actionButtons.push(
+        <Button
+          key="pause"
+          type="button"
+          variant="outline"
+          onClick={() => setShowPauseForm((prev) => !prev)}
+          disabled={!!actionLoading}
+        >
+          {showPauseForm ? 'Durdurma Formunu Gizle' : 'Süreci Durdur'}
+        </Button>,
+      )
+    }
+
+    if (canResume) {
+      actionButtons.push(
+        <Button
+          key="resume"
+          type="button"
+          onClick={handleResume}
+          disabled={pauseSubmitting || !!actionLoading}
+        >
+          {pauseSubmitting ? 'Devam Ettiriliyor...' : 'Süreci Devam Ettir'}
+        </Button>,
+      )
+    }
+
+    if (canReopen) {
+      actionButtons.push(
+        <Button
+          key="reopen"
+          type="button"
+          variant="outline"
+          onClick={handleReopenClick}
+          disabled={fieldsDisabled || !!actionLoading}
+        >
+          {actionLoading ? 'İşlem yapılıyor...' : 'Süreci Yeniden Aç'}
+        </Button>,
+      )
+    }
     const handleFieldChange = (field: string, value: any) => {
       if (onFieldChange) {
         onFieldChange(step.id, field, value)
@@ -830,7 +1220,7 @@ async function handleCancel() {
     }
 
     return (
-      <div className="rounded-lg border bg-white shadow-sm">
+      <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
         <button
           type="button"
           className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
@@ -857,13 +1247,6 @@ async function handleCancel() {
                   {getStepStatusLabel(step.status)}
                 </Badge>
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                <span>{processCode || 'Kod belirtilmedi'}</span>
-                <span className="flex items-center gap-1 text-gray-600">
-                  <User className="h-3 w-3" />
-                  {assignedName}
-                </span>
-              </div>
             </div>
           </div>
           <ChevronDown
@@ -874,7 +1257,7 @@ async function handleCancel() {
           />
         </button>
         {isOpen && (
-          <div className="space-y-3 border-t px-4 py-3">
+          <div className="space-y-3 border-t px-4 py-3 max-w-full">
             {isEditingMode && editForm ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -904,7 +1287,7 @@ async function handleCancel() {
                       value={editForm.process_id || ''}
                       onChange={(e) => handleFieldChange('process_id', e.target.value)}
                       className="w-full rounded-md border border-gray-300 px-3 py-2"
-                      disabled={disabled}
+                      disabled={fieldsDisabled}
                     >
                       <option value="">Süreç seçin</option>
                       {processOptions.map((option) => (
@@ -922,7 +1305,7 @@ async function handleCancel() {
                         handleFieldChange('assigned_to', e.target.value)
                       }
                       className="w-full rounded-md border border-gray-300 px-3 py-2"
-                      disabled={disabled}
+                      disabled={fieldsDisabled}
                     >
                       <option value="">Seçilmedi</option>
                       {users.map((user) => (
@@ -940,7 +1323,7 @@ async function handleCancel() {
                         handleFieldChange('machine_id', e.target.value)
                       }
                       className="w-full rounded-md border border-gray-300 px-3 py-2"
-                      disabled={disabled}
+                      disabled={fieldsDisabled}
                     >
                       <option value="">Seçilmedi</option>
                       {machines.map((machine) => (
@@ -951,24 +1334,70 @@ async function handleCancel() {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Tahmini Süre (dk)</Label>
+                    <Label>Termin Tarihi</Label>
                     <Input
-                      type="number"
-                      min={0}
-                      value={editForm.estimated_duration ?? ''}
-                      onChange={(e) =>
-                        handleFieldChange('estimated_duration', e.target.value)
-                      }
-                      disabled={disabled}
+                      type="date"
+                      value={scheduleForm.due_date}
+                      onChange={(e) => handleFieldChange('due_date', e.target.value)}
+                      disabled={fieldsDisabled}
+                      required
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label>Termin Saati</Label>
+                    <Input
+                      type="time"
+                      value={scheduleForm.due_time}
+                      onChange={(e) => handleFieldChange('due_time', e.target.value)}
+                      disabled={fieldsDisabled}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tahmini Süre</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={Number(editForm.estimated_duration_days ?? currentDurationDays)}
+                        onChange={(e) =>
+                          handleFieldChange('estimated_duration_days', e.target.value)
+                        }
+                        disabled={fieldsDisabled}
+                        className="h-9 w-24"
+                      />
+                      <span className="text-xs text-gray-500">gün</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={23}
+                        value={Number(editForm.estimated_duration_hours ?? currentDurationHours)}
+                        onChange={(e) =>
+                          handleFieldChange('estimated_duration_hours', e.target.value)
+                        }
+                        disabled={fieldsDisabled}
+                        className="h-9 w-24"
+                      />
+                      <span className="text-xs text-gray-500">saat</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>İş Gereksinimleri</Label>
+                  <Textarea
+                    value={editForm.requirements ?? ''}
+                    onChange={(e) => handleFieldChange('requirements', e.target.value)}
+                    disabled={fieldsDisabled}
+                    placeholder="Bu adımın nasıl yapılması gerektiğini açıklayın..."
+                    className="min-h-[100px]"
+                  />
                 </div>
                 <label className="flex items-center gap-2 text-sm text-gray-600">
                   <input
                     type="checkbox"
                     checked={editForm.is_parallel ?? false}
                     onChange={(e) => handleFieldChange('is_parallel', e.target.checked)}
-                    disabled={disabled}
+                    disabled={fieldsDisabled}
                   />
                   Paralel çalışabilir
                 </label>
@@ -989,7 +1418,9 @@ async function handleCancel() {
                 <div className="grid gap-3 text-sm text-gray-600 md:grid-cols-2">
                   <div>
                     <p className="text-xs uppercase text-gray-500">Tahmini Süre</p>
-                    <p className="font-medium text-gray-900">{estimatedDuration}</p>
+                    <p className="font-medium text-gray-900">
+                      {formatDurationLabel(currentDurationMinutes)}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs uppercase text-gray-500">Gerçekleşen Süre</p>
@@ -1021,15 +1452,38 @@ async function handleCancel() {
                     </div>
                   </div>
                 )}
+
+                {requirements && (
+                  <div className="rounded-md bg-sky-50 p-3 text-sm text-sky-800">
+                    <p className="font-semibold text-sky-900 mb-1">İş Gereksinimleri</p>
+                    <p className="whitespace-pre-line">{requirements}</p>
+                  </div>
+                )}
               </div>
             ) : (
               <>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 lg:grid-cols-2">
                   <div className="flex items-center gap-2.5">
                     <User className="h-4 w-4 text-gray-400" />
-                    <div>
+                    <div className="min-w-[200px]">
                       <p className="text-xs uppercase text-gray-500">Sorumlu</p>
-                      <p className="text-sm font-medium text-gray-900">{assignedName}</p>
+                      {canAdjustSchedule ? (
+                        <select
+                          value={currentAssignedTo}
+                          onChange={(e) => handleFieldChange('assigned_to', e.target.value)}
+                          className="h-8 w-full min-w-[160px] rounded border border-gray-300 px-2 text-sm"
+                          disabled={disabled}
+                        >
+                          <option value="">Seçilmedi</option>
+                          {users.map((user) => (
+                            <option key={user.id} value={user.id}>
+                              {user.full_name || user.username}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-sm font-medium text-gray-900">{assignedName}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -1041,16 +1495,88 @@ async function handleCancel() {
                   </div>
                   <div className="flex items-center gap-2.5">
                     <Settings className="h-4 w-4 text-gray-400" />
-                    <div>
+                    <div className="min-w-[200px]">
                       <p className="text-xs uppercase text-gray-500">Makine</p>
-                      <p className="text-sm font-medium text-gray-900">{machineName}</p>
+                      {canAdjustSchedule ? (
+                        <select
+                          value={currentMachineId}
+                          onChange={(e) => handleFieldChange('machine_id', e.target.value)}
+                          className="h-8 w-full min-w-[160px] rounded border border-gray-300 px-2 text-sm"
+                          disabled={disabled}
+                        >
+                          <option value="">Seçilmedi</option>
+                          {machines.map((machine) => (
+                            <option key={machine.id} value={machine.id}>
+                              {machine.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-sm font-medium text-gray-900">{machineName}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <AlarmClock className="h-4 w-4 text-gray-400" />
+                    <div className="min-w-[200px]">
+                      <p className="text-xs uppercase text-gray-500">Termin</p>
+                      {canAdjustSchedule ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input
+                            type="date"
+                            value={scheduleForm.due_date}
+                            onChange={(e) => handleFieldChange('due_date', e.target.value)}
+                            disabled={disabled}
+                            required
+                            className="h-8 w-auto min-w-[120px] text-sm"
+                          />
+                          <Input
+                            type="time"
+                            value={scheduleForm.due_time}
+                            onChange={(e) => handleFieldChange('due_time', e.target.value)}
+                            disabled={disabled}
+                            required
+                            className="h-8 w-auto min-w-[100px] text-sm"
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-sm font-medium text-gray-900">{plannedDateDisplay}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5">
                     <Timer className="h-4 w-4 text-gray-400" />
                     <div>
                       <p className="text-xs uppercase text-gray-500">Tahmini Süre</p>
-                      <p className="text-sm font-medium text-gray-900">{estimatedDuration}</p>
+                      {canAdjustSchedule ? (
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              min={0}
+                              value={Number(editForm?.estimated_duration_days ?? currentDurationDays)}
+                              onChange={(e) => handleFieldChange('estimated_duration_days', e.target.value)}
+                              disabled={disabled}
+                              className="h-8 w-20 text-sm"
+                            />
+                            <span className="text-xs text-gray-500">gün</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={23}
+                              value={Number(editForm?.estimated_duration_hours ?? currentDurationHours)}
+                              onChange={(e) => handleFieldChange('estimated_duration_hours', e.target.value)}
+                              disabled={disabled}
+                              className="h-8 w-20 text-sm"
+                            />
+                            <span className="text-xs text-gray-500">saat</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-medium text-gray-900">{estimatedDurationLabel}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5">
@@ -1092,19 +1618,28 @@ async function handleCancel() {
                   </div>
                 )}
 
-                {canStart && (
-                  <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-800">
-                    <p className="mb-3 font-medium">
-                      {step.status === 'pending'
-                        ? 'Bu süreç beklemede görünüyor. Yine de başlatmak isterseniz aşağıdaki butonu kullanabilirsiniz.'
-                        : 'Bu süreç hazır durumda. Başlatmak için aşağıdaki butonu kullanın.'}
-                    </p>
+                {requirements && (
+                  <div className="rounded-md bg-sky-50 p-3 text-sm text-sky-800">
+                    <p className="font-semibold text-sky-900 mb-1">İş Gereksinimleri</p>
+                    <p className="whitespace-pre-line">{requirements}</p>
+                  </div>
+                )}
+
+                {actionButtons.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {actionButtons}
+                  </div>
+                )}
+
+                {canAdjustSchedule && hasPendingChanges && (
+                  <div className="mt-3">
                     <Button
                       type="button"
-                      onClick={() => onStartStep(step.id)}
-                      disabled={disabled || !!actionLoading}
+                      onClick={() => onSave && onSave(step.id)}
+                      disabled={disabled}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white"
                     >
-                      {actionLoading ? 'Başlatılıyor...' : 'Süreci Başlat'}
+                      {disabled ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
                     </Button>
                   </div>
                 )}
@@ -1153,60 +1688,47 @@ async function handleCancel() {
                   </div>
                 )}
 
-                {onPauseStep && ['ready', 'in_progress'].includes(step.status) && (
+                {canTogglePause && showPauseForm && (
                   <div className="space-y-3 rounded-md bg-orange-50 p-3 text-sm text-orange-800">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium">
-                        {step.status === 'in_progress'
-                          ? 'Süreç şu anda devam ediyor. Durdurmak isterseniz sebep belirtebilirsiniz.'
-                          : 'Süreç başlamadan önce durdurabilirsiniz.'}
-                      </p>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowPauseForm((prev) => !prev)}
-                        disabled={pauseSubmitting || !!actionLoading}
-                      >
-                        {showPauseForm ? 'Vazgeç' : 'Süreci Durdur'}
-                      </Button>
-                    </div>
-                    {showPauseForm && (
-                      <div className="space-y-2">
-                        <div>
-                          <Label className="text-xs uppercase text-orange-700">Durdurma Sebebi</Label>
-                          <Textarea
-                            value={pauseReason}
-                            onChange={(e) => setPauseReason(e.target.value)}
-                            rows={3}
-                            placeholder="Örn: Malzeme bekleniyor"
-                            disabled={pauseSubmitting || !!actionLoading}
-                          />
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setShowPauseForm(false)
-                              setPauseReason('')
-                            }}
-                            disabled={pauseSubmitting || !!actionLoading}
-                          >
-                            İptal
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={handlePauseSubmit}
-                            disabled={pauseSubmitting || !!actionLoading}
-                          >
-                            {pauseSubmitting ? 'Gönderiliyor...' : 'Durdur'}
-                          </Button>
-                        </div>
+                    <p className="font-medium">
+                      {step.status === 'in_progress'
+                        ? 'Süreç şu anda devam ediyor. Durdurma sebebini belirterek adımı beklemeye alabilirsiniz.'
+                        : 'Süreç başlamadan önce durdurma sebebi belirtebilirsiniz.'}
+                    </p>
+                    <div className="space-y-2">
+                      <div>
+                        <Label className="text-xs uppercase text-orange-700">Durdurma Sebebi</Label>
+                        <Textarea
+                          value={pauseReason}
+                          onChange={(e) => setPauseReason(e.target.value)}
+                          rows={3}
+                          placeholder="Örn: Malzeme bekleniyor"
+                          disabled={pauseSubmitting || !!actionLoading}
+                        />
                       </div>
-                    )}
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setShowPauseForm(false)
+                            setPauseReason('')
+                          }}
+                          disabled={pauseSubmitting || !!actionLoading}
+                        >
+                          İptal
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handlePauseSubmit}
+                          disabled={pauseSubmitting || !!actionLoading}
+                        >
+                          {pauseSubmitting ? 'Gönderiliyor...' : 'Durdur'}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1220,40 +1742,29 @@ async function handleCancel() {
                         </p>
                       )}
                     </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      {step.blocked_at && (
-                        <span className="text-xs text-orange-600">
-                          {new Date(step.blocked_at).toLocaleString('tr-TR')}
-                        </span>
-                      )}
-                      {onResumeStep && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={handleResume}
-                          disabled={pauseSubmitting || !!actionLoading}
-                        >
-                          {pauseSubmitting ? 'Devam Ettiriliyor...' : 'Süreci Devam Ettir'}
-                        </Button>
-                      )}
-                    </div>
+                    {step.blocked_at && (
+                      <span className="text-xs text-orange-600">
+                        {new Date(step.blocked_at).toLocaleString('tr-TR')}
+                      </span>
+                    )}
                   </div>
                 )}
               </>
             )}
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h5 className="text-sm font-semibold text-gray-900">Süreç Dosyaları</h5>
                 <span className="text-xs text-gray-500">{filesList.length} dosya</span>
               </div>
-              <div className="max-w-md">
+              <div className="w-full">
                 <FileUpload
                   refType="job_step"
                   refId={step.id}
                   onUploadComplete={loadJob}
                   maxFiles={5}
                   disabled={!canUploadFiles}
+                  className="w-full"
                 />
                 {filesList.length > 0 ? (
                   <FileList
@@ -1261,7 +1772,8 @@ async function handleCancel() {
                     onDelete={canDeleteFiles ? loadJob : undefined}
                     allowDelete={canDeleteFiles}
                     variant="grid"
-                    itemWidth={90}
+                    itemWidth={120}
+                    className="w-full"
                   />
                 ) : (
                   <p className="text-xs text-gray-500">Henüz dosya eklenmemiş.</p>
@@ -1441,10 +1953,12 @@ async function handleCancel() {
             )}
 
             {(job.status === 'draft' || job.status === 'active' || job.status === 'on_hold') && (
-              <Button variant="outline" onClick={toggleEditing}>
-                <Edit className="w-4 h-4 mr-2" />
-                Düzenle
-              </Button>
+              <Link href={`/jobs/${job.id}/edit`}>
+                <Button variant="outline">
+                  <Edit className="w-4 h-4 mr-2" />
+                  Düzenle
+                </Button>
+              </Link>
             )}
           </>
         )}
@@ -1690,10 +2204,40 @@ async function handleCancel() {
         <div className="space-y-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Süreçler</h3>
-              <span className="text-sm text-gray-500">
-                {(job.steps && job.steps.length) || 0} adım
-              </span>
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold text-gray-900">Süreçler</h3>
+                <span className="text-sm text-gray-500">
+                  · {(job.steps && job.steps.length) || 0} adım
+                </span>
+              </div>
+              {!isEditing && job.steps && job.steps.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const allExpanded = job.steps.every((step: any) => expandedSteps[step.id])
+                    const newState: Record<string, boolean> = {}
+                    job.steps.forEach((step: any) => {
+                      newState[step.id] = !allExpanded
+                    })
+                    setExpandedSteps(newState)
+                  }}
+                  className="text-xs text-gray-600 hover:text-gray-900"
+                >
+                  {job.steps.every((step: any) => expandedSteps[step.id]) ? (
+                    <>
+                      <ChevronsUp className="h-4 w-4 mr-1" />
+                      Tümünü Kapat
+                    </>
+                  ) : (
+                    <>
+                      <ChevronsDown className="h-4 w-4 mr-1" />
+                      Tümünü Aç
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
 
             {/* İki Kolonlu Yapı: Sol = Eklenen Süreçler, Sağ = Mevcut Süreçler */}
@@ -1775,15 +2319,50 @@ async function handleCancel() {
                                   </select>
                                 </div>
                                 <div>
-                                  <Label className="text-xs">Süre (dk)</Label>
+                                  <Label className="text-xs">Termin Tarihi</Label>
                                   <Input
-                                    type="number"
-                                    min={0}
-                                    value={editForm?.estimated_duration ?? ''}
-                                    onChange={(e) => handleStepFieldChange(step.id, 'estimated_duration', e.target.value)}
+                                    type="date"
+                                    value={editForm?.due_date ?? ''}
+                                    onChange={(e) => handleStepFieldChange(step.id, 'due_date', e.target.value)}
                                     className="h-7 text-xs"
                                     disabled={savingStepId === step.id}
+                                    required
                                   />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Termin Saati</Label>
+                                  <Input
+                                    type="time"
+                                    value={editForm?.due_time ?? ''}
+                                    onChange={(e) => handleStepFieldChange(step.id, 'due_time', e.target.value)}
+                                    className="h-7 text-xs"
+                                    disabled={savingStepId === step.id}
+                                    required
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Tahmini Süre</Label>
+                                  <div className="flex items-center gap-1">
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      value={Number(editForm?.estimated_duration_days ?? currentDurationDays)}
+                                      onChange={(e) => handleStepFieldChange(step.id, 'estimated_duration_days', e.target.value)}
+                                      className="h-7 w-16 text-xs"
+                                      disabled={savingStepId === step.id}
+                                    />
+                                    <span className="text-[10px] uppercase text-gray-500">gün</span>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      max={23}
+                                      value={Number(editForm?.estimated_duration_hours ?? currentDurationHours)}
+                                      onChange={(e) => handleStepFieldChange(step.id, 'estimated_duration_hours', e.target.value)}
+                                      className="h-7 w-16 text-xs"
+                                      disabled={savingStepId === step.id}
+                                    />
+                                    <span className="text-[10px] uppercase text-gray-500">saat</span>
+                                  </div>
                                 </div>
                                 <div className="flex items-end">
                                   <label className="flex items-center gap-1 text-xs text-gray-600">
@@ -1849,10 +2428,7 @@ async function handleCancel() {
                                   <button
                                     key={process.id}
                                     type="button"
-                                    onClick={() => {
-                                      handleNewStepChange('process_id', process.id)
-                                      handleAddStep({ preventDefault: () => {} } as any)
-                                    }}
+                                    onClick={() => handleAddStep(undefined, process.id)}
                                     disabled={addingStep}
                                     className="w-full px-3 py-2 text-left hover:bg-blue-50 transition-colors disabled:opacity-50 flex items-center justify-between group"
                                   >
@@ -1875,7 +2451,7 @@ async function handleCancel() {
               </div>
             ) : (
               // Düzenleme modunda değilse - Normal görünüm
-              <div className="space-y-3">
+              <div className="space-y-3 max-w-5xl">
                 {job.steps && job.steps.length > 0 ? (
                   job.steps.map((step: any) => {
                     const processId = step.process?.id ?? step.process_id
@@ -1893,6 +2469,7 @@ async function handleCancel() {
                       isManager || isEditing || isAssignee,
                     )
                     const canDeleteFiles = Boolean(isManager || isEditing)
+                    const canAdjustSchedule = Boolean(isManager || isAssignee)
 
                     return (
                       <ProcessStepCard
@@ -1903,25 +2480,26 @@ async function handleCancel() {
                         editForm={stepForms.find((item) => item.id === step.id)}
                         onFieldChange={handleStepFieldChange}
                         onSave={handleStepSave}
-                        disabled={
-                          savingStepId === step.id ||
-                          savingJob ||
-                          ['completed', 'canceled'].includes(step.status)
-                        }
+                        disabled={savingStepId === step.id || savingJob}
                         onDelete={handleDeleteStep}
                         canDelete={['pending', 'ready'].includes(step.status)}
+                        canAdjustSchedule={canAdjustSchedule}
+                        isStepCompleted={step.status === 'completed'}
+                        isStepCanceled={step.status === 'canceled'}
                         users={users}
                         machines={machines}
                         processOptions={processOptions}
                         completionForm={completionForms[step.id]}
                         onCompletionChange={handleCompletionFieldChange}
                         onStartStep={handleStartStep}
+                        onActivateStep={handleActivateStep}
                         onCompleteStep={handleCompleteStep}
                         actionLoading={stepActionLoading[step.id] || false}
                         canUploadFiles={canUploadFiles}
                         canDeleteFiles={canDeleteFiles}
                         onPauseStep={handlePauseStep}
                         onResumeStep={handleResumeStep}
+                        onReopenStep={handleReopenStep}
                         notes={step.notes || []}
                         onAddNote={handleAddStepNote}
                         isOpen={expandedSteps[step.id] ?? false}

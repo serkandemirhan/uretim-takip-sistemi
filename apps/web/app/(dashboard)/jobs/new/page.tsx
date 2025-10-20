@@ -1,29 +1,59 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { jobsAPI, customersAPI, processesAPI ,usersAPI} from '@/lib/api/client'
+import { jobsAPI, customersAPI, processesAPI, usersAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Plus, X, GripVertical, Workflow } from 'lucide-react'
+import { ArrowLeft, Plus, X, GripVertical, Workflow, Search } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { handleApiError } from '@/lib/utils/error-handler'
+
+const MINUTES_PER_HOUR = 60
+const HOURS_PER_DAY = 24
+const MINUTES_PER_DAY = MINUTES_PER_HOUR * HOURS_PER_DAY
+
+function splitDurationMinutes(totalMinutes?: number | null) {
+  if (totalMinutes == null) {
+    return { days: 1, hours: 0 }
+  }
+  const safeMinutes = Math.max(0, Math.floor(Number(totalMinutes) || 0))
+  const days = Math.floor(safeMinutes / MINUTES_PER_DAY)
+  const hours = Math.floor((safeMinutes % MINUTES_PER_DAY) / MINUTES_PER_HOUR)
+  return { days, hours }
+}
+
+function combineDurationMinutes(days: number | string | null | undefined, hours: number | string | null | undefined) {
+  const safeDays = Math.max(0, Math.floor(Number(days) || 0))
+  const safeHoursRaw = Math.max(0, Math.floor(Number(hours) || 0))
+  const extraDays = Math.floor(safeHoursRaw / HOURS_PER_DAY)
+  const normalizedHours = safeHoursRaw % HOURS_PER_DAY
+  return (safeDays + extraDays) * MINUTES_PER_DAY + normalizedHours * MINUTES_PER_HOUR
+}
 
 interface ProcessStep {
   process_id: string
   process_name?: string
   process_code?: string
+  process_description?: string
   assigned_to?: string
   assigned_to_name?: string
   machine_id?: string
   machine_name?: string
   is_parallel: boolean
   estimated_duration?: number
+  estimated_duration_days?: number
+  estimated_duration_hours?: number
+  due_date?: string
+  due_time?: string
+  group_name?: string | null
+  is_machine_based?: boolean
+  requirements?: string
 }
 
 export default function NewJobPage() {
@@ -31,59 +61,303 @@ export default function NewJobPage() {
   const [loading, setLoading] = useState(false)
   const [customers, setCustomers] = useState<any[]>([])
   const [processes, setProcesses] = useState<any[]>([])
+  const [processGroups, setProcessGroups] = useState<any[]>([])
+  const [ungroupedProcesses, setUngroupedProcesses] = useState<any[]>([])
   const [users, setUsers] = useState<any[]>([])
   const [machines, setMachines] = useState<any[]>([])
+  const [dealers, setDealers] = useState<any[]>([])
+  const [loadingDealers, setLoadingDealers] = useState(false)
   
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     customer_id: '',
+    dealer_id: '',
     due_date: '',
     priority: 'normal',
   })
   
   const [selectedSteps, setSelectedSteps] = useState<ProcessStep[]>([])
-  const [showProcessSelector, setShowProcessSelector] = useState(false)
+  const [processPanelOpen, setProcessPanelOpen] = useState(false)
+  const [processSearch, setProcessSearch] = useState('')
+  const [selectedProcessIds, setSelectedProcessIds] = useState<Set<string>>(new Set())
+  const [draggingStepId, setDraggingStepId] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
   }, [])
 
-  async function loadData() {
-  try {
-    const [customersRes, processesRes, usersRes, machinesRes] = await Promise.all([
-      customersAPI.getAll(),
-      processesAPI.getAll(),
-      usersAPI.getAll(), // ← GÜNCEL: Users API'den çek
-      import('@/lib/api/client').then(m => m.apiClient.get('/api/machines'))
-    ])
-    
-    setCustomers(customersRes.data || [])
-    const processPayload = processesRes?.data ?? processesRes ?? {}
-    const processList = [
-      ...((processPayload.groups ?? []).flatMap((g: any) => g.processes ?? [])),
-      ...(processPayload.ungrouped ?? []),
-    ]
-    setProcesses(processList)
-    setUsers(usersRes.data || []) // ← GÜNCEL: State'e set et
-    setMachines(machinesRes.data?.data || [])
-  } catch (error) {
-    handleApiError(error, 'Load data')
-  }
-}
+  useEffect(() => {
+    const customerId = formData.customer_id
+    if (!customerId) {
+      setDealers([])
+      setFormData((prev) => {
+        if (!prev.dealer_id) {
+          return prev
+        }
+        return { ...prev, dealer_id: '' }
+      })
+      return
+    }
 
-  function addProcess(process: any) {
-    const newStep: ProcessStep = {
+    const fetchDealers = async () => {
+      try {
+        setLoadingDealers(true)
+        const response = await customersAPI.getDealers(customerId)
+        const list = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : []
+        setDealers(list)
+        setFormData((prev) => {
+          if (list.some((dealer: any) => dealer.id === prev.dealer_id)) {
+            return prev
+          }
+          return { ...prev, dealer_id: '' }
+        })
+      } catch (error) {
+        handleApiError(error, 'Dealers load')
+        setDealers([])
+        setFormData((prev) => ({ ...prev, dealer_id: '' }))
+      } finally {
+        setLoadingDealers(false)
+      }
+    }
+
+    void fetchDealers()
+  }, [formData.customer_id])
+
+  async function loadData() {
+    try {
+      const [customersRes, processesRes, usersRes, machinesRes] = await Promise.all([
+        customersAPI.getAll(),
+        processesAPI.getAll(),
+        usersAPI.getAll(),
+        import('@/lib/api/client').then((m) => m.apiClient.get('/api/machines')),
+      ])
+
+      setCustomers(customersRes.data || [])
+
+      const processPayload = processesRes?.data ?? processesRes ?? {}
+      const fetchedGroups = (processPayload.groups ?? []).map((group: any) => ({
+        id: group.id,
+        name: group.name,
+        description: group.description,
+        color: group.color,
+        processes: (group.processes ?? []).map((process: any) => ({
+          id: process.id,
+          name: process.name,
+          code: process.code,
+          description: process.description,
+          is_machine_based: !!process.is_machine_based,
+          is_production: !!process.is_production,
+          machine_count: process.machine_count ?? 0,
+          order_index: process.order_index ?? 0,
+          group_id: group.id,
+          group_name: group.name,
+        })),
+      }))
+
+      const fetchedUngrouped = (processPayload.ungrouped ?? []).map((process: any) => ({
+        id: process.id,
+        name: process.name,
+        code: process.code,
+        description: process.description,
+        is_machine_based: !!process.is_machine_based,
+        is_production: !!process.is_production,
+        machine_count: process.machine_count ?? 0,
+        order_index: process.order_index ?? 0,
+        group_id: null,
+        group_name: 'Grupsuz',
+      }))
+
+      setProcessGroups(fetchedGroups)
+      setUngroupedProcesses(fetchedUngrouped)
+      const processList = [
+        ...fetchedGroups.flatMap((group: any) => group.processes ?? []),
+        ...fetchedUngrouped,
+      ]
+      setProcesses(processList)
+
+      setUsers(usersRes.data || [])
+      setMachines(machinesRes.data?.data || [])
+    } catch (error) {
+      handleApiError(error, 'Load data')
+    }
+  }
+
+  const processMap = useMemo(() => {
+    const map = new Map<string, any>()
+    processes.forEach((process) => {
+      if (process?.id) {
+        map.set(process.id, process)
+      }
+    })
+    return map
+  }, [processes])
+
+  const existingProcessIds = useMemo(
+    () => new Set(selectedSteps.map((step) => step.process_id)),
+    [selectedSteps],
+  )
+
+  const filteredProcessGroups = useMemo(() => {
+    const term = processSearch.trim().toLowerCase()
+    const matchProcess = (process: any) => {
+      if (!term) return true
+      const name = (process?.name ?? '').toLowerCase()
+      const code = (process?.code ?? '').toLowerCase()
+      return name.includes(term) || code.includes(term)
+    }
+
+    const grouped = (processGroups ?? [])
+      .map((group: any) => ({
+        id: group.id,
+        name: group.name,
+        processes: (group.processes ?? []).filter(matchProcess),
+      }))
+      .filter((group) => group.processes.length > 0)
+
+    const ungrouped = (ungroupedProcesses ?? []).filter(matchProcess)
+
+    if (ungrouped.length > 0) {
+      grouped.push({
+        id: '__ungrouped__',
+        name: 'Grupsuz Süreçler',
+        processes: ungrouped,
+      })
+    }
+
+    return grouped
+  }, [processGroups, ungroupedProcesses, processSearch])
+
+  const processSelectionCount = selectedProcessIds.size
+
+  const reorderSteps = (
+    list: ProcessStep[],
+    draggedProcessId: string,
+    targetProcessId: string | null,
+  ) => {
+    const sourceIndex = list.findIndex((step) => step.process_id === draggedProcessId)
+    if (sourceIndex === -1) return list
+
+    const working = list.slice()
+    const [moved] = working.splice(sourceIndex, 1)
+
+    let insertionIndex = working.length
+    if (targetProcessId) {
+      insertionIndex = working.findIndex((step) => step.process_id === targetProcessId)
+      if (insertionIndex === -1) {
+        insertionIndex = working.length
+      }
+    }
+
+    working.splice(insertionIndex, 0, moved)
+
+    const unchanged = working.every((item, idx) => item === list[idx])
+    return unchanged ? list : working
+  }
+
+  const handleStepDragStart = (processId: string) => {
+    setDraggingStepId(processId)
+  }
+
+  const handleStepDragEnd = () => {
+    setDraggingStepId(null)
+  }
+
+  const handleStepDragOver = (targetProcessId: string) => {
+    if (!draggingStepId || draggingStepId === targetProcessId) return
+    setSelectedSteps((prev) => reorderSteps(prev, draggingStepId, targetProcessId))
+  }
+
+  const handleStepListDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    if (!draggingStepId) return
+    if (event.target !== event.currentTarget) return
+    setSelectedSteps((prev) => reorderSteps(prev, draggingStepId, null))
+  }
+
+  const openProcessPanel = () => {
+    setSelectedProcessIds(new Set())
+    setProcessSearch('')
+    setProcessPanelOpen(true)
+  }
+
+  const closeProcessPanel = () => {
+    setProcessPanelOpen(false)
+    setSelectedProcessIds(new Set())
+    setProcessSearch('')
+  }
+
+  const toggleProcessSelection = (processId: string) => {
+    setSelectedProcessIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(processId)) {
+        next.delete(processId)
+      } else {
+        next.add(processId)
+      }
+      return next
+    })
+  }
+
+  const createStepFromProcess = (process: any): ProcessStep => {
+    const now = new Date()
+    let baseDate = formData.due_date
+    let dateRef = baseDate ? new Date(`${baseDate}T00:00:00`) : new Date(now)
+    if (Number.isNaN(dateRef.getTime())) {
+      dateRef = new Date(now)
+    }
+    const dueDateObj = new Date(dateRef)
+    dueDateObj.setDate(dueDateObj.getDate() + 1)
+    const defaultDueDate = dueDateObj.toISOString().slice(0, 10)
+
+    const defaultDurationMinutes = MINUTES_PER_DAY
+
+    return {
       process_id: process.id,
       process_name: process.name,
       process_code: process.code,
+      process_description: process.description || '',
       assigned_to: '',
       machine_id: '',
       is_parallel: false,
-      estimated_duration: undefined,
+      estimated_duration: defaultDurationMinutes,
+      estimated_duration_days: 1,
+      estimated_duration_hours: 0,
+      due_date: defaultDueDate,
+      due_time: '23:59',
+      group_name: process.group_name ?? null,
+      is_machine_based: !!process.is_machine_based,
     }
-    setSelectedSteps([...selectedSteps, newStep])
-    setShowProcessSelector(false)
+  }
+
+  const handleAddSelectedProcesses = () => {
+    const candidateIds = Array.from(selectedProcessIds).filter(
+      (id) => !existingProcessIds.has(id),
+    )
+
+    if (candidateIds.length === 0) {
+      toast.error('Yeni süreç seçmediniz')
+      return
+    }
+
+    const stepsToAdd = candidateIds
+      .map((id) => {
+        const process = processMap.get(id)
+        if (!process) {
+          return null
+        }
+        return createStepFromProcess(process)
+      })
+      .filter(Boolean) as ProcessStep[]
+
+    if (stepsToAdd.length === 0) {
+      toast.error('Seçilen süreçler eklenemedi')
+      return
+    }
+
+    setSelectedSteps((prev) => [...prev, ...stepsToAdd])
+    toast.success(`${stepsToAdd.length} süreç eklendi`)
+    closeProcessPanel()
   }
 
   function removeStep(index: number) {
@@ -92,7 +366,34 @@ export default function NewJobPage() {
 
   function updateStep(index: number, field: keyof ProcessStep, value: any) {
     const updated = [...selectedSteps]
-    updated[index] = { ...updated[index], [field]: value }
+    const current = updated[index]
+    if (!current) {
+      return
+    }
+
+    if (field === 'machine_id' && !current.is_machine_based) {
+      return
+    }
+
+    if (field === 'estimated_duration_days' || field === 'estimated_duration_hours') {
+      const numeric = Math.max(0, Math.floor(Number(value) || 0))
+      const next = {
+        ...current,
+        [field]: numeric,
+      }
+      const combined = combineDurationMinutes(next.estimated_duration_days, next.estimated_duration_hours)
+      const normalized = splitDurationMinutes(combined)
+      updated[index] = {
+        ...next,
+        estimated_duration: combined,
+        estimated_duration_days: normalized.days,
+        estimated_duration_hours: normalized.hours,
+      }
+      setSelectedSteps(updated)
+      return
+    }
+
+    updated[index] = { ...current, [field]: value }
     setSelectedSteps(updated)
   }
 
@@ -112,9 +413,15 @@ export default function NewJobPage() {
         steps: selectedSteps.map(step => ({
           process_id: step.process_id,
           assigned_to: step.assigned_to || null,
-          machine_id: step.machine_id || null,
+          machine_id: step.is_machine_based ? step.machine_id || null : null,
           is_parallel: step.is_parallel,
-          estimated_duration: step.estimated_duration || null,
+          estimated_duration: combineDurationMinutes(
+            step.estimated_duration_days ?? 1,
+            step.estimated_duration_hours ?? 0,
+          ),
+          due_date: step.due_date || null,
+          due_time: step.due_time || null,
+          requirements: step.requirements || null,
         }))
       }
 
@@ -165,13 +472,19 @@ export default function NewJobPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="customer_id">Müşteri</Label>
-                <select
-                  id="customer_id"
-                  value={formData.customer_id}
-                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  disabled={loading}
-                >
+              <select
+                id="customer_id"
+                value={formData.customer_id}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    customer_id: e.target.value,
+                    dealer_id: '',
+                  }))
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                disabled={loading}
+              >
                   <option value="">Müşteri Seç (İsteğe Bağlı)</option>
                   {customers.map((customer) => (
                     <option key={customer.id} value={customer.id}>
@@ -179,13 +492,44 @@ export default function NewJobPage() {
                     </option>
                   ))}
                 </select>
-              </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">Açıklama</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
+            <div className="space-y-2">
+              <Label htmlFor="dealer_id">Bayi</Label>
+              <select
+                id="dealer_id"
+                value={formData.dealer_id}
+                onChange={(e) => setFormData((prev) => ({ ...prev, dealer_id: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                disabled={
+                  loading ||
+                  !formData.customer_id ||
+                  loadingDealers ||
+                  dealers.length === 0
+                }
+              >
+                <option value="">Bayi Seç (Opsiyonel)</option>
+                {dealers.map((dealer) => (
+                  <option key={dealer.id} value={dealer.id}>
+                    {dealer.name}
+                  </option>
+                ))}
+              </select>
+              {loadingDealers && (
+                <p className="text-xs text-gray-500">Bayi listesi yükleniyor…</p>
+              )}
+              {formData.customer_id && !loadingDealers && dealers.length === 0 && (
+                <p className="text-xs text-gray-500">
+                  Bu müşteri için tanımlı bayi bulunmuyor.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Açıklama</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="İş ile ilgili detaylar..."
                   rows={4}
@@ -194,7 +538,11 @@ export default function NewJobPage() {
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
+                <div
+                  className="space-y-2"
+                  onDragOver={handleStepListDragOver}
+                  onDrop={(event) => event.preventDefault()}
+                >
                   <Label htmlFor="due_date">Teslim Tarihi</Label>
                   <Input
                     id="due_date"
@@ -241,7 +589,7 @@ export default function NewJobPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowProcessSelector(true)}
+                  onClick={openProcessPanel}
                   disabled={loading}
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -254,125 +602,183 @@ export default function NewJobPage() {
                 <div className="text-center py-8 border-2 border-dashed rounded-lg">
                   <Workflow className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                   <p className="text-gray-500 mb-3">Henüz süreç eklenmedi</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowProcessSelector(true)}
-                  >
+                <Button type="button" variant="outline" size="sm" onClick={openProcessPanel}>
                     <Plus className="w-4 h-4 mr-2" />
                     İlk Süreci Ekle
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {selectedSteps.map((step, index) => (
-                    <div key={index} className="border rounded-lg p-4 bg-gray-50">
-                      <div className="flex items-start gap-3">
-                        {/* Drag Handle */}
-                        <div className="pt-2">
-                          <GripVertical className="w-4 h-4 text-gray-400" />
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-3 sm:gap-4 px-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    <span className="flex-shrink-0 w-[44px]">Sıra</span>
+                    <span className="min-w-[180px] flex-1 sm:flex-none">Süreç</span>
+                    <span className="min-w-[180px]">Sorumlu</span>
+                    <span className="min-w-[180px]">Makine</span>
+                    <span className="min-w-[150px]">Teslim Tarihi</span>
+                    <span className="min-w-[120px]">Saat</span>
+                    <span className="min-w-[160px]">Tahmini Süre</span>
+                    <span className="hidden sm:block w-6" aria-hidden="true"></span>
+                  </div>
+                  {selectedSteps.map((step, index) => {
+                    const isMachineBased = !!step.is_machine_based
+                    return (
+                    <div
+                      key={step.process_id}
+                      className="border rounded-lg bg-gray-50 px-3 py-2"
+                      draggable
+                      onDragStart={() => handleStepDragStart(step.process_id)}
+                      onDragEnd={handleStepDragEnd}
+                      onDragOver={(event) => {
+                        event.preventDefault()
+                        handleStepDragOver(step.process_id)
+                      }}
+                      onDrop={(event) => event.preventDefault()}
+                    >
+                      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                        <div className="flex items-center gap-2 flex-shrink-0 cursor-grab">
+                          <GripVertical className="h-4 w-4 text-gray-400" />
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
+                            {index + 1}
+                          </div>
                         </div>
 
-                        {/* Order Badge */}
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-semibold text-sm flex-shrink-0 mt-1">
-                          {index + 1}
+                        <div className="min-w-[180px] flex-1 sm:flex-none">
+                          <p className="text-sm font-semibold text-gray-900">{step.process_name}</p>
+                          {step.group_name && (
+                            <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                              {step.group_name}
+                            </p>
+                          )}
                         </div>
 
-                        {/* Content */}
-                        <div className="flex-1 space-y-3">
-                          {/* Süreç Adı */}
-                          <div>
-                            <div className="font-medium text-gray-900">{step.process_name}</div>
-                            <code className="text-xs text-gray-500">{step.process_code}</code>
-                          </div>
+                        <div className="flex flex-col min-w-[180px] gap-1">
+                          <Label htmlFor={`step-${index}-assignee`} className="sr-only">
+                            Sorumlu
+                          </Label>
+                          <select
+                            id={`step-${index}-assignee`}
+                            value={step.assigned_to}
+                            onChange={(e) => updateStep(index, 'assigned_to', e.target.value)}
+                            className="h-9 rounded border border-gray-300 px-2 text-sm"
+                          >
+                            <option value="">Seçiniz...</option>
+                            {users.map((user) => (
+                              <option key={user.id} value={user.id}>
+                                {user.full_name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                          {/* Atamalar */}
-                          <div className="grid gap-3 md:grid-cols-2">
-                            {/* Sorumlu Kullanıcı */}
-                            <div className="space-y-1">
-                              <Label className="text-xs">Sorumlu Kişi</Label>
-                              <select
-                                value={step.assigned_to}
-                                onChange={(e) => updateStep(index, 'assigned_to', e.target.value)}
-                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
-                              >
-                                <option value="">Seçiniz...</option>
-                                {users.map(user => (
-                                  <option key={user.id} value={user.id}>
-                                    {user.full_name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
+                        <div className="flex flex-col min-w-[180px] gap-1">
+                          <Label htmlFor={`step-${index}-machine`} className="sr-only">
+                            Makine
+                          </Label>
+                          {isMachineBased ? (
+                            <select
+                              id={`step-${index}-machine`}
+                              value={step.machine_id ?? ''}
+                              onChange={(e) => updateStep(index, 'machine_id', e.target.value)}
+                              className="h-9 rounded border border-gray-300 px-2 text-sm"
+                            >
+                              <option value="">Seçiniz...</option>
+                              {machines.map((machine) => (
+                                <option key={machine.id} value={machine.id}>
+                                  {machine.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">Makine gerekmez</span>
+                          )}
+                        </div>
 
-                            {/* Makine */}
-                            <div className="space-y-1">
-                              <Label className="text-xs">Makine</Label>
-                              <select
-                                value={step.machine_id}
-                                onChange={(e) => updateStep(index, 'machine_id', e.target.value)}
-                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
-                              >
-                                <option value="">Seçiniz...</option>
-                                {machines.map(machine => (
-                                  <option key={machine.id} value={machine.id}>
-                                    {machine.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-
-                          {/* Ek Ayarlar */}
-                          <div className="flex items-center gap-4 text-sm">
-                            <label className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={step.is_parallel}
-                                onChange={(e) => updateStep(index, 'is_parallel', e.target.checked)}
-                                className="w-4 h-4 rounded"
-                              />
-                              <span className="text-gray-700">Paralel Çalışabilir</span>
-                            </label>
-
-                            <div className="flex items-center gap-2">
-                              <Label className="text-xs">Tahmini Süre (dk)</Label>
+                        <div className="flex flex-col min-w-[150px] gap-1">
+                          <Label htmlFor={`step-${index}-due-date`} className="sr-only">
+                            Teslim Tarihi
+                          </Label>
                               <Input
-                                type="number"
-                                value={step.estimated_duration || ''}
-                                onChange={(e) => updateStep(index, 'estimated_duration', parseInt(e.target.value))}
-                                placeholder="60"
-                                className="w-20 h-7 text-sm"
-                              />
-                            </div>
-                          </div>
+                                id={`step-${index}-due-date`}
+                                type="date"
+                            value={step.due_date ?? ''}
+                            onChange={(e) => updateStep(index, 'due_date', e.target.value)}
+                            className="h-9 text-sm"
+                            required
+                          />
                         </div>
 
-                        {/* Remove Button */}
+                        <div className="flex flex-col min-w-[120px] gap-1">
+                          <Label htmlFor={`step-${index}-due-time`} className="sr-only">
+                            Saat
+                          </Label>
+                          <Input
+                            id={`step-${index}-due-time`}
+                            type="time"
+                            value={step.due_time ?? ''}
+                            onChange={(e) => updateStep(index, 'due_time', e.target.value)}
+                            className="h-9 text-sm"
+                            step={300}
+                            required
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 min-w-[160px]">
+                          <div className="flex flex-col gap-1">
+                            <Label className="sr-only" htmlFor={`step-${index}-duration-days`}>
+                              Gün
+                            </Label>
+                            <Input
+                              id={`step-${index}-duration-days`}
+                              type="number"
+                              min={0}
+                              value={Number(step.estimated_duration_days ?? 1)}
+                              onChange={(e) => updateStep(index, 'estimated_duration_days', e.target.value)}
+                              className="h-9 w-20 rounded border border-gray-300 px-2 text-sm"
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500">gün</span>
+                          <div className="flex flex-col gap-1">
+                            <Label className="sr-only" htmlFor={`step-${index}-duration-hours`}>
+                              Saat
+                            </Label>
+                            <Input
+                              id={`step-${index}-duration-hours`}
+                              type="number"
+                              min={0}
+                              max={23}
+                              value={Number(step.estimated_duration_hours ?? 0)}
+                              onChange={(e) => updateStep(index, 'estimated_duration_hours', e.target.value)}
+                              className="h-9 w-20 rounded border border-gray-300 px-2 text-sm"
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500">saat</span>
+                        </div>
+
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => removeStep(index)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="ml-auto text-red-600 hover:text-red-700 hover:bg-red-50"
                         >
                           <X className="w-4 h-4" />
                         </Button>
                       </div>
+                      <div className="mt-2 pt-2 border-t border-gray-200">
+                        <Label htmlFor={`step-${index}-requirements`} className="text-xs text-gray-600 mb-1 block">
+                          İş Gereksinimleri
+                        </Label>
+                        <Textarea
+                          id={`step-${index}-requirements`}
+                          value={step.requirements ?? ''}
+                          onChange={(e) => updateStep(index, 'requirements', e.target.value)}
+                          placeholder="Bu adımın nasıl yapılması gerektiğini açıklayın..."
+                          className="min-h-[80px] text-sm"
+                        />
+                      </div>
                     </div>
-                  ))}
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowProcessSelector(true)}
-                    className="w-full border-dashed"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Başka Süreç Ekle
-                  </Button>
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
@@ -392,64 +798,126 @@ export default function NewJobPage() {
         </div>
       </form>
 
-      {/* Process Selector Modal */}
-      {showProcessSelector && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Süreç Seç</CardTitle>
+      {/* Process Selection Panel */}
+      {processPanelOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={closeProcessPanel} />
+          <div className="fixed right-0 top-0 bottom-0 w-full max-w-xl bg-white shadow-2xl z-50 flex flex-col">
+            <div className="flex items-center justify-between border-b p-4">
+              <div className="flex items-center gap-2">
+                <Workflow className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-semibold text-gray-900">Süreç Seç</h2>
+              </div>
+              <Button variant="ghost" size="sm" onClick={closeProcessPanel} className="h-8 w-8 p-0">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex flex-col flex-1 overflow-hidden p-4">
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input
+                  placeholder="Süreç adı veya kodu ara..."
+                  value={processSearch}
+                  onChange={(e) => setProcessSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-3">
+                {filteredProcessGroups.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-gray-500">
+                    {processSearch ? 'Arama sonucu bulunamadı' : 'Tanımlı süreç bulunmuyor'}
+                  </p>
+                ) : (
+                  filteredProcessGroups.map((group) => (
+                    <div key={group.id} className="rounded-lg border">
+                      <div className="bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700">
+                        {group.name}
+                      </div>
+                      <div className="divide-y">
+                        {group.processes.map((process: any) => {
+                          const alreadyAdded = existingProcessIds.has(process.id)
+                          const isSelected = selectedProcessIds.has(process.id)
+                          return (
+                            <button
+                              key={process.id}
+                              type="button"
+                              onClick={() => {
+                                if (alreadyAdded) return
+                                toggleProcessSelection(process.id)
+                              }}
+                              className={`flex w-full items-center justify-between px-3 py-2 text-left transition-colors ${
+                                alreadyAdded
+                                  ? 'bg-green-50 cursor-not-allowed'
+                                  : isSelected
+                                    ? 'bg-blue-50'
+                                    : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={alreadyAdded || isSelected}
+                                  readOnly
+                                  className="h-4 w-4 rounded border-gray-300"
+                                />
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">{process.name}</div>
+                                  <div className="text-xs text-gray-500">{process.code}</div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {process.is_machine_based && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    Makine Bazlı
+                                  </Badge>
+                                )}
+                                {process.is_production && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    Üretim
+                                  </Badge>
+                                )}
+                                {alreadyAdded && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] border-green-200 bg-green-50 text-green-700"
+                                  >
+                                    Eklendi
+                                  </Badge>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <Button variant="outline" onClick={closeProcessPanel}>
+                  İptal
+                </Button>
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowProcessSelector(false)}
+                  onClick={handleAddSelectedProcesses}
+                  disabled={processSelectionCount === 0}
                 >
-                  <X className="w-4 h-4" />
+                  <Plus className="mr-2 h-4 w-4" />
+                  Seçilenleri Ekle
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="overflow-y-auto">
-              {processes.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">
-                  Henüz süreç tanımlanmamış
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {processes
-                    .filter(p => !selectedSteps.find(s => s.process_id === p.id))
-                    .map((process) => (
-                      <button
-                        key={process.id}
-                        type="button"
-                        onClick={() => addProcess(process)}
-                        className="w-full text-left p-4 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium text-gray-900">{process.name}</div>
-                            <code className="text-xs text-gray-500">{process.code}</code>
-                          </div>
-                          <div className="flex gap-2">
-                            {process.is_machine_based && (
-                              <Badge variant="outline" className="text-xs">
-                                Makine Bazlı
-                              </Badge>
-                            )}
-                            {process.is_production && (
-                              <Badge variant="outline" className="text-xs">
-                                Üretim
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
 }
+                        {step.process_description && (
+                          <div className="w-full rounded-md bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                            <p className="font-semibold text-sky-900 mb-1">İş Gereksinimleri</p>
+                            <p className="whitespace-pre-line">{step.process_description}</p>
+                          </div>
+                        )}

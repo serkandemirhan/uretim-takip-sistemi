@@ -20,7 +20,10 @@
       "Bash(npm run dev:*)",
       "Bash(npx tsc:*)",
       "Bash(kill:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(chmod +x /Users/user/ReklamPRO/test_purchase_requests_api.sh)",
+      "Bash(/Users/user/ReklamPRO/test_purchase_requests_api.sh)",
+      "Bash(pkill -f \"FLASK_PORT=5001\")"
     ],
     "deny": [],
     "ask": []

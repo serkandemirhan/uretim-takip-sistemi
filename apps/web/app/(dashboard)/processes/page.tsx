@@ -410,15 +410,17 @@ const startEditProcess = (process: Process) => {
   }
 
   const saveProcess = async (id: string) => {
-    if (!processForm.name?.trim() || !processForm.code?.trim()) {
-      toast.error('Süreç adı ve kodu zorunludur')
+    const trimmedName = processForm.name?.trim()
+    const trimmedCode = processForm.code?.trim()
+    if (!trimmedName || !trimmedCode) {
+      toast.error('Süreç adı ve dosya ismi zorunludur')
       return
     }
     try {
       setSavingProcessId(id)
       await processesAPI.update(id, {
-        name: processForm.name.trim(),
-        code: processForm.code.trim(),
+        name: trimmedName,
+        code: trimmedCode.toUpperCase(),
         description: (processForm.description ?? '').trim(),
         is_machine_based: !!processForm.is_machine_based,
         is_production: !!processForm.is_production,
@@ -631,7 +633,7 @@ const cancelNewProcess = () => {
 
 const handleCreateProcess = async (targetGroupId: string) => {
   if (!newProcessForm.name.trim() || !newProcessForm.code.trim()) {
-    toast.error('Süreç adı ve kodu zorunludur')
+    toast.error('Süreç adı ve dosya ismi zorunludur')
     return
   }
 
@@ -697,6 +699,7 @@ const renderProcessRow = (process: Process, groupId: string) => {
             <Input
               value={processForm.code ?? ''}
               onChange={(e) => setProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
+              placeholder="Dosya İsmi"
             />
           ) : (
             <span className="rounded bg-gray-100 px-2 py-1 text-xs uppercase text-gray-700">
@@ -785,7 +788,7 @@ const renderNewProcessRow = (groupId: string) => {
           onChange={(e) =>
             setNewProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))
           }
-          placeholder="Kod"
+          placeholder="Dosya İsmi"
           disabled={creatingProcess}
         />
       </td>
@@ -813,11 +816,22 @@ const renderNewProcessRow = (groupId: string) => {
         <p className="text-gray-600">Süreçleri tanımlayın, gruplayın ve düzenleyin</p>
       </div>
 
-      <Card>
+      <Card className="w-full">
         <CardHeader>
-          <CardTitle>Yeni Grup Oluştur</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <CardTitle>Yeni Grup Oluştur</CardTitle>
+              <p className="text-sm text-gray-500">Süreçler için dosya klasörlerini ve grupları yönetin</p>
+            </div>
+            {(dirtyGroups.size > 0 || groupOrderDirty) && (
+              <Button size="sm" className="gap-2" onClick={() => saveOrder()} disabled={savingOrder}>
+                <Save className="h-4 w-4" />
+                {savingOrder ? 'Kaydediliyor...' : 'Sıralamayı Kaydet'}
+              </Button>
+            )}
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] items-end" onSubmit={createGroup}>
             <div className="space-y-2">
               <Label htmlFor="group_name">Grup Adı *</Label>
@@ -844,32 +858,17 @@ const renderNewProcessRow = (groupId: string) => {
               {creatingGroup ? 'Ekleniyor...' : 'Grup Oluştur'}
             </Button>
           </form>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>Süreç Listesi</CardTitle>
-            {(dirtyGroups.size > 0 || groupOrderDirty) && (
-              <Button size="sm" className="gap-2" onClick={() => saveOrder()} disabled={savingOrder}>
-                <Save className="h-4 w-4" />
-                {savingOrder ? 'Kaydediliyor...' : 'Sıralamayı Kaydet'}
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">Yükleniyor…</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="hidden lg:table w-full border text-sm">
+      {loading ? (
+        <div className="p-8 text-center text-gray-500">Yükleniyor…</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="hidden lg:table w-full border text-sm">
                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                   <tr>
                     <th className="py-2 px-4 w-[32px]"></th>
                     <th className="py-2 px-4 text-left">Süreç</th>
-                    <th className="py-2 px-4 text-left">Kod</th>
+                    <th className="py-2 px-4 text-left">Dosya İsmi</th>
                     <th className="py-2 px-4 text-left">Grup</th>
                     <th className="py-2 px-4 text-right">İşlem</th>
                   </tr>
@@ -1181,7 +1180,7 @@ const renderNewProcessRow = (groupId: string) => {
                                             <Input
                                               value={processForm.code ?? ''}
                                               onChange={(e) => setProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
-                                              placeholder="Kod"
+                                              placeholder="Dosya İsmi"
                                             />
                                             <select
                                               className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm"
@@ -1285,7 +1284,7 @@ const renderNewProcessRow = (groupId: string) => {
                                       onChange={(e) =>
                                         setNewProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))
                                       }
-                                      placeholder="Kod"
+                                      placeholder="Dosya İsmi"
                                       disabled={creatingProcess}
                                     />
                                     <div className="flex gap-2">
@@ -1373,7 +1372,7 @@ const renderNewProcessRow = (groupId: string) => {
                                         <Input
                                           value={processForm.code ?? ''}
                                           onChange={(e) => setProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
-                                          placeholder="Kod"
+                                          placeholder="Dosya İsmi"
                                         />
                                         <select
                                           className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm"
@@ -1477,7 +1476,7 @@ const renderNewProcessRow = (groupId: string) => {
                                   onChange={(e) =>
                                     setNewProcessForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))
                                   }
-                                  placeholder="Kod"
+                                  placeholder="Dosya İsmi"
                                   disabled={creatingProcess}
                                 />
                                 <div className="flex gap-2">

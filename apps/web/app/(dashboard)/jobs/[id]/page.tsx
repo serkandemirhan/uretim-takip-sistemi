@@ -1084,6 +1084,22 @@ async function handleCancel() {
 
     const actionButtons: ReactElement[] = []
 
+    const handleResume = async () => {
+      if (!onResumeStep) return
+      try {
+        setPauseSubmitting(true)
+        await onResumeStep(step.id)
+        toast.success('Süreç devam ettirildi')
+        setShowPauseForm(false)
+        setPauseReason('')
+      } catch (error: any) {
+        const message = error?.response?.data?.error || 'Süreç devam ettirilemedi'
+        toast.error(message)
+      } finally {
+        setPauseSubmitting(false)
+      }
+    }
+
     if (canActivate) {
       actionButtons.push(
         <Button
@@ -1177,22 +1193,6 @@ async function handleCancel() {
         setShowPauseForm(false)
       } catch (error: any) {
         const message = error?.response?.data?.error || 'Süreç durdurulamadı'
-        toast.error(message)
-      } finally {
-        setPauseSubmitting(false)
-      }
-    }
-
-    const handleResume = async () => {
-      if (!onResumeStep) return
-      try {
-        setPauseSubmitting(true)
-        await onResumeStep(step.id)
-        toast.success('Süreç devam ettirildi')
-        setShowPauseForm(false)
-        setPauseReason('')
-      } catch (error: any) {
-        const message = error?.response?.data?.error || 'Süreç devam ettirilemedi'
         toast.error(message)
       } finally {
         setPauseSubmitting(false)
@@ -2254,6 +2254,14 @@ async function handleCancel() {
                         {job.steps.map((step: any, index: number) => {
                           const editForm = stepForms.find((item) => item.id === step.id)
                           const canDelete = ['pending', 'ready'].includes(step.status)
+                          const rawMinutes =
+                            editForm?.estimated_duration_minutes ??
+                            (step.estimated_duration != null ? Number(step.estimated_duration) : null)
+                          const durationSplit = splitDurationMinutes(rawMinutes)
+                          const currentDurationDays =
+                            editForm?.estimated_duration_days ?? durationSplit.days
+                          const currentDurationHours =
+                            editForm?.estimated_duration_hours ?? durationSplit.hours
 
                           return (
                             <div key={step.id} className="rounded-lg border bg-gray-50 p-3">

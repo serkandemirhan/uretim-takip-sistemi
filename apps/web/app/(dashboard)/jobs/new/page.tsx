@@ -915,9 +915,3 @@ export default function NewJobPage() {
     </div>
   )
 }
-                        {step.process_description && (
-                          <div className="w-full rounded-md bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                            <p className="font-semibold text-sky-900 mb-1">İş Gereksinimleri</p>
-                            <p className="whitespace-pre-line">{step.process_description}</p>
-                          </div>
-                        )}

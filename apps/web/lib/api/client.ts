@@ -350,6 +350,11 @@ export const tasksAPI = {
     return response.data
   },
 
+  addProduction: async (id: string, data: any) => {
+    const response = await apiClient.post(`/api/jobs/steps/${id}/production`, data)
+    return response.data
+  },
+
   // YENİ: Üretim geçmişi
   getHistory: async (params?: { limit?: number; date_from?: string; date_to?: string }) => {
     const response = await apiClient.get('/api/tasks/history', { params })

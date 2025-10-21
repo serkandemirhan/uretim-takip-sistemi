@@ -14,6 +14,7 @@ import {
   AlarmClock,
   User,
   Building2,
+  Store,
   ArrowLeft,
   Play,
   CheckCircle,
@@ -958,12 +959,19 @@ async function handleCancel() {
     const [pauseSubmitting, setPauseSubmitting] = useState(false)
     const [noteText, setNoteText] = useState('')
     const [noteSubmitting, setNoteSubmitting] = useState(false)
+    const [localRequirements, setLocalRequirements] = useState('')
 
     useEffect(() => {
       setShowPauseForm(false)
       setPauseReason('')
       setPauseSubmitting(false)
     }, [step.status])
+
+    // Initialize local requirements from step or editForm
+    useEffect(() => {
+      const initialValue = editForm?.requirements ?? step.requirements ?? (step as any).requirements ?? ''
+      setLocalRequirements(initialValue)
+    }, [step.id, step.requirements, editForm?.requirements])
 
     const processName = step.process?.name || 'Süreç'
     const processCode = step.process?.code || ''
@@ -1043,8 +1051,10 @@ async function handleCancel() {
     const hasMachineChanges = canAdjustSchedule && currentMachineId !== originalMachineId
     const hasDurationChanges =
       canAdjustSchedule && currentDurationMinutes !== originalDurationMinutes
+    const hasRequirementsChanges =
+      canAdjustSchedule && (editForm?.requirements ?? '') !== (requirements ?? '')
     const hasPendingChanges =
-      hasScheduleChanges || hasAssignmentChanges || hasMachineChanges || hasDurationChanges
+      hasScheduleChanges || hasAssignmentChanges || hasMachineChanges || hasDurationChanges || hasRequirementsChanges
     const plannedDateDisplay = (() => {
       if (!dueDateValue) return '-'
       const dateObj = new Date(`${dueDateValue}T00:00:00`)
@@ -1056,11 +1066,12 @@ async function handleCancel() {
 
     const canStart = onStartStep && ['ready', 'pending'].includes(step.status)
     const canActivate = onActivateStep && canAdjustSchedule && step.status === 'pending'
-    const canReopen = onReopenStep && canAdjustSchedule && step.status === 'completed'
+    const canReopen = onReopenStep && step.status === 'completed'  // Completed süreçte her zaman aktif
     const canTogglePause = onPauseStep && ['ready', 'in_progress'].includes(step.status)
     const canResume = onResumeStep && step.status === 'blocked'
     const isStepCompletedFlag = Boolean(isStepCompleted ?? (step.status === 'completed'))
     const isStepCanceledFlag = Boolean(isStepCanceled ?? (step.status === 'canceled'))
+    // Completed süreçte alanlar disabled - ama reopen yapınca edit edilebilir
     const fieldsDisabled = disabled || isStepCompletedFlag || isStepCanceledFlag
 
     const handleReopenClick = async () => {
@@ -1160,9 +1171,9 @@ async function handleCancel() {
           type="button"
           variant="outline"
           onClick={handleReopenClick}
-          disabled={fieldsDisabled || !!actionLoading}
+          disabled={!!actionLoading}  // Completed süreçte aktif olmalı
         >
-          {actionLoading ? 'İşlem yapılıyor...' : 'Süreci Yeniden Aç'}
+          {actionLoading ? 'İşlem yapılıyor...' : 'İş Aktif Et'}
         </Button>,
       )
     }
@@ -1401,6 +1412,45 @@ async function handleCancel() {
                   />
                   Paralel çalışabilir
                 </label>
+
+                {/* Üretim Tracking */}
+                <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={editForm.has_production ?? false}
+                      onChange={(e) => handleFieldChange('has_production', e.target.checked)}
+                      disabled={fieldsDisabled}
+                    />
+                    Üretim
+                  </label>
+
+                  {editForm.has_production && (
+                    <div className="grid gap-3 md:grid-cols-2 pl-6">
+                      <div className="space-y-2">
+                        <Label className="text-xs">Gereksinim (Adet)</Label>
+                        <Input
+                          type="number"
+                          value={editForm.required_quantity ?? ''}
+                          onChange={(e) => handleFieldChange('required_quantity', e.target.value)}
+                          placeholder="100"
+                          disabled={fieldsDisabled}
+                          className="h-9"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">Üretilen (Adet)</Label>
+                        <Input
+                          type="number"
+                          value={step.production_quantity ?? 0}
+                          disabled
+                          className="h-9 bg-gray-100"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid gap-3 text-sm text-gray-600 md:grid-cols-2">
                   <div>
                     <p className="text-xs uppercase text-gray-500">Başlama</p>
@@ -1606,6 +1656,35 @@ async function handleCancel() {
                   </div>
                 </div>
 
+                {/* İş Gereksinimleri - Her zaman göster ve düzenlenebilir */}
+                <div className="mt-3">
+                  <Label className="text-xs uppercase text-gray-500 mb-2 block">İş Gereksinimleri</Label>
+                  {canAdjustSchedule ? (
+                    <Textarea
+                      value={localRequirements}
+                      onChange={(e) => {
+                        // Sadece local state güncelle - çok hızlı
+                        setLocalRequirements(e.target.value)
+                      }}
+                      onBlur={() => {
+                        // Focus kaybedince parent state'e kaydet
+                        handleFieldChange('requirements', localRequirements)
+                      }}
+                      disabled={disabled}
+                      placeholder="Bu adımın nasıl yapılması gerektiğini açıklayın..."
+                      className="min-h-[100px] bg-white"
+                    />
+                  ) : (
+                    <div className="rounded-md bg-sky-50 border border-sky-200 p-3 min-h-[60px]">
+                      {requirements ? (
+                        <p className="text-sm text-sky-900 whitespace-pre-line">{requirements}</p>
+                      ) : (
+                        <p className="text-sm text-gray-400 italic">Henüz gereksinim tanımlanmamış</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {legacyProductionNote && (
                   <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-700">
                     <div className="flex items-start gap-2">
@@ -1615,13 +1694,6 @@ async function handleCancel() {
                         <p className="mt-1 whitespace-pre-line">{legacyProductionNote}</p>
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {requirements && (
-                  <div className="rounded-md bg-sky-50 p-3 text-sm text-sky-800">
-                    <p className="font-semibold text-sky-900 mb-1">İş Gereksinimleri</p>
-                    <p className="whitespace-pre-line">{requirements}</p>
                   </div>
                 )}
 
@@ -1645,46 +1717,14 @@ async function handleCancel() {
                 )}
 
                 {onCompleteStep && step.status === 'in_progress' && (
-                  <div className="space-y-3 rounded-md bg-green-50 p-3">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Üretim Miktarı</Label>
-                        <Input
-                          value={completion.quantity}
-                          onChange={(e) => handleCompletionField('quantity', e.target.value)}
-                          placeholder="Örn: 120"
-                          disabled={disabled || !!actionLoading}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Birim</Label>
-                        <Input
-                          value={completion.unit}
-                          onChange={(e) => handleCompletionField('unit', e.target.value)}
-                          placeholder="adet"
-                          disabled={disabled || !!actionLoading}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Üretim Notu</Label>
-                      <Textarea
-                        value={completion.notes}
-                        onChange={(e) => handleCompletionField('notes', e.target.value)}
-                        placeholder="Süreç hakkında not ekleyin"
-                        rows={3}
-                        disabled={disabled || !!actionLoading}
-                      />
-                    </div>
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        onClick={() => onCompleteStep(step)}
-                        disabled={disabled || !!actionLoading}
-                      >
-                        {actionLoading ? 'Tamamlanıyor...' : 'Süreci Tamamla'}
-                      </Button>
-                    </div>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      onClick={() => onCompleteStep(step)}
+                      disabled={disabled || !!actionLoading}
+                    >
+                      {actionLoading ? 'Tamamlanıyor...' : 'Süreci Tamamla'}
+                    </Button>
                   </div>
                 )}
 
@@ -2136,6 +2176,15 @@ async function handleCancel() {
                       <p className="text-xs uppercase text-gray-500">Müşteri</p>
                       <p className="text-sm font-medium text-gray-900">
                         {job.customer?.name || '-'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Store className="h-5 w-5 text-gray-400" />
+                    <div>
+                      <p className="text-xs uppercase text-gray-500">Bayi</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {job.dealer?.name || job.dealer_name || '-'}
                       </p>
                     </div>
                   </div>

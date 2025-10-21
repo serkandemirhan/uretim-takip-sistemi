@@ -1,17 +1,22 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { tasksAPI } from '@/lib/api/client'
+import { tasksAPI, jobsAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AlertCircle, CheckCircle, CheckSquare, Clock, Kanban, LayoutList, Play } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { AlertCircle, CheckCircle, CheckSquare, Clock, Kanban, LayoutList, Play, Package, CheckCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils/formatters'
 import { handleError, handleApiError, debugLog } from '@/lib/utils/error-handler'
+import { ActivityTimeline } from '@/components/features/tasks/ActivityTimeline'
 
 type TaskStatus = 'ready' | 'in_progress' | 'completed'
 
@@ -220,127 +225,290 @@ export default function TasksPage() {
           })}
         </div>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[120px]">Durum</TableHead>
-                  <TableHead>İş No</TableHead>
-                  <TableHead>İş Başlığı</TableHead>
-                  <TableHead>Süreç</TableHead>
-                  <TableHead>Müşteri</TableHead>
-                  <TableHead>Makine</TableHead>
-                  <TableHead className="w-[120px]">Termin</TableHead>
-                  <TableHead className="w-[120px]">Süre</TableHead>
-                  <TableHead className="w-[100px]">Miktar</TableHead>
-                  <TableHead className="w-[100px] text-right">İşlemler</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tasks.map((task) => {
-                  const statusMap: Record<TaskStatus, { label: string; class: string }> = {
-                    ready: { label: 'Hazır', class: 'bg-blue-100 text-blue-700' },
-                    in_progress: { label: 'Devam Ediyor', class: 'bg-yellow-100 text-yellow-700' },
-                    completed: { label: 'Tamamlandı', class: 'bg-green-100 text-green-700' },
-                  }
-
-                  const statusKey = (typeof task.status === 'string' && task.status in statusMap
-                    ? task.status
-                    : 'ready') as TaskStatus
-                  const statusBadge = statusMap[statusKey]
-
-                  // Acil iş kontrolü
-                  const isUrgent = task.job.due_date && new Date(task.job.due_date).getTime() - new Date().getTime() < 24 * 60 * 60 * 1000
-                  const isOverdue = task.job.due_date && new Date(task.job.due_date) < new Date()
-
-                  // Geçen süre hesaplama
-                  const getElapsedTime = () => {
-                    if (task.status !== 'in_progress' || !task.started_at) return null
-                    const start = new Date(task.started_at)
-                    const now = new Date()
-                    const diff = now.getTime() - start.getTime()
-                    const hours = Math.floor(diff / (1000 * 60 * 60))
-                    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-                    return hours > 0 ? `${hours}sa ${minutes}dk` : `${minutes}dk`
-                  }
-
-                  const elapsedTime = getElapsedTime()
-
-                  return (
-                    <TableRow
-                      key={task.id}
-                      className={`hover:bg-gray-50 cursor-pointer ${
-                        isOverdue ? 'bg-red-50' : isUrgent ? 'bg-orange-50' : ''
-                      }`}
-                    >
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <Badge className={statusBadge.class}>
-                            {statusBadge.label}
-                          </Badge>
-                          {isOverdue && (
-                            <Badge className="bg-red-100 text-red-700 text-xs">
-                              GECİKMİŞ
-                            </Badge>
-                          )}
-                          {isUrgent && !isOverdue && (
-                            <Badge className="bg-orange-100 text-orange-700 text-xs">
-                              ACİL
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{task.job.job_number}</TableCell>
-                      <TableCell className="font-medium">{task.job.title}</TableCell>
-                      <TableCell>{task.process.name}</TableCell>
-                      <TableCell className="text-sm text-gray-600">{task.job.customer_name || '-'}</TableCell>
-                      <TableCell className="text-sm text-gray-600">{task.machine?.name || '-'}</TableCell>
-                      <TableCell>
-                        {task.job.due_date ? (
-                          <div className={`text-sm flex items-center gap-1 ${
-                            isOverdue ? 'text-red-600 font-medium' : isUrgent ? 'text-orange-600 font-medium' : 'text-gray-600'
-                          }`}>
-                            <Clock className="w-3 h-3" />
-                            {formatDate(task.job.due_date)}
-                          </div>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {elapsedTime ? (
-                          <div className="text-sm text-yellow-700 font-medium flex items-center gap-1">
-                            <Clock className="w-3 h-3 animate-pulse" />
-                            {elapsedTime}
-                          </div>
-                        ) : task.estimated_duration ? (
-                          <div className="text-sm text-gray-500">
-                            {task.estimated_duration} dk
-                          </div>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {task.status === 'completed' && task.production_quantity ? (
-                          <div className="text-sm text-green-700 font-medium">
-                            {task.production_quantity} {task.production_unit}
-                          </div>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Link href={`/tasks/${task.id}`}>
-                          <Button size="sm" variant="outline">
-                            Detay
-                          </Button>
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          {tasks.map((task) => (
+            <TaskListRow key={task.id} task={task} onUpdate={loadTasks} />
+          ))}
+        </div>
       )}
     </div>
+  )
+}
+
+// Task List Row Component (3-column layout)
+function TaskListRow({ task, onUpdate }: { task: any; onUpdate: () => void }) {
+  const [showProductionModal, setShowProductionModal] = useState(false)
+  const [productionQuantity, setProductionQuantity] = useState('')
+  const [productionNotes, setProductionNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const statusMap: Record<TaskStatus, { label: string; class: string }> = {
+    ready: { label: 'Hazır', class: 'bg-blue-100 text-blue-700' },
+    in_progress: { label: 'Devam Ediyor', class: 'bg-yellow-100 text-yellow-700' },
+    completed: { label: 'Tamamlandı', class: 'bg-green-100 text-green-700' },
+  }
+
+  const statusKey = (typeof task.status === 'string' && task.status in statusMap
+    ? task.status
+    : 'ready') as TaskStatus
+  const statusBadge = statusMap[statusKey]
+
+  // Acil iş kontrolü
+  const isUrgent = task.job.due_date && new Date(task.job.due_date).getTime() - new Date().getTime() < 24 * 60 * 60 * 1000
+  const isOverdue = task.job.due_date && new Date(task.job.due_date) < new Date()
+
+  // Geçen süre hesaplama
+  const getElapsedTime = () => {
+    if (task.status !== 'in_progress' || !task.started_at) return null
+    const start = new Date(task.started_at)
+    const now = new Date()
+    const diff = now.getTime() - start.getTime()
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    return hours > 0 ? `${hours}sa ${minutes}dk` : `${minutes}dk`
+  }
+
+  const elapsedTime = getElapsedTime()
+
+  async function handleAddProduction() {
+    if (!productionQuantity) {
+      toast.error('Üretim miktarı giriniz')
+      return
+    }
+
+    try {
+      setSubmitting(true)
+      await tasksAPI.addProduction(task.id, {
+        production_quantity: parseFloat(productionQuantity),
+        production_notes: productionNotes,
+      })
+      toast.success('Üretim kaydedildi')
+      setShowProductionModal(false)
+      setProductionQuantity('')
+      setProductionNotes('')
+      onUpdate()
+    } catch (error) {
+      handleApiError(error, 'Add production')
+      toast.error('Üretim eklenirken hata oluştu')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleCompleteTask() {
+    if (!window.confirm('Bu görevi tamamlamak istediğinize emin misiniz?')) {
+      return
+    }
+
+    try {
+      await tasksAPI.complete(task.id, {
+        production_quantity: task.production_quantity || 0,
+        production_notes: task.production_notes || '',
+      })
+      toast.success('Görev tamamlandı')
+      onUpdate()
+    } catch (error) {
+      handleApiError(error, 'Complete task')
+      toast.error('Görev tamamlanırken hata oluştu')
+    }
+  }
+
+  return (
+    <>
+      <Card className={`${isOverdue ? 'border-red-500 border-2' : isUrgent ? 'border-orange-400 border-2' : ''}`}>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-12 gap-4">
+            {/* Column 1: Timeline (3 cols) */}
+            <div className="col-span-3 border-r pr-4">
+              <div className="text-xs font-semibold text-gray-500 mb-3">İŞ HİKAYESİ</div>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                <ActivityTimeline jobId={task.job.id} compact={true} limit={5} />
+              </div>
+            </div>
+
+            {/* Column 2: Details (6 cols) */}
+            <div className="col-span-6 space-y-3">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Badge className={statusBadge.class}>
+                      {statusBadge.label}
+                    </Badge>
+                    {isOverdue && (
+                      <Badge className="bg-red-100 text-red-700 text-xs">
+                        GECİKMİŞ
+                      </Badge>
+                    )}
+                    {isUrgent && !isOverdue && (
+                      <Badge className="bg-orange-100 text-orange-700 text-xs">
+                        ACİL
+                      </Badge>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">{task.job.title}</h3>
+                    <p className="text-xs text-gray-500 font-mono">{task.job.job_number}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">Süreç:</span>
+                  <p className="font-medium">{task.process.name}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Müşteri:</span>
+                  <p className="font-medium">{task.job.customer_name || '-'}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Bayi:</span>
+                  <p className="font-medium">
+                    {task.job?.dealer?.name || task.job?.dealer_name || '-'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Makine:</span>
+                  <p className="font-medium">{task.machine?.name || '-'}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Termin:</span>
+                  {task.job.due_date ? (
+                    <p className={`font-medium flex items-center gap-1 ${
+                      isOverdue ? 'text-red-600' : isUrgent ? 'text-orange-600' : ''
+                    }`}>
+                      <Clock className="w-3 h-3" />
+                      {formatDate(task.job.due_date)}
+                    </p>
+                  ) : <p>-</p>}
+                </div>
+              </div>
+
+              {/* Süre ve Üretim Bilgisi */}
+              <div className="flex gap-4 pt-2 border-t">
+                {elapsedTime && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="w-4 h-4 text-yellow-600 animate-pulse" />
+                    <span className="text-gray-500">Geçen Süre:</span>
+                    <span className="font-semibold text-yellow-700">{elapsedTime}</span>
+                  </div>
+                )}
+                {task.estimated_duration && task.status !== 'completed' && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-500">Tahmini:</span>
+                    <span className="font-medium">{task.estimated_duration} dk</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Mevcut Üretim */}
+              {(task.status === 'in_progress' || task.status === 'completed') && (
+                <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-900">Mevcut Üretim</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-blue-700">
+                        {task.production_quantity || 0} {task.production_unit || 'adet'}
+                      </p>
+                      {task.job.quantity && (
+                        <p className="text-xs text-blue-600">
+                          Hedef: {task.job.quantity} {task.production_unit || 'adet'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Column 3: Actions (3 cols) */}
+            <div className="col-span-3 border-l pl-4 flex flex-col gap-2">
+              <div className="text-xs font-semibold text-gray-500 mb-2">AKSİYONLAR</div>
+
+              {task.status === 'in_progress' && (
+                <>
+                  <Button
+                    onClick={() => setShowProductionModal(true)}
+                    className="w-full gap-2"
+                    variant="default"
+                  >
+                    <Package className="w-4 h-4" />
+                    Üretim Gir
+                  </Button>
+                  <Button
+                    onClick={handleCompleteTask}
+                    className="w-full gap-2"
+                    variant="default"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    Tamamla
+                  </Button>
+                </>
+              )}
+
+              <Link href={`/tasks/${task.id}`} className="w-full">
+                <Button variant="outline" className="w-full">
+                  Detay
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Production Modal */}
+      <Dialog open={showProductionModal} onOpenChange={setShowProductionModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Üretim Gir</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="bg-blue-50 rounded p-3 border border-blue-100">
+              <p className="text-sm text-blue-900">
+                <strong>Mevcut Üretim:</strong> {task.production_quantity || 0} {task.production_unit || 'adet'}
+              </p>
+              {task.job.quantity && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Hedef: {task.job.quantity} {task.production_unit || 'adet'}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="production_quantity">Üretim Miktarı *</Label>
+              <Input
+                id="production_quantity"
+                type="number"
+                value={productionQuantity}
+                onChange={(e) => setProductionQuantity(e.target.value)}
+                placeholder="Miktar girin"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="production_notes">Not (İsteğe Bağlı)</Label>
+              <Textarea
+                id="production_notes"
+                value={productionNotes}
+                onChange={(e) => setProductionNotes(e.target.value)}
+                placeholder="Üretim hakkında notlar..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowProductionModal(false)}>
+              İptal
+            </Button>
+            <Button onClick={handleAddProduction} disabled={submitting}>
+              {submitting ? 'Kaydediliyor...' : 'Kaydet'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
@@ -396,6 +564,11 @@ function TaskCard({ task, onUpdate, compact = false }: { task: any; onUpdate: ()
 
               <p className="text-xs text-gray-600 line-clamp-1">{task.job.title}</p>
               <p className="text-[10px] text-gray-500 font-mono">{task.job.job_number}</p>
+              {(task.job?.dealer?.name || task.job?.dealer_name) && (
+                <p className="text-[10px] text-gray-500">
+                  Bayi: {task.job?.dealer?.name || task.job?.dealer_name}
+                </p>
+              )}
 
               {elapsedTime && (
                 <div className="text-[10px] text-yellow-700 font-medium flex items-center gap-1">
@@ -469,6 +642,11 @@ function TaskCard({ task, onUpdate, compact = false }: { task: any; onUpdate: ()
             {task.job.customer_name && (
               <div className="text-xs text-gray-500">
                 🏢 {task.job.customer_name}
+              </div>
+            )}
+            {(task.job?.dealer?.name || task.job?.dealer_name) && (
+              <div className="text-xs text-gray-500">
+                🏬 {task.job?.dealer?.name || task.job?.dealer_name}
               </div>
             )}
 

@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
+import { formatDateTime } from '@/lib/utils/formatters'
 
 interface FileListProps {
   files?: any[]
@@ -286,6 +287,11 @@ export function FileList({
                 <span>{extension || 'Dosya'}</span>
                 <span>{formatFileSize(file.file_size)}</span>
               </div>
+              {file.created_at && (
+                <div className="mt-1 text-[10px] text-gray-400">
+                  {formatDateTime(file.created_at as string)}
+                </div>
+              )}
               <div className="absolute right-1 top-1 flex gap-1">
                 <Button
                   variant="ghost"
@@ -335,19 +341,31 @@ export function FileList({
             className="overflow-hidden border border-gray-200/70 shadow-sm transition hover:shadow-md focus-within:shadow-md"
           >
             <CardContent className="p-2.5">
-              <div className="flex items-center gap-3">
+              <div className="flex items-start gap-3">
                 <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md ${bgClass}`}>
                   <Icon className={`h-4 w-4 ${iconClass}`} aria-hidden="true" />
                 </div>
 
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <p className="truncate text-sm font-medium text-gray-900" title={file.filename}>
-                    {file.filename}
-                  </p>
-                  {extension && (
-                    <span className="flex-shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-600">
-                      {extension}
-                    </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-sm font-medium text-gray-900" title={file.filename}>
+                      {file.filename}
+                    </p>
+                    {extension && (
+                      <span className="flex-shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-600">
+                        {extension}
+                      </span>
+                    )}
+                  </div>
+                  {(file.created_at || file.file_size) && (
+                    <div className="flex flex-wrap items-center gap-x-3 text-xs text-gray-500">
+                      {file.created_at && (
+                        <span>Yüklendi: {formatDateTime(file.created_at as string)}</span>
+                      )}
+                      {file.file_size && (
+                        <span>Boyut: {formatFileSize(file.file_size)}</span>
+                      )}
+                    </div>
                   )}
                 </div>
 

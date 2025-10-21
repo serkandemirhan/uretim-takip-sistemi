@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from app.config import Config
 from app.middleware.auth_middleware import token_required, role_required
 from app.models.database import execute_query, execute_query_one, execute_write
+from app.routes.notifications import create_notification
 from app.services.s3_client import get_s3
 from app.services.storage_paths import (
     ensure_bucket,
@@ -276,6 +277,72 @@ def link_file():
         return jsonify({"error": "Dosya kaydedilemedi"}), 500
 
     result = rows[0]
+
+    # Bildirim gönder (job/job_step dosyaları için)
+    try:
+        current_user = getattr(request, 'current_user', None)
+        current_user_id = current_user.get('user_id') if current_user else None
+        filename_display = result['filename']
+
+        if ref_type == 'job_step':
+            step_info = execute_query_one(
+                """
+                SELECT js.assigned_to, js.job_id, j.job_number, j.title, p.name AS process_name
+                FROM job_steps js
+                JOIN jobs j ON js.job_id = j.id
+                JOIN processes p ON js.process_id = p.id
+                WHERE js.id = %s
+                """,
+                (ref_id,),
+            )
+            if step_info:
+                assigned_to = step_info.get('assigned_to')
+                if assigned_to and str(assigned_to) != str(current_user_id):
+                    create_notification(
+                        user_id=assigned_to,
+                        title='Yeni Doküman Eklendi',
+                        message=(
+                            f"{step_info['job_number']} - {step_info['title']} işi için "
+                            f"{step_info['process_name']} sürecine yeni bir doküman eklendi: {filename_display}"
+                        ),
+                        notif_type='info',
+                        ref_type='job_step',
+                        ref_id=ref_id,
+                    )
+        elif ref_type == 'job':
+            job_info = execute_query_one(
+                """
+                SELECT j.id, j.job_number, j.title
+                FROM jobs j
+                WHERE j.id = %s
+                """,
+                (ref_id,),
+            )
+            if job_info:
+                step_assignees = execute_query(
+                    """
+                    SELECT DISTINCT assigned_to
+                    FROM job_steps
+                    WHERE job_id = %s AND assigned_to IS NOT NULL
+                    """,
+                    (job_info['id'],),
+                )
+                for row in step_assignees:
+                    assigned_to = row.get('assigned_to')
+                    if assigned_to and str(assigned_to) != str(current_user_id):
+                        create_notification(
+                            user_id=assigned_to,
+                            title='İşe Doküman Eklendi',
+                            message=(
+                                f"{job_info['job_number']} - {job_info['title']} işi için yeni bir doküman eklendi: {filename_display}"
+                            ),
+                            notif_type='info',
+                            ref_type='job',
+                            ref_id=ref_id,
+                        )
+    except Exception as notify_error:
+        print(f"Warning: failed to create file notification: {notify_error}")
+
     return (
         jsonify(
             {

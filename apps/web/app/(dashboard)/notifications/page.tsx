@@ -76,6 +76,8 @@ export default function NotificationsPage() {
       job_resumed: '▶️',
       job_canceled: '❌',
       revision_created: '📝',
+      info: 'ℹ️',
+      warning: '⚠️',
     }
     return icons[type] || '🔔'
   }
@@ -83,6 +85,9 @@ export default function NotificationsPage() {
   function getNotificationLink(notification: any) {
     if (notification.ref_type === 'job' && notification.ref_id) {
       return `/jobs/${notification.ref_id}`
+    }
+    if (notification.ref_type === 'job_step' && notification.ref_id) {
+      return `/tasks/${notification.ref_id}`
     }
     if (notification.type === 'task_assigned' || notification.type === 'task_ready') {
       return '/tasks'

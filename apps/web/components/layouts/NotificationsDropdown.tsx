@@ -89,6 +89,8 @@ export function NotificationsDropdown() {
       task_completed: '🎉',
       job_activated: '🚀',
       revision_created: '📝',
+      info: 'ℹ️',
+      warning: '⚠️',
     }
     return icons[type] || '🔔'
   }
@@ -96,6 +98,9 @@ export function NotificationsDropdown() {
   function getNotificationLink(notification: any) {
     if (notification.ref_type === 'job' && notification.ref_id) {
       return `/jobs/${notification.ref_id}`
+    }
+    if (notification.ref_type === 'job_step' && notification.ref_id) {
+      return `/tasks/${notification.ref_id}`
     }
     if (notification.type === 'task_assigned' || notification.type === 'task_ready') {
       return '/tasks'

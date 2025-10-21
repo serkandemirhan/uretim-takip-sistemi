@@ -19,6 +19,8 @@ def get_my_tasks():
                 j.title as job_title,
                 j.status as job_status,
                 j.due_date,
+                j.dealer_id as job_dealer_id,
+                d.name as dealer_name,
                 p.id as process_id,
                 p.name as process_name,
                 p.code as process_code,
@@ -30,6 +32,7 @@ def get_my_tasks():
             JOIN processes p ON js.process_id = p.id
             LEFT JOIN machines m ON js.machine_id = m.id
             LEFT JOIN customers c ON j.customer_id = c.id
+            LEFT JOIN customer_dealers d ON j.dealer_id = d.id
             WHERE js.assigned_to = %s
             AND js.status IN ('ready', 'in_progress', 'completed')
             ORDER BY 
@@ -56,13 +59,20 @@ def get_my_tasks():
                 'production_quantity': float(task['production_quantity']) if task['production_quantity'] else None,
                 'production_unit': task['production_unit'],
                 'production_notes': task['production_notes'],
+                'has_production': task.get('has_production', False),
+                'required_quantity': float(task['required_quantity']) if task.get('required_quantity') else None,
                 'job': {
                     'id': str(task['job_id']),
                     'job_number': task['job_number'],
                     'title': task['job_title'],
                     'status': task['job_status'],
                     'due_date': task['due_date'].isoformat() if task['due_date'] else None,
-                    'customer_name': task['customer_name']
+                    'customer_name': task['customer_name'],
+                    'dealer_name': task.get('dealer_name'),
+                    'dealer': {
+                        'id': str(task['job_dealer_id']),
+                        'name': task.get('dealer_name')
+                    } if task.get('job_dealer_id') else None
                 },
                 'process': {
                     'id': str(task['process_id']),
@@ -102,6 +112,8 @@ def get_task(task_id):
                 j.description as job_description,
                 j.status as job_status,
                 j.due_date,
+                j.dealer_id as job_dealer_id,
+                d.name as dealer_name,
                 p.id as process_id,
                 p.name as process_name,
                 p.code as process_code,
@@ -114,6 +126,7 @@ def get_task(task_id):
             JOIN processes p ON js.process_id = p.id
             LEFT JOIN machines m ON js.machine_id = m.id
             LEFT JOIN customers c ON j.customer_id = c.id
+            LEFT JOIN customer_dealers d ON j.dealer_id = d.id
             WHERE js.id = %s
         """
 
@@ -128,6 +141,25 @@ def get_task(task_id):
         if not task:
             return jsonify({'error': 'Görev bulunamadı'}), 404
 
+        notes_query = """
+            SELECT 
+                n.id,
+                n.note,
+                n.created_at,
+                u.full_name AS author_name
+            FROM job_step_notes n
+            LEFT JOIN users u ON n.user_id = u.id
+            WHERE n.job_step_id = %s
+            ORDER BY n.created_at ASC
+        """
+        notes_rows = execute_query(notes_query, (task_id,))
+        notes = [{
+            'id': str(note['id']),
+            'note': note['note'],
+            'created_at': note['created_at'].isoformat() if note.get('created_at') else None,
+            'author_name': note.get('author_name')
+        } for note in notes_rows or []]
+
         return jsonify({
             'data': {
                 'id': str(task['id']),
@@ -139,6 +171,9 @@ def get_task(task_id):
                 'production_quantity': float(task['production_quantity']) if task['production_quantity'] else None,
                 'production_unit': task['production_unit'],
                 'production_notes': task['production_notes'],
+                'has_production': task.get('has_production', False),
+                'required_quantity': float(task['required_quantity']) if task.get('required_quantity') else None,
+                'notes': notes,
                 'job': {
                     'id': str(task['job_id']),
                     'job_number': task['job_number'],
@@ -146,7 +181,12 @@ def get_task(task_id):
                     'description': task['job_description'],
                     'status': task['job_status'],
                     'due_date': task['due_date'].isoformat() if task['due_date'] else None,
-                    'customer_name': task['customer_name']
+                    'customer_name': task['customer_name'],
+                    'dealer_name': task.get('dealer_name'),
+                    'dealer': {
+                        'id': str(task['job_dealer_id']),
+                        'name': task.get('dealer_name')
+                    } if task.get('job_dealer_id') else None
                 },
                 'process': {
                     'id': str(task['process_id']),
@@ -530,6 +570,8 @@ def list_tasks():
                 'production_quantity': float(task['production_quantity']) if task['production_quantity'] else None,
                 'production_unit': task['production_unit'],
                 'production_notes': task['production_notes'],
+                'has_production': task.get('has_production', False),
+                'required_quantity': float(task['required_quantity']) if task.get('required_quantity') else None,
                 'job': {
                     'id': str(task['job_id']),
                     'job_number': task['job_number'],

@@ -294,6 +294,8 @@ def get_job(job_id):
                     'production_unit': step['production_unit'],
                     'production_notes': step['production_notes'],
                     'requirements': step.get('requirements'),
+                    'has_production': step.get('has_production', False),
+                    'required_quantity': float(step['required_quantity']) if step.get('required_quantity') else None,
                     'block_reason': step.get('block_reason'),
                     'blocked_at': step['blocked_at'].isoformat() if step.get('blocked_at') else None,
                     'status_before_block': step.get('status_before_block'),
@@ -583,9 +585,93 @@ def complete_step(step_id):
             )
         
         return jsonify({'message': 'Süreç tamamlandı!'}), 200
-        
+
     except Exception as e:
         print(f"Error completing step: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@jobs_bp.route('/steps/<step_id>/production', methods=['POST'])
+@token_required
+def add_production(step_id):
+    """Devam eden sürece üretim ekle"""
+    try:
+        data = request.get_json()
+
+        if not data.get('production_quantity'):
+            return jsonify({'error': 'Üretim miktarı gereklidir'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Step bilgilerini al
+        cursor.execute(
+            """
+            SELECT js.id, js.status, js.assigned_to, js.production_quantity,
+                   j.job_number, j.title
+            FROM job_steps js
+            JOIN jobs j ON js.job_id = j.id
+            WHERE js.id = %s
+        """,
+            (step_id,),
+        )
+
+        step = cursor.fetchone()
+
+        if not step:
+            conn.close()
+            return jsonify({'error': 'Adım bulunamadı'}), 404
+
+        if step['status'] != 'in_progress':
+            conn.close()
+            return jsonify({'error': 'Sadece devam eden süreçlere üretim eklenebilir'}), 400
+
+        current_user = getattr(request, 'current_user', None)
+        current_role = current_user.get('role') if current_user else None
+        current_user_id = current_user.get('user_id') if current_user else None
+
+        if (
+            step.get('assigned_to')
+            and str(step['assigned_to']) != str(current_user_id)
+            and current_role != 'yonetici'
+        ):
+            conn.close()
+            return jsonify({'error': 'Bu adıma üretim ekleme yetkiniz yok'}), 403
+
+        # Mevcut üretim miktarına ekle
+        current_production = step.get('production_quantity') or 0
+        new_production = float(data.get('production_quantity', 0))
+        total_production = current_production + new_production
+
+        # Üretim miktarını güncelle
+        cursor.execute("""
+            UPDATE job_steps
+            SET production_quantity = %s,
+                production_notes = CASE
+                    WHEN production_notes IS NULL OR production_notes = '' THEN %s
+                    WHEN %s IS NULL OR %s = '' THEN production_notes
+                    ELSE production_notes || E'\n---\n' || %s
+                END
+            WHERE id = %s
+        """, (
+            total_production,
+            data.get('production_notes'),
+            data.get('production_notes'),
+            data.get('production_notes'),
+            data.get('production_notes'),
+            step_id
+        ))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'message': 'Üretim kaydedildi!',
+            'total_production': total_production
+        }), 200
+
+    except Exception as e:
+        print(f"Error adding production: {str(e)}")
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
 
 
@@ -1056,6 +1142,7 @@ def add_step_note(step_id):
 
         current_user = getattr(request, 'current_user', None)
         user_id = current_user.get('user_id') if current_user else None
+        username = current_user.get('username') if current_user else None
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1071,13 +1158,46 @@ def add_step_note(step_id):
         conn.commit()
         conn.close()
 
+        # Bildirim gönder (atanan kullanıcıya)
+        try:
+            step_info = execute_query_one(
+                """
+                SELECT js.assigned_to, j.job_number, j.title, p.name AS process_name
+                FROM job_steps js
+                JOIN jobs j ON js.job_id = j.id
+                JOIN processes p ON js.process_id = p.id
+                WHERE js.id = %s
+                """,
+                (step_id,),
+            )
+
+            assigned_to = step_info.get('assigned_to') if step_info else None
+            if assigned_to and str(assigned_to) != str(user_id):
+                message = (
+                    f"{step_info['job_number']} - {step_info['title']} işi için "
+                    f"{step_info['process_name']} sürecine yeni bir not eklendi."
+                )
+                note_preview = note[:120]
+                if note_preview:
+                    message += f" Not: {note_preview}"
+                create_notification(
+                    user_id=assigned_to,
+                    title='Yeni Üretim Notu',
+                    message=message,
+                    notif_type='info',
+                    ref_type='job_step',
+                    ref_id=step_id,
+                )
+        except Exception as notify_error:
+            print(f"Warning: failed to send note notification: {notify_error}")
+
         return jsonify({
             'message': 'Not eklendi',
             'data': {
                 'id': str(note_row['id']),
                 'note': note,
                 'created_at': note_row['created_at'].isoformat() if note_row.get('created_at') else None,
-                'author_name': current_user.get('username') if current_user else None,
+                'author_name': (current_user.get('full_name') or current_user.get('username')) if current_user else None,
             }
         }), 201
     except Exception as e:
@@ -1178,6 +1298,7 @@ def create_job_revision(job_id):
         # Job'ı güncelle
         update_fields = []
         params = []
+        changed_labels = []
         changes = {}
         
         current_title = result['title'] or ''
@@ -1617,24 +1738,29 @@ def update_job_step(step_id):
 
         update_fields = []
         params = []
+        changed_labels = []
 
         if 'process_id' in data and data.get('process_id'):
             update_fields.append("process_id = %s")
             params.append(data.get('process_id'))
+            changed_labels.append('Süreç')
 
         if 'assigned_to' in data:
             update_fields.append("assigned_to = %s")
             params.append(_nullable(data.get('assigned_to')))
+            changed_labels.append('Atanan kişi')
 
         if 'machine_id' in data:
             update_fields.append("machine_id = %s")
             params.append(_nullable(data.get('machine_id')))
+            changed_labels.append('Makine')
 
         if 'is_parallel' in data:
             is_parallel = _to_bool(data.get('is_parallel'))
             if is_parallel is not None:
                 update_fields.append("is_parallel = %s")
                 params.append(is_parallel)
+                changed_labels.append('Paralel durum')
 
         if 'estimated_duration' in data:
             duration = data.get('estimated_duration')
@@ -1649,6 +1775,7 @@ def update_job_step(step_id):
                     return jsonify({'error': 'estimated_duration geçersiz'}), 400
                 update_fields.append("estimated_duration = %s")
                 params.append(duration_int)
+                changed_labels.append('Tahmini süre')
 
         if 'due_date' in data:
             due_date_value = data.get('due_date')
@@ -1663,6 +1790,7 @@ def update_job_step(step_id):
                     return jsonify({'error': 'due_date geçersiz'}), 400
                 update_fields.append("due_date = %s")
                 params.append(parsed_due_date)
+                changed_labels.append('Termin tarihi')
 
         if 'due_time' in data:
             due_time_value = data.get('due_time')
@@ -1681,6 +1809,7 @@ def update_job_step(step_id):
                     return jsonify({'error': 'due_time geçersiz'}), 400
                 update_fields.append("due_time = %s")
                 params.append(parsed_due_time)
+                changed_labels.append('Termin saati')
 
         if 'order_index' in data:
             try:
@@ -1690,11 +1819,35 @@ def update_job_step(step_id):
                 return jsonify({'error': 'order_index geçersiz'}), 400
             update_fields.append("order_index = %s")
             params.append(new_index)
+            changed_labels.append('Sıra')
 
         if 'requirements' in data:
             requirements_value = data.get('requirements')
             update_fields.append("requirements = %s")
             params.append(_nullable(requirements_value))
+            changed_labels.append('Şartlar')
+
+        if 'has_production' in data:
+            has_production = _to_bool(data.get('has_production'))
+            if has_production is not None:
+                update_fields.append("has_production = %s")
+                params.append(has_production)
+                changed_labels.append('Üretim takibi')
+
+        if 'required_quantity' in data:
+            required_quantity = data.get('required_quantity')
+            if required_quantity in (None, '', 'null'):
+                update_fields.append("required_quantity = %s")
+                params.append(None)
+            else:
+                try:
+                    required_quantity_val = float(required_quantity)
+                except (TypeError, ValueError):
+                    conn.close()
+                    return jsonify({'error': 'required_quantity geçersiz'}), 400
+                update_fields.append("required_quantity = %s")
+                params.append(required_quantity_val)
+                changed_labels.append('Üretim hedefi')
 
         if not update_fields:
             conn.close()
@@ -1719,6 +1872,55 @@ def update_job_step(step_id):
 
         if not result:
             return jsonify({'error': 'Süreç adımı güncellenemedi'}), 404
+
+        try:
+            step_info = execute_query_one(
+                """
+                SELECT js.assigned_to, j.job_number, j.title, p.name AS process_name
+                FROM job_steps js
+                JOIN jobs j ON js.job_id = j.id
+                JOIN processes p ON js.process_id = p.id
+                WHERE js.id = %s
+                """,
+                (step_id,),
+            )
+
+            if step_info:
+                message_suffix = ', '.join(changed_labels) if changed_labels else 'Süreç bilgileri'
+                new_assigned = step_info.get('assigned_to')
+
+                if new_assigned and str(new_assigned) != str(current_user_id):
+                    create_notification(
+                        user_id=new_assigned,
+                        title='Süreç Güncellendi',
+                        message=(
+                            f"{step_info['job_number']} - {step_info['title']} işi için "
+                            f"{step_info['process_name']} süreci güncellendi ({message_suffix})."
+                        ),
+                        notif_type='info',
+                        ref_type='job_step',
+                        ref_id=step_id,
+                    )
+
+                if (
+                    'assigned_to' in data
+                    and assigned_to
+                    and str(assigned_to) != str(new_assigned)
+                    and str(assigned_to) != str(current_user_id)
+                ):
+                    create_notification(
+                        user_id=assigned_to,
+                        title='Görev Güncellendi',
+                        message=(
+                            f"{step_info['job_number']} - {step_info['title']} işi için "
+                            f"{step_info['process_name']} sürecindeki göreviniz güncellendi veya başka bir kullanıcıya devredildi."
+                        ),
+                        notif_type='warning',
+                        ref_type='job_step',
+                        ref_id=step_id,
+                    )
+        except Exception as notify_error:
+            print(f"Warning: failed to send update notification: {notify_error}")
 
         return jsonify({
             'message': 'Süreç adımı güncellendi',
@@ -1887,6 +2089,50 @@ def get_job_timeline(job_id):
 
             UNION ALL
 
+            -- Job level file uploads
+            SELECT
+                'file_uploaded' as source,
+                f.created_at as timestamp,
+                'file_uploaded' as event_type,
+                u.full_name as actor_name,
+                u.username as actor_username,
+                jsonb_build_object(
+                    'filename', f.filename,
+                    'file_id', f.id,
+                    'ref_type', f.ref_type,
+                    'ref_id', f.ref_id
+                ) as details,
+                NULL as step_id,
+                NULL as process_name
+            FROM files f
+            LEFT JOIN users u ON f.uploaded_by = u.id
+            WHERE f.ref_type = 'job' AND f.ref_id = %s
+
+            UNION ALL
+
+            -- Step file uploads
+            SELECT
+                'file_uploaded' as source,
+                f.created_at as timestamp,
+                'file_uploaded' as event_type,
+                u.full_name as actor_name,
+                u.username as actor_username,
+                jsonb_build_object(
+                    'filename', f.filename,
+                    'file_id', f.id,
+                    'ref_type', f.ref_type,
+                    'ref_id', f.ref_id
+                ) as details,
+                js.id as step_id,
+                p.name as process_name
+            FROM files f
+            JOIN job_steps js ON f.ref_type = 'job_step' AND f.ref_id::uuid = js.id
+            LEFT JOIN users u ON f.uploaded_by = u.id
+            LEFT JOIN processes p ON js.process_id = p.id
+            WHERE js.job_id = %s
+
+            UNION ALL
+
             -- Step started events
             SELECT
                 'step_started' as source,
@@ -1956,7 +2202,10 @@ def get_job_timeline(job_id):
             ORDER BY timestamp DESC
         """
 
-        timeline = execute_query(query, (job_id, job_id, job_id, job_id, job_id))
+        timeline = execute_query(
+            query,
+            (job_id, job_id, job_id, job_id, job_id, job_id, job_id),
+        )
 
         timeline_list = []
         for event in timeline:

@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { jobsAPI } from '@/lib/api/client'
+import { jobsAPI, filesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   CheckCircle,
   Play,
@@ -12,7 +12,8 @@ import {
   FileText,
   AlertCircle,
   Clock,
-  User,
+  File,
+  Download,
 } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils/formatters'
 import { toast } from 'sonner'
@@ -30,9 +31,13 @@ interface TimelineEvent {
 
 interface ActivityTimelineProps {
   jobId: string
+  compact?: boolean
+  limit?: number
+  stepId?: string
+  reverse?: boolean
 }
 
-export function ActivityTimeline({ jobId }: ActivityTimelineProps) {
+export function ActivityTimeline({ jobId, compact = false, limit, stepId, reverse = false }: ActivityTimelineProps) {
   const [timeline, setTimeline] = useState<TimelineEvent[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -53,6 +58,24 @@ export function ActivityTimeline({ jobId }: ActivityTimelineProps) {
     }
   }
 
+  async function handleFileDownload(fileId: string, filename: string) {
+    try {
+      const response = await filesAPI.getDownloadUrl(fileId)
+      const downloadUrl = response.data.download_url
+
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      toast.success('İndirme başladı')
+    } catch (error) {
+      toast.error('Dosya indirilemedi')
+    }
+  }
+
   function getEventIcon(eventType: string) {
     switch (eventType) {
       case 'step_started':
@@ -69,33 +92,43 @@ export function ActivityTimeline({ jobId }: ActivityTimelineProps) {
         return <Play className="w-4 h-4 text-green-600" />
       case 'revision_created':
         return <FileText className="w-4 h-4 text-orange-600" />
+      case 'file_uploaded':
+        return <File className="w-4 h-4 text-indigo-600" />
       default:
         return <AlertCircle className="w-4 h-4 text-gray-600" />
     }
   }
 
+  function getActorName(event: TimelineEvent) {
+    return event.actor_name || event.actor_username || 'Sistem'
+  }
+
   function getEventTitle(event: TimelineEvent) {
+    const actor = getActorName(event)
+
     switch (event.event_type) {
       case 'step_started':
-        return `${event.process_name || 'Süreç'} başladı`
+        return `${actor} süreci başlattı`
       case 'step_completed':
-        return `${event.process_name || 'Süreç'} tamamlandı`
+        return `${actor} süreci tamamladı`
       case 'step_blocked':
-        return `${event.process_name || 'Süreç'} duraklatıldı`
+        return `${actor} süreci duraklattı`
       case 'note_added':
-        return `${event.process_name || 'Süreç'} için not eklendi`
+        return `${actor} not ekledi`
+      case 'file_uploaded':
+        return `${actor} yeni doküman ekledi`
       case 'job_created':
-        return 'İş oluşturuldu'
+        return `${actor} işi oluşturdu`
       case 'job_activated':
-        return 'İş aktif edildi'
+        return `${actor} işi aktif etti`
       case 'job_held':
-        return 'İş donduruldu'
+        return `${actor} işi dondurdu`
       case 'job_resumed':
-        return 'İş devam ettirildi'
+        return `${actor} işi devam ettirdi`
       case 'job_canceled':
-        return 'İş iptal edildi'
+        return `${actor} işi iptal etti`
       case 'revision_created':
-        return 'Revizyon oluşturuldu'
+        return `${actor} revizyon oluşturdu`
       default:
         return event.event_type
     }
@@ -132,6 +165,26 @@ export function ActivityTimeline({ jobId }: ActivityTimelineProps) {
           <p className="text-sm text-gray-700 italic">"{details.note}"</p>
         ) : null
 
+      case 'file_uploaded':
+        return details.filename ? (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+            <span className="truncate" title={details.filename}>
+              {details.filename}
+            </span>
+            {details.file_id && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-indigo-600 hover:bg-indigo-50"
+                onClick={() => handleFileDownload(details.file_id as string, details.filename as string)}
+              >
+                <Download className="mr-1 h-3.5 w-3.5" />
+                İndir
+              </Button>
+            )}
+          </div>
+        ) : null
+
       case 'step_started':
         return details.machine ? (
           <p className="text-xs text-gray-500">Makine: {details.machine}</p>
@@ -150,7 +203,28 @@ export function ActivityTimeline({ jobId }: ActivityTimelineProps) {
     }
   }
 
+  // Filter by stepId if provided, then reverse if needed, then limit
+  let displayTimeline = timeline
+
+  // Filter by step
+  if (stepId) {
+    displayTimeline = displayTimeline.filter(event => event.step_id === stepId)
+  }
+
+  // Reverse order (newest first)
+  if (reverse) {
+    displayTimeline = [...displayTimeline].reverse()
+  }
+
+  // Apply limit
+  if (limit) {
+    displayTimeline = displayTimeline.slice(0, limit)
+  }
+
   if (loading) {
+    if (compact) {
+      return <div className="text-[10px] text-gray-400">Yükleniyor...</div>
+    }
     return (
       <Card>
         <CardContent className="py-12 text-center">
@@ -161,6 +235,9 @@ export function ActivityTimeline({ jobId }: ActivityTimelineProps) {
   }
 
   if (timeline.length === 0) {
+    if (compact) {
+      return <div className="text-[10px] text-gray-400">Henüz aktivite yok</div>
+    }
     return (
       <Card>
         <CardHeader>
@@ -173,6 +250,47 @@ export function ActivityTimeline({ jobId }: ActivityTimelineProps) {
           <p className="text-gray-500 text-center py-8">Henüz aktivite yok</p>
         </CardContent>
       </Card>
+    )
+  }
+
+  if (compact) {
+    return (
+      <div className="relative">
+        {/* Vertical Line */}
+        <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+
+        {/* Timeline Items */}
+        <div className="space-y-3">
+          {displayTimeline.map((event, index) => (
+            <div key={index} className="relative flex gap-3">
+              {/* Icon */}
+              <div className="relative z-10 flex-shrink-0 w-6 h-6 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center">
+                {getEventIcon(event.event_type)}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 pb-2">
+                {event.process_name && (
+                  <div className="text-[10px] uppercase tracking-wide text-gray-400">
+                    {event.process_name}
+                  </div>
+                )}
+                <div className="text-xs font-medium text-gray-900">
+                  {getEventTitle(event)}
+                </div>
+                <div className="text-[10px] text-gray-500 mt-0.5">
+                  {formatDateTime(event.timestamp)}
+                </div>
+                {getEventDetails(event) && (
+                  <div className="mt-1 text-[11px]">
+                    {getEventDetails(event)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     )
   }
 
@@ -191,7 +309,7 @@ export function ActivityTimeline({ jobId }: ActivityTimelineProps) {
 
           {/* Timeline Items */}
           <div className="space-y-6">
-            {timeline.map((event, index) => (
+            {displayTimeline.map((event, index) => (
               <div key={index} className="relative flex gap-4">
                 {/* Icon */}
                 <div className="relative z-10 flex-shrink-0 w-8 h-8 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center">
@@ -209,10 +327,9 @@ export function ActivityTimeline({ jobId }: ActivityTimelineProps) {
                     </span>
                   </div>
 
-                  {event.actor_name && (
-                    <div className="flex items-center gap-1 text-xs text-gray-600 mb-2">
-                      <User className="w-3 h-3" />
-                      <span>{event.actor_name}</span>
+                  {event.process_name && (
+                    <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-2">
+                      {event.process_name}
                     </div>
                   )}
 

@@ -23,7 +23,9 @@
       "Bash(psql:*)",
       "Bash(chmod +x /Users/user/ReklamPRO/test_purchase_requests_api.sh)",
       "Bash(/Users/user/ReklamPRO/test_purchase_requests_api.sh)",
-      "Bash(pkill -f \"FLASK_PORT=5001\")"
+      "Bash(pkill -f \"FLASK_PORT=5001\")",
+      "Bash(export PGPASSWORD=reklam_pass_123)",
+      "Bash(pkill:*)"
     ],
     "deny": [],
     "ask": []

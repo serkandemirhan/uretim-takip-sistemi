@@ -1,8 +1,22 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Pencil, Plus, Trash2, AlertTriangle, Package, ArrowUpDown, ShoppingCart, Settings } from 'lucide-react'
+import {
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  Package,
+  ArrowUpDown,
+  ShoppingCart,
+  Settings,
+  SlidersHorizontal,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react'
 import { stocksAPI, stockMovementsAPI, jobsAPI } from '@/lib/api/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -17,6 +31,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog'
 
 type Stock = {
@@ -60,6 +75,105 @@ const EMPTY_FORM: StockFormValues = {
   description: '',
 }
 
+const STORAGE_KEY = 'stocks-inventory-table-settings-v1'
+
+type ColumnId =
+  | 'product_code'
+  | 'product_name'
+  | 'category'
+  | 'current_quantity'
+  | 'min_quantity'
+  | 'unit_price'
+  | 'supplier_name'
+  | 'actions'
+
+type ColumnDefinition = {
+  label: string
+  align: 'left' | 'right'
+  hideable?: boolean
+  defaultWidth: number
+  minWidth?: number
+}
+
+const COLUMN_DEFINITIONS: Record<ColumnId, ColumnDefinition> = {
+  product_code: {
+    label: 'Ürün Kodu',
+    align: 'left',
+    hideable: true,
+    defaultWidth: 160,
+    minWidth: 120,
+  },
+  product_name: {
+    label: 'Ürün Adı',
+    align: 'left',
+    hideable: false,
+    defaultWidth: 220,
+    minWidth: 180,
+  },
+  category: {
+    label: 'Kategori',
+    align: 'left',
+    hideable: true,
+    defaultWidth: 160,
+    minWidth: 140,
+  },
+  current_quantity: {
+    label: 'Mevcut',
+    align: 'right',
+    hideable: false,
+    defaultWidth: 160,
+    minWidth: 140,
+  },
+  min_quantity: {
+    label: 'Min',
+    align: 'right',
+    hideable: true,
+    defaultWidth: 120,
+    minWidth: 100,
+  },
+  unit_price: {
+    label: 'Birim Fiyat',
+    align: 'right',
+    hideable: true,
+    defaultWidth: 160,
+    minWidth: 140,
+  },
+  supplier_name: {
+    label: 'Tedarikçi',
+    align: 'left',
+    hideable: true,
+    defaultWidth: 180,
+    minWidth: 140,
+  },
+  actions: {
+    label: 'İşlemler',
+    align: 'right',
+    hideable: true,
+    defaultWidth: 160,
+    minWidth: 140,
+  },
+}
+
+const COLUMN_IDS = Object.keys(COLUMN_DEFINITIONS) as ColumnId[]
+
+const DEFAULT_COLUMN_ORDER: ColumnId[] = [...COLUMN_IDS]
+
+const NON_HIDEABLE_COLUMNS = COLUMN_IDS.filter(
+  (columnId) => COLUMN_DEFINITIONS[columnId].hideable === false
+)
+
+const DEFAULT_COLUMN_VISIBILITY: Record<ColumnId, boolean> = COLUMN_IDS.reduce(
+  (acc, columnId) => {
+    acc[columnId] = true
+    return acc
+  },
+  {} as Record<ColumnId, boolean>
+)
+
+NON_HIDEABLE_COLUMNS.forEach((columnId) => {
+  DEFAULT_COLUMN_VISIBILITY[columnId] = true
+})
+
 export default function StocksInventoryPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -75,6 +189,20 @@ export default function StocksInventoryPage() {
   const [form, setForm] = useState<StockFormValues>(EMPTY_FORM)
 
   const [summary, setSummary] = useState<any>(null)
+  const [columnOrder, setColumnOrder] = useState<ColumnId[]>([...DEFAULT_COLUMN_ORDER])
+  const [columnVisibility, setColumnVisibility] = useState<Record<ColumnId, boolean>>({
+    ...DEFAULT_COLUMN_VISIBILITY,
+  })
+  const [columnWidths, setColumnWidths] = useState<Partial<Record<ColumnId, number>>>({})
+  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false)
+  const [tableSettingsLoaded, setTableSettingsLoaded] = useState(false)
+  const [draggingColumn, setDraggingColumn] = useState<ColumnId | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<ColumnId | null>(null)
+
+  const visibleColumns = useMemo(
+    () => columnOrder.filter((columnId) => columnVisibility[columnId] !== false) as ColumnId[],
+    [columnOrder, columnVisibility]
+  )
 
   useEffect(() => {
     void loadStocks()
@@ -84,6 +212,61 @@ export default function StocksInventoryPage() {
   useEffect(() => {
     filterStocks()
   }, [stocks, q, showCriticalOnly])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      const storedRaw = window.localStorage.getItem(STORAGE_KEY)
+      if (!storedRaw) {
+        setTableSettingsLoaded(true)
+        return
+      }
+
+      const parsed = JSON.parse(storedRaw)
+      if (parsed && typeof parsed === 'object') {
+        const parsedOrder = Array.isArray(parsed.order)
+          ? (parsed.order.filter((value: unknown): value is ColumnId =>
+              COLUMN_IDS.includes(value as ColumnId)
+            ) as ColumnId[])
+          : []
+        const parsedVisibility =
+          parsed.visibility && typeof parsed.visibility === 'object'
+            ? parsed.visibility
+            : {}
+        const parsedWidths =
+          parsed.widths && typeof parsed.widths === 'object' ? parsed.widths : {}
+
+        setColumnOrder(sanitizeOrder(parsedOrder))
+        setColumnVisibility(sanitizeVisibility(parsedVisibility))
+        setColumnWidths(sanitizeWidths(parsedWidths))
+      }
+    } catch (error) {
+      console.error('Kolon ayarları yüklenemedi:', error)
+    } finally {
+      setTableSettingsLoaded(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!tableSettingsLoaded || typeof window === 'undefined') {
+      return
+    }
+
+    const payload = {
+      order: columnOrder,
+      visibility: columnVisibility,
+      widths: columnWidths,
+    }
+
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+    } catch (error) {
+      console.error('Kolon ayarları kaydedilemedi:', error)
+    }
+  }, [columnOrder, columnVisibility, columnWidths, tableSettingsLoaded])
 
   async function loadStocks() {
     setLoading(true)
@@ -104,6 +287,217 @@ export default function StocksInventoryPage() {
       setSummary(res?.data || null)
     } catch (err) {
       console.error('Summary error:', err)
+    }
+  }
+
+  function sanitizeOrder(order: ColumnId[]): ColumnId[] {
+    const unique: ColumnId[] = []
+    order.forEach((columnId) => {
+      if (!unique.includes(columnId) && COLUMN_IDS.includes(columnId)) {
+        unique.push(columnId)
+      }
+    })
+
+    COLUMN_IDS.forEach((columnId) => {
+      if (!unique.includes(columnId)) {
+        unique.push(columnId)
+      }
+    })
+
+    return unique
+  }
+
+  function sanitizeVisibility(rawVisibility: Record<string, unknown>): Record<ColumnId, boolean> {
+    const next: Record<ColumnId, boolean> = { ...DEFAULT_COLUMN_VISIBILITY }
+
+    COLUMN_IDS.forEach((columnId) => {
+      const value = rawVisibility[columnId]
+      if (typeof value === 'boolean') {
+        next[columnId] = value
+      }
+    })
+
+    NON_HIDEABLE_COLUMNS.forEach((columnId) => {
+      next[columnId] = true
+    })
+
+    return next
+  }
+
+  function sanitizeWidths(rawWidths: Record<string, unknown>): Partial<Record<ColumnId, number>> {
+    const next: Partial<Record<ColumnId, number>> = {}
+
+    COLUMN_IDS.forEach((columnId) => {
+      const value = rawWidths[columnId]
+      if (typeof value === 'number' && !Number.isNaN(value)) {
+        const minWidth = COLUMN_DEFINITIONS[columnId].minWidth ?? 120
+        next[columnId] = Math.max(minWidth, Math.round(value))
+      }
+    })
+
+    return next
+  }
+
+  function handleVisibilityToggle(columnId: ColumnId, checked: boolean) {
+    if (!checked && NON_HIDEABLE_COLUMNS.includes(columnId)) {
+      return
+    }
+
+    setColumnVisibility((prev) => {
+      const next = { ...prev, [columnId]: checked }
+      NON_HIDEABLE_COLUMNS.forEach((mandatory) => {
+        next[mandatory] = true
+      })
+      return next
+    })
+  }
+
+  function moveColumn(columnId: ColumnId, direction: 'up' | 'down') {
+    setColumnOrder((prev) => {
+      const currentIndex = prev.indexOf(columnId)
+      if (currentIndex === -1) {
+        return prev
+      }
+
+      const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+      if (newIndex < 0 || newIndex >= prev.length) {
+        return prev
+      }
+
+      const next = [...prev]
+      next.splice(currentIndex, 1)
+      next.splice(newIndex, 0, columnId)
+      return next
+    })
+  }
+
+  function handleDragStart(event: React.DragEvent<HTMLButtonElement>, columnId: ColumnId) {
+    setDraggingColumn(columnId)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', columnId)
+  }
+
+  function handleDragOver(event: React.DragEvent<HTMLTableCellElement>, columnId: ColumnId) {
+    event.preventDefault()
+    if (!draggingColumn || draggingColumn === columnId) {
+      return
+    }
+
+    setDragOverColumn(columnId)
+    event.dataTransfer.dropEffect = 'move'
+  }
+
+  function handleDrop(columnId: ColumnId) {
+    const sourceId = draggingColumn
+    if (!sourceId || sourceId === columnId) {
+      setDragOverColumn(null)
+      setDraggingColumn(null)
+      return
+    }
+
+    setColumnOrder((prev) => {
+      const sourceIndex = prev.indexOf(sourceId)
+      const targetIndex = prev.indexOf(columnId)
+      if (sourceIndex === -1 || targetIndex === -1) {
+        return prev
+      }
+
+      const next = [...prev]
+      next.splice(sourceIndex, 1)
+      next.splice(targetIndex, 0, sourceId)
+      return next
+    })
+
+    setDragOverColumn(null)
+    setDraggingColumn(null)
+  }
+
+  function handleDragEnd() {
+    setDragOverColumn(null)
+    setDraggingColumn(null)
+  }
+
+  function handleResizeMouseDown(event: React.MouseEvent<HTMLSpanElement>, columnId: ColumnId) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startWidth = columnWidths[columnId] ?? COLUMN_DEFINITIONS[columnId].defaultWidth
+    const minWidth = COLUMN_DEFINITIONS[columnId].minWidth ?? 120
+
+    function onMouseMove(moveEvent: MouseEvent) {
+      const delta = moveEvent.clientX - startX
+      setColumnWidths((prev) => {
+        const next = { ...prev }
+        next[columnId] = Math.max(minWidth, Math.round(startWidth + delta))
+        return next
+      })
+    }
+
+    function onMouseUp() {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }
+
+  function resetColumnSettings() {
+    setColumnOrder([...DEFAULT_COLUMN_ORDER])
+    setColumnVisibility({ ...DEFAULT_COLUMN_VISIBILITY })
+    setColumnWidths({})
+  }
+
+  function renderCell(stock: Stock, columnId: ColumnId) {
+    switch (columnId) {
+      case 'product_code':
+        return <span className="font-mono text-sm">{stock.product_code}</span>
+      case 'product_name':
+        return <span className="font-medium">{stock.product_name}</span>
+      case 'category':
+        return <span className="text-sm">{stock.category || '-'}</span>
+      case 'current_quantity':
+        return (
+          <span className={stock.is_critical ? 'text-orange-600 font-bold' : ''}>
+            {stock.current_quantity} {stock.unit}
+          </span>
+        )
+      case 'min_quantity':
+        return <span className="text-sm text-muted-foreground">{stock.min_quantity}</span>
+      case 'unit_price':
+        return stock.unit_price
+          ? `${stock.unit_price.toLocaleString('tr-TR')} ${stock.currency}`
+          : '-'
+      case 'supplier_name':
+        return <span className="text-sm">{stock.supplier_name || '-'}</span>
+      case 'actions':
+        return (
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={(e) => {
+                e.stopPropagation()
+                void openEditDialog(stock)
+              }}
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={(e) => {
+                e.stopPropagation()
+                void handleDelete(stock.id)
+              }}
+            >
+              <Trash2 className="w-4 h-4 text-destructive" />
+            </Button>
+          </div>
+        )
+      default:
+        return null
     }
   }
 
@@ -350,23 +744,64 @@ export default function StocksInventoryPage() {
       {/* Stock List */}
       <Card>
         <CardContent className="pt-6">
+          <div className="flex justify-end mb-4">
+            <Button variant="outline" size="sm" onClick={() => setColumnSettingsOpen(true)}>
+              <SlidersHorizontal className="w-4 h-4 mr-2" />
+              Kolon Ayarları
+            </Button>
+          </div>
           {filteredStocks.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               Stok bulunamadı
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-auto">
+                <colgroup>
+                  {visibleColumns.map((columnId) => {
+                    const width = columnWidths[columnId] ?? COLUMN_DEFINITIONS[columnId].defaultWidth
+                    return <col key={`col-${columnId}`} style={{ width: `${width}px` }} />
+                  })}
+                </colgroup>
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left p-2">Ürün Kodu</th>
-                    <th className="text-left p-2">Ürün Adı</th>
-                    <th className="text-left p-2">Kategori</th>
-                    <th className="text-right p-2">Mevcut</th>
-                    <th className="text-right p-2">Min</th>
-                    <th className="text-right p-2">Birim Fiyat</th>
-                    <th className="text-left p-2">Tedarikçi</th>
-                    <th className="text-right p-2">İşlemler</th>
+                    {visibleColumns.map((columnId) => {
+                      const definition = COLUMN_DEFINITIONS[columnId]
+                      const width = columnWidths[columnId] ?? definition.defaultWidth
+                      const minWidth = definition.minWidth ?? 120
+                      const alignClass = definition.align === 'right' ? 'text-right' : 'text-left'
+                      const isDragTarget = dragOverColumn === columnId
+
+                      return (
+                        <th
+                          key={columnId}
+                          className={`relative p-2 text-sm font-semibold ${alignClass} ${isDragTarget ? 'bg-blue-50' : ''}`}
+                          style={{ width: `${width}px`, minWidth: `${minWidth}px` }}
+                          onDragOver={(event) => handleDragOver(event, columnId)}
+                          onDrop={() => handleDrop(columnId)}
+                          onDragLeave={() => setDragOverColumn(null)}
+                        >
+                          <div className={`flex items-center gap-2 ${definition.align === 'right' ? 'justify-end' : ''}`}>
+                            <button
+                              type="button"
+                              className="flex h-6 w-6 items-center justify-center rounded border border-transparent bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground focus:border-blue-500 focus:outline-none"
+                              draggable
+                              onDragStart={(event) => handleDragStart(event, columnId)}
+                              onDragEnd={handleDragEnd}
+                              aria-label={`${definition.label} sütununu taşı`}
+                            >
+                              <GripVertical className="h-4 w-4" />
+                            </button>
+                            <span className="whitespace-nowrap text-sm font-semibold">{definition.label}</span>
+                          </div>
+                          <span
+                            className="absolute right-0 top-1/2 h-6 w-1.5 -translate-y-1/2 cursor-col-resize rounded bg-transparent hover:bg-blue-300"
+                            onMouseDown={(event) => handleResizeMouseDown(event, columnId)}
+                            aria-hidden="true"
+                          />
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -377,41 +812,23 @@ export default function StocksInventoryPage() {
                       onClick={() => router.push(`/stocks/movements?stock_id=${stock.id}`)}
                       title="Stok hareketlerini görüntülemek için tıklayın"
                     >
-                      <td className="p-2 font-mono text-sm">{stock.product_code}</td>
-                      <td className="p-2 font-medium">{stock.product_name}</td>
-                      <td className="p-2 text-sm">{stock.category || '-'}</td>
-                      <td className="p-2 text-right">
-                        <span className={stock.is_critical ? 'text-orange-600 font-bold' : ''}>
-                          {stock.current_quantity} {stock.unit}
-                        </span>
-                      </td>
-                      <td className="p-2 text-right text-sm text-muted-foreground">
-                        {stock.min_quantity}
-                      </td>
-                      <td className="p-2 text-right">
-                        {stock.unit_price
-                          ? `${stock.unit_price.toLocaleString('tr-TR')} ${stock.currency}`
-                          : '-'}
-                      </td>
-                      <td className="p-2 text-sm">{stock.supplier_name || '-'}</td>
-                      <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => openEditDialog(stock)}
+                      {visibleColumns.map((columnId) => {
+                        const definition = COLUMN_DEFINITIONS[columnId]
+                        const width = columnWidths[columnId] ?? definition.defaultWidth
+                        const minWidth = definition.minWidth ?? 120
+                        const alignClass = definition.align === 'right' ? 'text-right' : 'text-left'
+
+                        return (
+                          <td
+                            key={`${stock.id}-${columnId}`}
+                            className={`p-2 align-top ${alignClass}`}
+                            style={{ width: `${width}px`, minWidth: `${minWidth}px` }}
+                            onClick={columnId === 'actions' ? (event) => event.stopPropagation() : undefined}
                           >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(stock.id)}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </td>
+                            {renderCell(stock, columnId)}
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -420,6 +837,83 @@ export default function StocksInventoryPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={columnSettingsOpen} onOpenChange={setColumnSettingsOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Tablo Kolon Ayarları</DialogTitle>
+            <DialogDescription>
+              Kolonların sırasını ve görünürlüğünü buradan yönetebilirsiniz. Genişliği değiştirmek için tablo
+              başlıklarının sağ kenarını tutup sürükleyin.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            {columnOrder.map((columnId) => {
+              const definition = COLUMN_DEFINITIONS[columnId]
+              const isVisible = columnVisibility[columnId] !== false
+              const isMandatory = definition.hideable === false
+              const currentIndex = columnOrder.indexOf(columnId)
+
+              return (
+                <div
+                  key={`column-setting-${columnId}`}
+                  className="flex items-center justify-between rounded-md border border-gray-200 bg-white p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center rounded-md bg-gray-100 p-2">
+                      <GripVertical className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{definition.label}</span>
+                        {isMandatory && <span className="text-xs text-muted-foreground">(zorunlu)</span>}
+                      </div>
+                      <label className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={isVisible}
+                          onChange={(event) => handleVisibilityToggle(columnId, event.target.checked)}
+                          disabled={isMandatory}
+                        />
+                        <span>{isVisible ? 'Görünür' : 'Gizli'}</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => moveColumn(columnId, 'up')}
+                      disabled={currentIndex === 0}
+                      aria-label={`${definition.label} kolonunu yukarı taşı`}
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => moveColumn(columnId, 'down')}
+                      disabled={currentIndex === columnOrder.length - 1}
+                      aria-label={`${definition.label} kolonunu aşağı taşı`}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <DialogFooter className="sm:justify-between">
+            <Button variant="ghost" onClick={resetColumnSettings}>
+              Varsayılanlara Sıfırla
+            </Button>
+            <Button onClick={() => setColumnSettingsOpen(false)}>Tamam</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

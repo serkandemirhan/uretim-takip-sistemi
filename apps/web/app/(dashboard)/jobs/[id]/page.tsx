@@ -2694,6 +2694,105 @@ async function handleCancel() {
             </CardContent>
           </Card>
 
+          <Card id="job-quotations">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Teklifler</CardTitle>
+                <p className="text-sm text-gray-500">Bu iş talebi için malzeme listeleri</p>
+              </div>
+              <Button size="sm" onClick={openQuotationDialog}>
+                <Plus className="mr-2 h-4 w-4" />
+                Yeni Teklif
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {quotationsLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600"></div>
+                </div>
+              ) : jobQuotations.length === 0 ? (
+                <div className="space-y-4 text-sm text-gray-600">
+                  <p>Bu iş talebi için henüz teklif oluşturulmamış.</p>
+                  <Button size="sm" variant="outline" onClick={openQuotationDialog}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    İlk Teklifi Oluştur
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Teklif</TableHead>
+                        <TableHead>Durum</TableHead>
+                        <TableHead>Kalem</TableHead>
+                        <TableHead>Toplam</TableHead>
+                        <TableHead>Güncelleme</TableHead>
+                        <TableHead className="text-right">İşlemler</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {jobQuotations.map((quotation) => {
+                        const totalValue =
+                          quotation.total_cost_try ?? quotation.total_cost ?? 0
+                        return (
+                          <TableRow key={quotation.id}>
+                            <TableCell>
+                              <div className="font-medium text-gray-900">{quotation.name}</div>
+                              <div className="text-xs text-gray-500">
+                                {quotation.quotation_number || 'Numara yok'}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-2">
+                                <Badge className={getQuotationStatusColor(quotation.status)}>
+                                  {getQuotationStatusLabel(quotation.status)}
+                                </Badge>
+                                <select
+                                  value={quotation.status || 'draft'}
+                                  onChange={(e) =>
+                                    handleQuotationStatusChange(quotation.id, e.target.value)
+                                  }
+                                  disabled={updatingQuotationId === quotation.id}
+                                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                                >
+                                  {QUOTATION_STATUS_OPTIONS.map((status) => (
+                                    <option key={status} value={status}>
+                                      {getQuotationStatusLabel(status)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-700">
+                              {quotation.item_count ?? 0}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-700">
+                              {formatCurrencyTRY(totalValue)}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-700">
+                              {quotation.updated_at
+                                ? formatDate(quotation.updated_at)
+                                : '-'}
+                            </TableCell>
+                            <TableCell className="flex justify-end">
+                              <Link href={`/quotations/${quotation.id}`}>
+                                <Button variant="ghost" size="sm">
+                                  <FileText className="mr-2 h-4 w-4" />
+                                  Görüntüle
+                                </Button>
+                              </Link>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>İş Dosyaları</CardTitle>

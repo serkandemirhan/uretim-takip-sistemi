@@ -709,7 +709,7 @@ export const currencySettingsAPI = {
 
 // Quotations API (Teklifler/Malzeme Listeleri)
 export const quotationsAPI = {
-  getAll: async (params?: { status?: string; customer_id?: string }) => {
+  getAll: async (params?: { status?: string; customer_id?: string; job_id?: string }) => {
     const response = await apiClient.get('/api/quotations', { params })
     return response.data
   },
@@ -719,12 +719,27 @@ export const quotationsAPI = {
     return response.data
   },
 
-  create: async (data: { name: string; customer_id?: string; description?: string }) => {
+  create: async (data: {
+    name: string
+    customer_id?: string
+    description?: string
+    job_id?: string | null
+    status?: string
+  }) => {
     const response = await apiClient.post('/api/quotations', data)
     return response.data
   },
 
-  update: async (id: string, data: { name?: string; customer_id?: string; description?: string; status?: string }) => {
+  update: async (
+    id: string,
+    data: {
+      name?: string
+      customer_id?: string
+      description?: string
+      status?: string
+      job_id?: string | null
+    },
+  ) => {
     const response = await apiClient.put(`/api/quotations/${id}`, data)
     return response.data
   },

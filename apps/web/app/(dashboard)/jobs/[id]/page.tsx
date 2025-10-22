@@ -2,13 +2,38 @@
 
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import { useParams } from 'next/navigation'
-import { jobsAPI, usersAPI, processesAPI, machinesAPI, customersAPI, filesAPI } from '@/lib/api/client'
+import {
+  jobsAPI,
+  usersAPI,
+  processesAPI,
+  machinesAPI,
+  customersAPI,
+  filesAPI,
+  quotationsAPI,
+} from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Calendar,
   AlarmClock,
@@ -71,6 +96,79 @@ function formatDurationLabel(totalMinutes?: number | null) {
   return `${days} gün ${hours} saat`
 }
 
+const QUOTATION_STATUS_LABELS: Record<string, string> = {
+  draft: 'Taslak',
+  active: 'Onaya Sunulmuş',
+  approved: 'Onaylanmış',
+  rejected: 'İptal',
+  archived: 'Arşivlendi',
+}
+
+const QUOTATION_STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-700',
+  active: 'bg-blue-100 text-blue-700',
+  approved: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700',
+  archived: 'bg-yellow-100 text-yellow-700',
+}
+
+const QUOTATION_STATUS_OPTIONS = ['draft', 'active', 'approved', 'rejected', 'archived'] as const
+
+type CreateQuotationPayload = Parameters<(typeof quotationsAPI)['create']>[0]
+
+function getQuotationStatusLabel(status?: string | null) {
+  if (!status) return 'Bilinmiyor'
+  return QUOTATION_STATUS_LABELS[status] || status
+}
+
+function getQuotationStatusColor(status?: string | null) {
+  if (!status) return 'bg-gray-100 text-gray-700'
+  return QUOTATION_STATUS_COLORS[status] || 'bg-gray-100 text-gray-700'
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[-\^$*+?.()|[\]{}]/g, '\$&')
+}
+
+function generateQuotationName(job: any, quotations: any[]) {
+  const jobLabel = job?.job_number || job?.title || 'İş'
+  const revisionPart = job?.revision_no != null ? ` Rev${job.revision_no}` : ''
+  const basePrefix = `${jobLabel}${revisionPart}`.trim()
+  const baseName = `${basePrefix} - Teklif`
+  const pattern = new RegExp(`^${escapeRegExp(baseName)}\\s*(\\d+)$`, 'i')
+  let maxIndex = 0
+
+  quotations.forEach((item) => {
+    const name = typeof item?.name === 'string' ? item.name : ''
+    const match = name.match(pattern)
+    if (match && match[1]) {
+      const parsed = Number(match[1])
+      if (!Number.isNaN(parsed)) {
+        maxIndex = Math.max(maxIndex, parsed)
+      }
+    }
+  })
+
+  const nextIndex = maxIndex + 1
+  const formattedIndex = String(nextIndex).padStart(2, '0')
+  return `${baseName} ${formattedIndex}`
+}
+
+function formatCurrencyTRY(value?: number | string | null) {
+  const numeric = Number(value ?? 0)
+  if (!Number.isFinite(numeric)) {
+    return '—'
+  }
+  if (numeric === 0) {
+    return '0,00 ₺'
+  }
+  try {
+    return numeric.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
+  } catch {
+    return `${numeric.toFixed(2)} ₺`
+  }
+}
+
 
 
 export default function JobDetailPage() {
@@ -119,6 +217,16 @@ const [newStep, setNewStep] = useState({
   const [customers, setCustomers] = useState<any[]>([])
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({})
+  const [jobQuotations, setJobQuotations] = useState<any[]>([])
+  const [quotationsLoading, setQuotationsLoading] = useState(false)
+  const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
+  const [creatingQuotation, setCreatingQuotation] = useState(false)
+  const [quotationDraft, setQuotationDraft] = useState({
+    name: '',
+    status: 'draft',
+    description: '',
+  })
+  const [updatingQuotationId, setUpdatingQuotationId] = useState<string | null>(null)
 
   useEffect(() => {
     if (params.id) {
@@ -187,6 +295,7 @@ async function loadJob() {
       payload = r?.data ?? r
       if (!payload?.id) throw new Error('job missing')
       setJob(payload)
+      void loadJobQuotations(payload.id)
       setCompletionForms(normalizeCompletionForms(payload.steps || []))
       hydrateStepForms(payload.steps || [])
       if (isEditing) {
@@ -357,6 +466,96 @@ async function ensureReferences() {
   } catch (err) {
     handleApiError(err, 'Reference load')
     toast.error('Referans veriler alınamadı')
+  }
+}
+
+async function loadJobQuotations(jobId?: string) {
+  if (!jobId) return
+  try {
+    setQuotationsLoading(true)
+    const response = await quotationsAPI.getAll({ job_id: jobId })
+    const payload = response?.data ?? response ?? []
+    setJobQuotations(payload)
+  } catch (err) {
+    handleApiError(err, 'Load job quotations')
+    toast.error('Teklifler yüklenemedi')
+  } finally {
+    setQuotationsLoading(false)
+  }
+}
+
+function openQuotationDialog() {
+  if (!job) return
+  const generatedName = generateQuotationName(job, jobQuotations)
+  setQuotationDraft({ name: generatedName, status: 'draft', description: '' })
+  setQuotationDialogOpen(true)
+}
+
+function focusQuotationSection() {
+  if (typeof document === 'undefined') return
+  const section = document.getElementById('job-quotations')
+  if (!section) return
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  section.classList.add('ring-2', 'ring-blue-200', 'transition')
+  window.setTimeout(() => {
+    section.classList.remove('ring-2', 'ring-blue-200', 'transition')
+  }, 1500)
+}
+
+async function handleCreateQuotation(e?: React.FormEvent) {
+  e?.preventDefault()
+  if (!job) return
+  if (!quotationDraft.name.trim()) {
+    toast.error('Teklif adı oluşturulamadı')
+    return
+  }
+  const payload: CreateQuotationPayload = {
+    name: quotationDraft.name,
+    job_id: job.id,
+    status: quotationDraft.status,
+  }
+  if (quotationDraft.description.trim()) {
+    payload.description = quotationDraft.description.trim()
+  }
+  const customerId = job.customer?.id
+  if (customerId) {
+    payload.customer_id = customerId
+  }
+  try {
+    setCreatingQuotation(true)
+    await quotationsAPI.create(payload)
+    toast.success('Teklif oluşturuldu')
+    setQuotationDialogOpen(false)
+    setQuotationDraft({ name: '', status: 'draft', description: '' })
+    await loadJobQuotations(job.id)
+  } catch (err: any) {
+    handleApiError(err, 'Create quotation')
+    toast.error(err?.response?.data?.error || 'Teklif oluşturulamadı')
+  } finally {
+    setCreatingQuotation(false)
+  }
+}
+
+async function handleQuotationStatusChange(quotationId: string, nextStatus: string) {
+  if (!job) return
+  try {
+    setUpdatingQuotationId(quotationId)
+    await quotationsAPI.update(quotationId, { status: nextStatus })
+    toast.success('Teklif durumu güncellendi')
+    await loadJobQuotations(job.id)
+  } catch (err: any) {
+    handleApiError(err, 'Update quotation status')
+    toast.error(err?.response?.data?.error || 'Teklif durumu güncellenemedi')
+  } finally {
+    setUpdatingQuotationId(null)
+  }
+}
+
+function handleQuotationDialogChange(open: boolean) {
+  setQuotationDialogOpen(open)
+  if (!open) {
+    setCreatingQuotation(false)
+    setQuotationDraft({ name: '', status: 'draft', description: '' })
   }
 }
 
@@ -1923,8 +2122,21 @@ async function handleCancel() {
             {getPriorityLabel(isEditing ? jobForm.priority : job.priority)}
           </Badge>
         </div>
-        <p className="text-gray-600">
-          {job.job_number} • Rev.{job.revision_no}
+        <p className="text-gray-600 flex items-center gap-2">
+          <span>{job.job_number}</span>
+          <span>•</span>
+          <span>Rev.{job.revision_no}</span>
+          {job.id && (
+            <>
+              <span>•</span>
+              <Link
+                href={`/jobs/${job.id}/revisions`}
+                className="text-sm font-medium text-blue-600 hover:underline"
+              >
+                Geçmiş
+              </Link>
+            </>
+          )}
         </p>
       </div>
 
@@ -2002,14 +2214,10 @@ async function handleCancel() {
             )}
           </>
         )}
-        {job.id && (
-          <Link href={`/jobs/${job.id}/revisions`}>
-            <Button variant="outline">
-              <FileText className="w-4 h-4 mr-2" />
-              Revizyon Geçmişi
-            </Button>
-          </Link>
-        )}
+        <Button variant="outline" onClick={focusQuotationSection}>
+          <Package className="w-4 h-4 mr-2" />
+          Tekliflere Git
+        </Button>
       </div>
     </div>
 
@@ -2235,6 +2443,105 @@ async function handleCancel() {
                 <p className="whitespace-pre-wrap text-gray-700">
                   {job.description || 'Açıklama eklenmemiş'}
                 </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card id="job-quotations">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Teklifler</CardTitle>
+                <p className="text-sm text-gray-500">Bu iş talebi için malzeme listeleri</p>
+              </div>
+              <Button size="sm" onClick={openQuotationDialog}>
+                <Plus className="mr-2 h-4 w-4" />
+                Yeni Teklif
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {quotationsLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600"></div>
+                </div>
+              ) : jobQuotations.length === 0 ? (
+                <div className="space-y-4 text-sm text-gray-600">
+                  <p>Bu iş talebi için henüz teklif oluşturulmamış.</p>
+                  <Button size="sm" variant="outline" onClick={openQuotationDialog}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    İlk Teklifi Oluştur
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Teklif</TableHead>
+                        <TableHead>Durum</TableHead>
+                        <TableHead>Kalem</TableHead>
+                        <TableHead>Toplam</TableHead>
+                        <TableHead>Güncelleme</TableHead>
+                        <TableHead className="text-right">İşlemler</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {jobQuotations.map((quotation) => {
+                        const totalValue =
+                          quotation.total_cost_try ?? quotation.total_cost ?? 0
+                        return (
+                          <TableRow key={quotation.id}>
+                            <TableCell>
+                              <div className="font-medium text-gray-900">{quotation.name}</div>
+                              <div className="text-xs text-gray-500">
+                                {quotation.quotation_number || 'Numara yok'}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-2">
+                                <Badge className={getQuotationStatusColor(quotation.status)}>
+                                  {getQuotationStatusLabel(quotation.status)}
+                                </Badge>
+                                <select
+                                  value={quotation.status || 'draft'}
+                                  onChange={(e) =>
+                                    handleQuotationStatusChange(quotation.id, e.target.value)
+                                  }
+                                  disabled={updatingQuotationId === quotation.id}
+                                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                                >
+                                  {QUOTATION_STATUS_OPTIONS.map((status) => (
+                                    <option key={status} value={status}>
+                                      {getQuotationStatusLabel(status)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-700">
+                              {quotation.item_count ?? 0}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-700">
+                              {formatCurrencyTRY(totalValue)}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-700">
+                              {quotation.updated_at
+                                ? formatDate(quotation.updated_at)
+                                : '-'}
+                            </TableCell>
+                            <TableCell className="flex justify-end">
+                              <Link href={`/quotations/${quotation.id}`}>
+                                <Button variant="ghost" size="sm">
+                                  <FileText className="mr-2 h-4 w-4" />
+                                  Görüntüle
+                                </Button>
+                              </Link>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -2689,6 +2996,70 @@ async function handleCancel() {
           </Card>
         </div>
       )}
+
+      <Dialog open={quotationDialogOpen} onOpenChange={handleQuotationDialogChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Yeni Teklif Oluştur</DialogTitle>
+            <DialogDescription>
+              {job?.title
+                ? `${job.title} işi için yeni bir teklif oluşturun.`
+                : 'Bu iş talebi için yeni bir malzeme listesi oluşturun.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateQuotation} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="quotation_name">Teklif Adı</Label>
+              <Input id="quotation_name" value={quotationDraft.name} readOnly className="bg-gray-50" />
+              <p className="text-xs text-gray-500">
+                Teklif adı iş numarası ve revizyon bilgisine göre otomatik oluşturulur.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="quotation_status">Durum</Label>
+              <select
+                id="quotation_status"
+                value={quotationDraft.status}
+                onChange={(e) =>
+                  setQuotationDraft((prev) => ({ ...prev, status: e.target.value }))
+                }
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                {QUOTATION_STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {getQuotationStatusLabel(status)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="quotation_description">Açıklama</Label>
+              <Textarea
+                id="quotation_description"
+                value={quotationDraft.description}
+                onChange={(e) =>
+                  setQuotationDraft((prev) => ({ ...prev, description: e.target.value }))
+                }
+                rows={3}
+                placeholder="İsteğe bağlı olarak teklif açıklaması ekleyin"
+              />
+            </div>
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Vazgeç
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={creatingQuotation}>
+                {creatingQuotation ? 'Oluşturuluyor...' : 'Teklif Oluştur'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
 
     </div>

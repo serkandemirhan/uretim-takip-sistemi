@@ -114,6 +114,9 @@ const QUOTATION_STATUS_COLORS: Record<string, string> = {
 
 const QUOTATION_STATUS_OPTIONS = ['draft', 'active', 'approved', 'rejected', 'archived'] as const
 
+type CreateQuotationPayload = Parameters<(typeof quotationsAPI)['create']>[0]
+12ABM2044!!2044
+    1212DSAFFADSFADSFS
 function getQuotationStatusLabel(status?: string | null) {
   if (!status) return 'Bilinmiyor'
   return QUOTATION_STATUS_LABELS[status] || status
@@ -507,7 +510,7 @@ async function handleCreateQuotation(e?: React.FormEvent) {
     toast.error('Teklif adı oluşturulamadı')
     return
   }
-  const payload: Record<string, any> = {
+  const payload: CreateQuotationPayload = {
     name: quotationDraft.name,
     job_id: job.id,
     status: quotationDraft.status,

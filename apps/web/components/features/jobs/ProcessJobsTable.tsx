@@ -256,7 +256,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
     )
   }
   return (
-    <div className="w-full bg-white rounded-lg border overflow-hidden">
+    <div className="w-full bg-white rounded-lg border overflow-hidden overflow-x-visible">
       {/* Legend */}
       <div className="px-4 py-2 bg-gray-50 border-b flex items-center gap-4 text-xs text-gray-600 flex-wrap">
         <span className="font-semibold">Durum:</span>

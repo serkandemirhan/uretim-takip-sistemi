@@ -611,16 +611,10 @@ export default function NewJobPage() {
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-3 sm:gap-4 px-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                     <span className="flex-shrink-0 w-[44px]">Sıra</span>
-                    <span className="min-w-[180px] flex-1 sm:flex-none">Süreç</span>
-                    <span className="min-w-[180px]">Sorumlu</span>
-                    <span className="min-w-[180px]">Makine</span>
-                    <span className="min-w-[150px]">Teslim Tarihi</span>
-                    <span className="min-w-[120px]">Saat</span>
-                    <span className="min-w-[160px]">Tahmini Süre</span>
+                    <span className="min-w-[200px] flex-1">Süreç</span>
                     <span className="hidden sm:block w-6" aria-hidden="true"></span>
                   </div>
                   {selectedSteps.map((step, index) => {
-                    const isMachineBased = !!step.is_machine_based
                     return (
                     <div
                       key={step.process_id}
@@ -642,116 +636,13 @@ export default function NewJobPage() {
                           </div>
                         </div>
 
-                        <div className="min-w-[180px] flex-1 sm:flex-none">
+                        <div className="min-w-[200px] flex-1">
                           <p className="text-sm font-semibold text-gray-900">{step.process_name}</p>
                           {step.group_name && (
                             <p className="text-[11px] uppercase tracking-wide text-gray-500">
                               {step.group_name}
                             </p>
                           )}
-                        </div>
-
-                        <div className="flex flex-col min-w-[180px] gap-1">
-                          <Label htmlFor={`step-${index}-assignee`} className="sr-only">
-                            Sorumlu
-                          </Label>
-                          <select
-                            id={`step-${index}-assignee`}
-                            value={step.assigned_to}
-                            onChange={(e) => updateStep(index, 'assigned_to', e.target.value)}
-                            className="h-9 rounded border border-gray-300 px-2 text-sm"
-                          >
-                            <option value="">Seçiniz...</option>
-                            {users.map((user) => (
-                              <option key={user.id} value={user.id}>
-                                {user.full_name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="flex flex-col min-w-[180px] gap-1">
-                          <Label htmlFor={`step-${index}-machine`} className="sr-only">
-                            Makine
-                          </Label>
-                          {isMachineBased ? (
-                            <select
-                              id={`step-${index}-machine`}
-                              value={step.machine_id ?? ''}
-                              onChange={(e) => updateStep(index, 'machine_id', e.target.value)}
-                              className="h-9 rounded border border-gray-300 px-2 text-sm"
-                            >
-                              <option value="">Seçiniz...</option>
-                              {machines.map((machine) => (
-                                <option key={machine.id} value={machine.id}>
-                                  {machine.name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">Makine gerekmez</span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-col min-w-[150px] gap-1">
-                          <Label htmlFor={`step-${index}-due-date`} className="sr-only">
-                            Teslim Tarihi
-                          </Label>
-                              <Input
-                                id={`step-${index}-due-date`}
-                                type="date"
-                            value={step.due_date ?? ''}
-                            onChange={(e) => updateStep(index, 'due_date', e.target.value)}
-                            className="h-9 text-sm"
-                            required
-                          />
-                        </div>
-
-                        <div className="flex flex-col min-w-[120px] gap-1">
-                          <Label htmlFor={`step-${index}-due-time`} className="sr-only">
-                            Saat
-                          </Label>
-                          <Input
-                            id={`step-${index}-due-time`}
-                            type="time"
-                            value={step.due_time ?? ''}
-                            onChange={(e) => updateStep(index, 'due_time', e.target.value)}
-                            className="h-9 text-sm"
-                            step={300}
-                            required
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 min-w-[160px]">
-                          <div className="flex flex-col gap-1">
-                            <Label className="sr-only" htmlFor={`step-${index}-duration-days`}>
-                              Gün
-                            </Label>
-                            <Input
-                              id={`step-${index}-duration-days`}
-                              type="number"
-                              min={0}
-                              value={Number(step.estimated_duration_days ?? 1)}
-                              onChange={(e) => updateStep(index, 'estimated_duration_days', e.target.value)}
-                              className="h-9 w-20 rounded border border-gray-300 px-2 text-sm"
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500">gün</span>
-                          <div className="flex flex-col gap-1">
-                            <Label className="sr-only" htmlFor={`step-${index}-duration-hours`}>
-                              Saat
-                            </Label>
-                            <Input
-                              id={`step-${index}-duration-hours`}
-                              type="number"
-                              min={0}
-                              max={23}
-                              value={Number(step.estimated_duration_hours ?? 0)}
-                              onChange={(e) => updateStep(index, 'estimated_duration_hours', e.target.value)}
-                              className="h-9 w-20 rounded border border-gray-300 px-2 text-sm"
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500">saat</span>
                         </div>
 
                         <Button
@@ -763,18 +654,6 @@ export default function NewJobPage() {
                         >
                           <X className="w-4 h-4" />
                         </Button>
-                      </div>
-                      <div className="mt-2 pt-2 border-t border-gray-200">
-                        <Label htmlFor={`step-${index}-requirements`} className="text-xs text-gray-600 mb-1 block">
-                          İş Gereksinimleri
-                        </Label>
-                        <Textarea
-                          id={`step-${index}-requirements`}
-                          value={step.requirements ?? ''}
-                          onChange={(e) => updateStep(index, 'requirements', e.target.value)}
-                          placeholder="Bu adımın nasıl yapılması gerektiğini açıklayın..."
-                          className="min-h-[80px] text-sm"
-                        />
                       </div>
                     </div>
                     )

@@ -73,7 +73,7 @@ function getStepStatusColor(status: string): string {
   return colorMap[status] || colorMap.not_started
 }
 
-const STORAGE_KEY_WIDTHS = 'processJobsTable_columnWidths'
+const STORAGE_KEY_WIDTHS = 'processJobsTable_columnWidths_v2'
 const STORAGE_KEY_ORDER = 'processJobsTable_columnOrder'
 
 export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
@@ -81,11 +81,11 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
   const [loading, setLoading] = useState(true)
   const [columnOrder, setColumnOrder] = useState<string[]>([])
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
-    no: 80,
-    title: 180,
+    no: 110,
+    title: 240,
     customer: 150,
-    dealer: 150,
-    delivery: 120,
+    dealer: 140,
+    delivery: 130,
     progress: 120,
   })
   const [resizingColumn, setResizingColumn] = useState<string | null>(null)
@@ -278,8 +278,8 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
         </div>
       </div>
 
-      <div className="w-full overflow-x-visible">
-        <table className="w-full text-sm min-w-max">
+      <div className="w-full overflow-x-auto no-scrollbar">
+        <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               {columnOrder.map((colId) => {

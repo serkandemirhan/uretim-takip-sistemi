@@ -115,6 +115,7 @@ const QUOTATION_STATUS_COLORS: Record<string, string> = {
 const QUOTATION_STATUS_OPTIONS = ['draft', 'active', 'approved', 'rejected', 'archived'] as const
 
 type CreateQuotationPayload = Parameters<(typeof quotationsAPI)['create']>[0]
+
 function getQuotationStatusLabel(status?: string | null) {
   if (!status) return 'Bilinmiyor'
   return QUOTATION_STATUS_LABELS[status] || status

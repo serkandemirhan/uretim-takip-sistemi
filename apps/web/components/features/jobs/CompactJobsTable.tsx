@@ -107,9 +107,9 @@ export function CompactJobsTable({ jobs }: CompactJobsTableProps) {
   }
 
   return (
-    <div className="w-full bg-white rounded-lg border overflow-hidden">
-      <div className="overflow-x-auto w-full">
-        <table className="w-full text-sm">
+    <div className="w-full bg-white rounded-lg border overflow-hidden overflow-x-visible">
+      <div className="w-full overflow-x-visible">
+        <table className="w-full min-w-max text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.no }}>

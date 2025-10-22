@@ -5,6 +5,8 @@ from decimal import Decimal
 from datetime import datetime
 from collections import defaultdict
 
+ALLOWED_QUOTATION_STATUSES = {'draft', 'active', 'approved', 'rejected', 'archived'}
+
 quotations_bp = Blueprint('quotations', __name__, url_prefix='/api/quotations')
 
 # Debug endpoint
@@ -126,12 +128,14 @@ def get_quotations():
     try:
         status = request.args.get('status')
         customer_id = request.args.get('customer_id')
+        job_id = request.args.get('job_id')
 
         query = """
             SELECT
                 q.id, q.quotation_number, q.name, q.description,
                 q.version, q.version_major, q.version_minor,
                 q.status, q.total_cost, q.currency,
+                q.job_id,
                 q.created_at, q.updated_at,
                 c.id as customer_id, c.name as customer_name,
                 u.id as created_by_id, u.full_name as created_by_name,
@@ -151,6 +155,10 @@ def get_quotations():
             query += " AND q.customer_id = %s"
             params.append(customer_id)
 
+        if job_id:
+            query += " AND q.job_id = %s"
+            params.append(job_id)
+
         query += " ORDER BY q.created_at DESC"
 
         quotations = execute_query(query, params)
@@ -158,6 +166,8 @@ def get_quotations():
         for quotation in quotations:
             quotation['version_label'] = f"Ver{quotation.get('version_major', 1)}.{quotation.get('version_minor', 0)}"
             quotation['total_cost_try'] = float(_decimal(quotation.get('total_cost')) or Decimal('0'))
+            if quotation.get('job_id'):
+                quotation['job_id'] = str(quotation['job_id'])
 
         return jsonify({
             'data': quotations,
@@ -182,6 +192,7 @@ def get_quotation(quotation_id):
                 q.id, q.quotation_number, q.name, q.description,
                 q.version, q.version_major, q.version_minor,
                 q.status, q.total_cost, q.currency,
+                q.job_id,
                 q.created_at, q.updated_at,
                 c.id as customer_id, c.name as customer_name,
                 u.id as created_by_id, u.full_name as created_by_name
@@ -194,6 +205,9 @@ def get_quotation(quotation_id):
 
         if not quotation:
             return jsonify({'error': 'Teklif bulunamadı'}), 404
+
+        if quotation.get('job_id'):
+            quotation['job_id'] = str(quotation['job_id'])
 
         # Teklif kalemleri
         items_query = """
@@ -250,11 +264,16 @@ def create_quotation():
         name = _s(data.get('name'))
         customer_id = _s(data.get('customer_id'))
         description = _s(data.get('description'))
+        job_id = _s(data.get('job_id'))
+        status = _s(data.get('status')) or 'draft'
 
         logger.info(f"Parsed - name: {name}, customer_id: {customer_id}")
 
         if not name:
             return jsonify({'error': 'Teklif adı gerekli'}), 400
+
+        if status not in ALLOWED_QUOTATION_STATUSES:
+            return jsonify({'error': 'Geçersiz teklif durumu'}), 400
 
         # Current user ID'yi al (JWT payload'ında 'user_id' olarak saklanıyor)
         user_id = current_user.get('user_id')
@@ -265,19 +284,21 @@ def create_quotation():
             return jsonify({'error': 'Kullanıcı bilgisi bulunamadı'}), 401
 
         query = """
-            INSERT INTO quotations (name, customer_id, description, created_by)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO quotations (name, customer_id, description, job_id, created_by, status)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id, quotation_number, name, customer_id, description,
                       version, version_major, version_minor,
-                      status, total_cost, currency, created_at, updated_at
+                      status, total_cost, currency, job_id, created_at, updated_at
         """
 
-        logger.info(f"Executing query with params: {(name, customer_id, description, user_id)}")
+        logger.info(
+            f"Executing query with params: {(name, customer_id, description, job_id, user_id, status)}"
+        )
 
         # execute_write kullan çünkü INSERT işlemi yapıyoruz ve commit gerekli
         result = execute_write(
             query,
-            (name, customer_id, description, user_id)
+            (name, customer_id, description, job_id, user_id, status)
         )
 
         # execute_write liste döndürür, ilk elemanı al
@@ -291,6 +312,8 @@ def create_quotation():
         result['currency_totals'] = []
         result['total_cost_try'] = float(_decimal(result.get('total_cost')) or Decimal('0'))
         result['version_label'] = f"Ver{result.get('version_major', 1)}.{result.get('version_minor', 0)}"
+        if result.get('job_id'):
+            result['job_id'] = str(result['job_id'])
 
         logger.info("=== CREATE QUOTATION SUCCESS ===")
         return jsonify({
@@ -320,6 +343,7 @@ def update_quotation(quotation_id):
         customer_id = _s(data.get('customer_id'))
         description = _s(data.get('description'))
         status = _s(data.get('status'))
+        job_id = _s(data.get('job_id'))
 
         # Mevcut teklifi kontrol et
         existing = execute_query_one(
@@ -330,12 +354,16 @@ def update_quotation(quotation_id):
         if not existing:
             return jsonify({'error': 'Teklif bulunamadı'}), 404
 
+        if status and status not in ALLOWED_QUOTATION_STATUSES:
+            return jsonify({'error': 'Geçersiz teklif durumu'}), 400
+
         query = """
             UPDATE quotations
             SET name = COALESCE(%s, name),
                 customer_id = COALESCE(%s, customer_id),
                 description = COALESCE(%s, description),
                 status = COALESCE(%s, status),
+                job_id = COALESCE(%s, job_id),
                 version_major = version_major + 1,
                 version_minor = 0,
                 version = (version_major + 1) * 1000,
@@ -343,13 +371,13 @@ def update_quotation(quotation_id):
             WHERE id = %s
             RETURNING id, quotation_number, name, customer_id, description,
                       version, version_major, version_minor,
-                      status, total_cost, currency, created_at, updated_at
+                      status, total_cost, currency, job_id, created_at, updated_at
         """
 
         # execute_write kullan çünkü UPDATE işlemi yapıyoruz ve commit gerekli
         result = execute_write(
             query,
-            (name, customer_id, description, status, quotation_id)
+            (name, customer_id, description, status, job_id, quotation_id)
         )
 
         # execute_write liste döndürür, ilk elemanı al
@@ -361,6 +389,8 @@ def update_quotation(quotation_id):
             result['currency_totals'] = currency_totals
             result['total_cost_try'] = float(total_try)
             result['version_label'] = f"Ver{result.get('version_major', 1)}.{result.get('version_minor', 0)}"
+            if result.get('job_id'):
+                result['job_id'] = str(result['job_id'])
 
         return jsonify({
             'message': 'Teklif güncellendi',

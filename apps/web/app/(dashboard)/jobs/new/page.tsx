@@ -558,7 +558,7 @@ export default function NewJobPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
+                  size="xs"
                   onClick={() => {
                     if (!formData.customer_id) {
                       toast.error('Önce bir müşteri seçmelisiniz')

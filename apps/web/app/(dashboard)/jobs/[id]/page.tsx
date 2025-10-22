@@ -42,6 +42,7 @@ import {
   Store,
   ArrowLeft,
   Play,
+  Search,
   CheckCircle,
   Clock,
   AlertCircle,
@@ -98,7 +99,7 @@ function formatDurationLabel(totalMinutes?: number | null) {
 
 const QUOTATION_STATUS_LABELS: Record<string, string> = {
   draft: 'Taslak',
-  active: 'Onaya Sunulmuş',
+  active: 'Onay Bekliyor',
   approved: 'Onaylanmış',
   rejected: 'İptal',
   archived: 'Arşivlendi',
@@ -113,6 +114,15 @@ const QUOTATION_STATUS_COLORS: Record<string, string> = {
 }
 
 const QUOTATION_STATUS_OPTIONS = ['draft', 'active', 'approved', 'rejected', 'archived'] as const
+
+const JOB_QUOTATION_HEADER_FILTERS = [
+  { value: 'all', label: 'Tümü' },
+  { value: 'draft', label: 'Taslak' },
+  { value: 'active', label: 'Onay Bekliyor' },
+  { value: 'approved', label: 'Onaylanmış' },
+] as const
+
+type JobQuotationFilter = (typeof JOB_QUOTATION_HEADER_FILTERS)[number]['value']
 
 type CreateQuotationPayload = Parameters<(typeof quotationsAPI)['create']>[0]
 
@@ -227,6 +237,60 @@ const [newStep, setNewStep] = useState({
     description: '',
   })
   const [updatingQuotationId, setUpdatingQuotationId] = useState<string | null>(null)
+  const [showJobQuotationsPanel, setShowJobQuotationsPanel] = useState(false)
+  const [quotationStatusFilter, setQuotationStatusFilter] = useState<JobQuotationFilter>('all')
+  const [quotationSearchTerm, setQuotationSearchTerm] = useState('')
+  const [shouldHighlightQuotations, setShouldHighlightQuotations] = useState(false)
+
+  const quotationStatusCounts = useMemo(() => {
+    const counts: Record<JobQuotationFilter, number> = {
+      all: 0,
+      draft: 0,
+      active: 0,
+      approved: 0,
+    }
+
+    for (const quotation of jobQuotations) {
+      counts.all += 1
+      const status = typeof quotation?.status === 'string' ? quotation.status : 'draft'
+      if (status === 'draft') {
+        counts.draft += 1
+      } else if (status === 'active') {
+        counts.active += 1
+      } else if (status === 'approved') {
+        counts.approved += 1
+      }
+    }
+
+    return counts
+  }, [jobQuotations])
+
+  const filteredJobQuotations = useMemo(() => {
+    const term = quotationSearchTerm.trim().toLowerCase()
+
+    return jobQuotations.filter((quotation) => {
+      const status = typeof quotation?.status === 'string' ? quotation.status : 'draft'
+      if (quotationStatusFilter !== 'all' && status !== quotationStatusFilter) {
+        return false
+      }
+
+      if (!term) {
+        return true
+      }
+
+      const fields = [
+        quotation?.name,
+        quotation?.quotation_number,
+        quotation?.description,
+        quotation?.customer?.name,
+        quotation?.customer_name,
+      ]
+
+      return fields.some((field) =>
+        typeof field === 'string' && field.toLowerCase().includes(term),
+      )
+    })
+  }, [jobQuotations, quotationStatusFilter, quotationSearchTerm])
 
   useEffect(() => {
     if (params.id) {
@@ -284,6 +348,33 @@ const [newStep, setNewStep] = useState({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job, currentUser, referenceLoaded])
+
+  useEffect(() => {
+    if (!showJobQuotationsPanel || !shouldHighlightQuotations) {
+      return
+    }
+
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const section = document.getElementById('job-quotations')
+    if (!section) {
+      return
+    }
+
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    section.classList.add('ring-2', 'ring-blue-200', 'transition')
+
+    const timeout = window.setTimeout(() => {
+      section.classList.remove('ring-2', 'ring-blue-200', 'transition')
+      setShouldHighlightQuotations(false)
+    }, 1500)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [showJobQuotationsPanel, shouldHighlightQuotations])
 
 async function loadJob() {
   setLoading(true)
@@ -492,14 +583,18 @@ function openQuotationDialog() {
 }
 
 function focusQuotationSection() {
-  if (typeof document === 'undefined') return
-  const section = document.getElementById('job-quotations')
-  if (!section) return
-  section.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  section.classList.add('ring-2', 'ring-blue-200', 'transition')
-  window.setTimeout(() => {
-    section.classList.remove('ring-2', 'ring-blue-200', 'transition')
-  }, 1500)
+  setShowJobQuotationsPanel(true)
+  setShouldHighlightQuotations(true)
+}
+
+function closeQuotationSection() {
+  setShowJobQuotationsPanel(false)
+  setShouldHighlightQuotations(false)
+}
+
+function resetQuotationFilters() {
+  setQuotationStatusFilter('all')
+  setQuotationSearchTerm('')
 }
 
 async function handleCreateQuotation(e?: React.FormEvent) {
@@ -2290,6 +2385,158 @@ async function handleCancel() {
                 </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {showJobQuotationsPanel && (
+        <Card id="job-quotations" className="border-blue-100">
+          <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle>Teklifler</CardTitle>
+              <p className="text-sm text-gray-500">Bu iş talebi için oluşturulan teklifleri yönetin.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={closeQuotationSection}
+                className="text-gray-600"
+              >
+                <X className="mr-2 h-4 w-4" />
+                Kapat
+              </Button>
+              <Button size="sm" onClick={openQuotationDialog}>
+                <Plus className="mr-2 h-4 w-4" />
+                Yeni Teklif
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex flex-wrap items-center gap-2">
+              {JOB_QUOTATION_HEADER_FILTERS.map((filter) => {
+                const isActive = quotationStatusFilter === filter.value
+                return (
+                  <Button
+                    key={filter.value}
+                    size="sm"
+                    variant={isActive ? 'default' : 'outline'}
+                    onClick={() => setQuotationStatusFilter(filter.value)}
+                    className={cn('flex items-center gap-2', !isActive && 'bg-white text-gray-700')}
+                  >
+                    {filter.label}
+                    <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      {quotationStatusCounts[filter.value] ?? 0}
+                    </span>
+                  </Button>
+                )
+              })}
+            </div>
+
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="relative w-full md:max-w-sm">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input
+                  value={quotationSearchTerm}
+                  onChange={(e) => setQuotationSearchTerm(e.target.value)}
+                  placeholder="Teklif ara..."
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            {quotationsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+              </div>
+            ) : filteredJobQuotations.length === 0 ? (
+              <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
+                <p>
+                  {jobQuotations.length === 0
+                    ? 'Bu iş talebi için henüz teklif oluşturulmamış.'
+                    : 'Seçili filtrelerle eşleşen teklif bulunamadı.'}
+                </p>
+                {jobQuotations.length === 0 ? (
+                  <Button size="sm" variant="outline" onClick={openQuotationDialog}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    İlk Teklifi Oluştur
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={resetQuotationFilters}>
+                    Filtreleri Temizle
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Teklif</TableHead>
+                      <TableHead>Durum</TableHead>
+                      <TableHead>Kalem</TableHead>
+                      <TableHead>Toplam</TableHead>
+                      <TableHead>Güncelleme</TableHead>
+                      <TableHead className="text-right">İşlemler</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredJobQuotations.map((quotation) => {
+                      const totalValue = quotation.total_cost_try ?? quotation.total_cost ?? 0
+                      const currentStatus = typeof quotation?.status === 'string' ? quotation.status : 'draft'
+                      return (
+                        <TableRow key={quotation.id}>
+                          <TableCell>
+                            <div className="font-medium text-gray-900">{quotation.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {quotation.quotation_number || 'Numara yok'}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-2">
+                              <Badge className={getQuotationStatusColor(currentStatus)}>
+                                {getQuotationStatusLabel(currentStatus)}
+                              </Badge>
+                              <select
+                                value={currentStatus || 'draft'}
+                                onChange={(e) =>
+                                  handleQuotationStatusChange(quotation.id, e.target.value)
+                                }
+                                disabled={updatingQuotationId === quotation.id}
+                                className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                              >
+                                {QUOTATION_STATUS_OPTIONS.map((status) => (
+                                  <option key={status} value={status}>
+                                    {getQuotationStatusLabel(status)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-700">
+                            {quotation.item_count ?? 0}
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-700">
+                            {formatCurrencyTRY(totalValue)}
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-700">
+                            {quotation.updated_at ? formatDate(quotation.updated_at) : '-'}
+                          </TableCell>
+                          <TableCell className="flex justify-end">
+                            <Link href={`/quotations/${quotation.id}`}>
+                              <Button variant="ghost" size="sm">
+                                <FileText className="mr-2 h-4 w-4" />
+                                Görüntüle
+                              </Button>
+                            </Link>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

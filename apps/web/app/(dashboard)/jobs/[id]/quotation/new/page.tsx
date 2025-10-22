@@ -54,6 +54,9 @@ export default function JobQuotationCreatePage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
+  const jobStatus = job?.status ?? 'unknown'
+  const jobStatusLabel = job?.status ? getStatusLabel(job.status) : 'Durum bilgisi mevcut değil'
+
   useEffect(() => {
     if (!jobId) {
       setLoading(false)
@@ -263,9 +266,7 @@ export default function JobQuotationCreatePage() {
             <CardContent className="space-y-4 text-sm text-gray-600">
               <div>
                 <p className="font-medium text-gray-500">Durum</p>
-                <Badge className={cn('mt-1', getStatusColor(job.status))}>
-                  {getStatusLabel(job.status)}
-                </Badge>
+                <Badge className={cn('mt-1', getStatusColor(jobStatus))}>{jobStatusLabel}</Badge>
               </div>
               {job.customer?.name && (
                 <div>

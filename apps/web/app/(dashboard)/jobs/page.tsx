@@ -40,11 +40,11 @@ export default function JobsPage() {
 
   // Mock stats - in production, get from API
   const [stats, setStats] = useState({
-    active: 24,
-    at_risk: 5,
-    delayed: 3,
-    on_hold: 2,
-    completed: 156,
+    active: 0,
+    at_risk: 0,
+    delayed: 0,
+    on_hold: 0,
+    completed: 0,
   })
 
   useEffect(() => {
@@ -64,18 +64,54 @@ export default function JobsPage() {
     }
   }
 
+  const isJobAtRisk = (job: any) => {
+    const status = (job?.status ?? '').toString().toLowerCase()
+    const isActive = status === 'active' || status === 'in_progress'
+    if (!isActive) return false
+
+    const progress = typeof job?.progress === 'number' ? job.progress : null
+    const rawDueDate = job?.due_date ?? job?.delivery_date ?? job?.deadline
+    const dueDate = rawDueDate ? new Date(rawDueDate) : null
+    const isOverdue = dueDate ? dueDate.getTime() < Date.now() : false
+
+    return (progress !== null && progress < 50) || isOverdue
+  }
+
   async function loadJobs() {
     try {
       setLoading(true)
+      const statusFilter = filters.status
+      const applyLocalRiskFilter = statusFilter === 'at_risk' || statusFilter === 'delayed'
       const params = {
         ...filters,
+        status: applyLocalRiskFilter ? '' : statusFilter,
         page: pagination.page,
         per_page: pagination.per_page,
       }
 
       const response = await jobsAPI.getAll(params)
-      console.log('Jobs response:', response.data?.[0]) // Debug: İlk job'ı görelim
-      setJobs(response.data || [])
+      const rawJobs = response.data || []
+
+      const activeJobs = rawJobs.filter((j: any) => {
+        const status = (j?.status ?? '').toString().toLowerCase()
+        return status === 'active' || status === 'in_progress'
+      })
+      const riskyJobs = rawJobs.filter(isJobAtRisk)
+      const severelyDelayedJobs = riskyJobs.filter((job: any) => {
+        const progress = typeof job?.progress === 'number' ? job.progress : null
+        return progress !== null && progress < 25
+      })
+      const onHoldJobs = rawJobs.filter((j: any) => (j?.status ?? '').toString().toLowerCase() === 'on_hold')
+      const completedJobs = rawJobs.filter((j: any) => (j?.status ?? '').toString().toLowerCase() === 'completed')
+
+      let jobsForView = rawJobs
+      if (statusFilter === 'at_risk') {
+        jobsForView = riskyJobs
+      } else if (statusFilter === 'delayed') {
+        jobsForView = severelyDelayedJobs
+      }
+
+      setJobs(jobsForView)
 
       if (response.meta) {
         setPagination(prev => ({
@@ -85,16 +121,12 @@ export default function JobsPage() {
         }))
       }
 
-      // Calculate stats from jobs (mock)
-      const activeJobs = (response.data || []).filter((j: any) =>
-        j.status === 'active' || j.status === 'in_progress'
-      )
       setStats({
         active: activeJobs.length,
-        at_risk: activeJobs.filter((j: any) => j.progress < 50).length,
-        delayed: activeJobs.filter((j: any) => j.progress < 25).length,
-        on_hold: (response.data || []).filter((j: any) => j.status === 'on_hold').length,
-        completed: 156, // Mock value
+        at_risk: riskyJobs.length,
+        delayed: severelyDelayedJobs.length,
+        on_hold: onHoldJobs.length,
+        completed: completedJobs.length,
       })
     } catch (error) {
       console.error('Jobs load error:', error)
@@ -113,7 +145,8 @@ export default function JobsPage() {
     // Map card status to API status values
     const statusMap: Record<string, string> = {
       'active': 'active,in_progress',
-      'delayed': '', // Will be filtered in the component
+      'at_risk': 'at_risk',
+      'delayed': 'delayed',
       'on_hold': 'on_hold',
       'completed': 'completed'
     }

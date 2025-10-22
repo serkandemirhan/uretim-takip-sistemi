@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { dashboardAPI, jobsAPI } from '@/lib/api/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -14,17 +15,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
-import {
-  CheckCircle,
-  Play,
-  Filter,
-  RefreshCcw,
-  FileText,
-  Kanban,
-  LayoutList,
-} from 'lucide-react'
+import { ArrowUpDown, CheckCircle, Play, RefreshCcw, X } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
-import { handleError, handleApiError, debugLog } from '@/lib/utils/error-handler'
+import { handleApiError } from '@/lib/utils/error-handler'
 
 type Task = {
   id: string
@@ -69,12 +62,222 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   canceled: { label: 'İptal', className: 'bg-gray-200 text-gray-600' },
 }
 
+type ColumnConfig = {
+  key: string
+  label: string
+  width?: string
+  type?: 'string' | 'number' | 'date'
+  filterType?: 'text' | 'select'
+  placeholder?: string
+  options?: { value: string; label: string }[]
+  accessor: (task: Task) => string | number | null
+  render?: (task: Task) => ReactNode
+}
+
+const STATUS_OPTIONS = [
+  { value: 'pending', label: STATUS_LABELS.pending.label },
+  { value: 'ready', label: STATUS_LABELS.ready.label },
+  { value: 'in_progress', label: STATUS_LABELS.in_progress.label },
+  { value: 'completed', label: STATUS_LABELS.completed.label },
+  { value: 'blocked', label: STATUS_LABELS.blocked.label },
+  { value: 'canceled', label: STATUS_LABELS.canceled.label },
+]
+
 export default function AllTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(false)
-  const [filterStatus, setFilterStatus] = useState<string>('all')
-  const [filterProcess, setFilterProcess] = useState<string>('all')
-  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table')
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(
+    null,
+  )
+
+  const columnConfigs = useMemo<ColumnConfig[]>(
+    () => [
+      {
+        key: 'status',
+        label: 'Durum',
+        width: 'w-36',
+        filterType: 'select',
+        options: STATUS_OPTIONS,
+        accessor: (task) => task.status,
+        render: (task) => {
+          const statusInfo = STATUS_LABELS[task.status] || STATUS_LABELS.pending
+          return <Badge className={statusInfo.className}>{statusInfo.label}</Badge>
+        },
+      },
+      {
+        key: 'order_index',
+        label: 'Sıra',
+        width: 'w-20',
+        type: 'number',
+        placeholder: 'Örn. 5',
+        accessor: (task) => task.order_index + 1,
+      },
+      {
+        key: 'job_number',
+        label: 'İş No',
+        width: 'w-40',
+        placeholder: 'İş numarası',
+        accessor: (task) => task.job.job_number,
+      },
+      {
+        key: 'job_title',
+        label: 'İş Başlığı',
+        width: 'w-56',
+        placeholder: 'Başlık arayın',
+        accessor: (task) => task.job.title,
+      },
+      {
+        key: 'job_description',
+        label: 'İş Açıklaması',
+        width: 'w-64',
+        placeholder: 'Açıklama ara',
+        accessor: (task) => task.job.description,
+        render: (task) => (
+          <p className="max-w-[320px] text-xs text-gray-500 line-clamp-2" title={task.job.description || undefined}>
+            {task.job.description || '—'}
+          </p>
+        ),
+      },
+      {
+        key: 'customer_name',
+        label: 'Müşteri',
+        width: 'w-48',
+        placeholder: 'Müşteri ara',
+        accessor: (task) => task.job.customer_name,
+      },
+      {
+        key: 'process_name',
+        label: 'Süreç',
+        width: 'w-48',
+        placeholder: 'Süreç ara',
+        accessor: (task) => task.process?.name ?? null,
+      },
+      {
+        key: 'process_code',
+        label: 'Süreç Kodu',
+        width: 'w-32',
+        placeholder: 'Kod ara',
+        accessor: (task) => task.process?.code ?? null,
+      },
+      {
+        key: 'assigned_to',
+        label: 'Sorumlu',
+        width: 'w-48',
+        placeholder: 'İsim ara',
+        accessor: (task) => task.assigned_to?.name ?? null,
+      },
+      {
+        key: 'machine',
+        label: 'Makine',
+        width: 'w-44',
+        placeholder: 'Makine ara',
+        accessor: (task) => task.machine?.name ?? null,
+      },
+      {
+        key: 'task_created',
+        label: 'Görev Oluşturma',
+        width: 'w-56',
+        type: 'date',
+        placeholder: 'YYYY-AA-GG',
+        accessor: (task) => task.created_at,
+        render: (task) => (
+          <span className="text-xs text-gray-600">
+            {task.created_at ? new Date(task.created_at).toLocaleString('tr-TR') : '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'job_created',
+        label: 'İş Oluşturma',
+        width: 'w-56',
+        type: 'date',
+        placeholder: 'YYYY-AA-GG',
+        accessor: (task) => task.job.created_at,
+        render: (task) => (
+          <span className="text-xs text-gray-600">
+            {task.job.created_at ? new Date(task.job.created_at).toLocaleString('tr-TR') : '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'started_at',
+        label: 'Başlangıç',
+        width: 'w-56',
+        type: 'date',
+        placeholder: 'YYYY-AA-GG',
+        accessor: (task) => task.started_at,
+        render: (task) => (
+          <span className="text-xs text-gray-600">
+            {task.started_at ? new Date(task.started_at).toLocaleString('tr-TR') : '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'completed_at',
+        label: 'Tamamlama',
+        width: 'w-56',
+        type: 'date',
+        placeholder: 'YYYY-AA-GG',
+        accessor: (task) => task.completed_at,
+        render: (task) => (
+          <span className="text-xs text-gray-600">
+            {task.completed_at ? new Date(task.completed_at).toLocaleString('tr-TR') : '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'estimated_duration',
+        label: 'Tahmini Süre (dk)',
+        width: 'w-40',
+        type: 'number',
+        placeholder: 'Örn. 120',
+        accessor: (task) => task.estimated_duration,
+        render: (task) => (
+          <span className="text-xs text-gray-600">
+            {task.estimated_duration != null ? `${task.estimated_duration} dk` : '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'actual_duration',
+        label: 'Gerçekleşen Süre (dk)',
+        width: 'w-44',
+        type: 'number',
+        placeholder: 'Örn. 95',
+        accessor: (task) => task.actual_duration,
+        render: (task) => (
+          <span className="text-xs text-gray-600">
+            {task.actual_duration != null ? `${task.actual_duration} dk` : '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'production_quantity',
+        label: 'Üretim Miktarı',
+        width: 'w-40',
+        type: 'number',
+        placeholder: 'Örn. 10',
+        accessor: (task) => task.production_quantity,
+        render: (task) => (
+          <span className="text-xs text-gray-600">
+            {task.production_quantity != null ? `${task.production_quantity}` : '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'production_unit',
+        label: 'Üretim Birimi',
+        width: 'w-32',
+        placeholder: 'Birim ara',
+        accessor: (task) => task.production_unit,
+      },
+    ],
+    [],
+  )
+
+  const [filters, setFilters] = useState<Record<string, string>>(() =>
+    Object.fromEntries(columnConfigs.map((column) => [column.key, ''])),
+  )
 
   useEffect(() => {
     void loadTasks()
@@ -124,102 +327,115 @@ export default function AllTasksPage() {
     }
   }
 
-  const processes = useMemo(() => {
-    const unique = new Map<string, string>()
-    for (const task of tasks) {
-      if (task.process?.id && task.process?.name) {
-        unique.set(task.process.id, task.process.name)
+  useEffect(() => {
+    setFilters((prev) => {
+      const next: Record<string, string> = {}
+      for (const column of columnConfigs) {
+        next[column.key] = prev[column.key] ?? ''
       }
-    }
-    return Array.from(unique.entries()).map(([id, name]) => ({ id, name }))
-  }, [tasks])
+      return next
+    })
+  }, [columnConfigs])
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      if (filterStatus !== 'all' && task.status !== filterStatus) return false
-      if (filterProcess !== 'all' && task.process?.id !== filterProcess) return false
-      return true
+      return columnConfigs.every((column) => {
+        const filterValue = filters[column.key]
+        if (!filterValue) {
+          return true
+        }
+
+        const rawValue = column.accessor(task)
+        if (rawValue == null) {
+          return false
+        }
+
+        const normalizedFilter = filterValue.trim().toLowerCase()
+
+        if (column.filterType === 'select') {
+          return String(rawValue).toLowerCase() === normalizedFilter
+        }
+
+        if (column.type === 'number') {
+          return String(rawValue).toLowerCase().includes(normalizedFilter)
+        }
+
+        if (column.type === 'date') {
+          const dateString = new Date(rawValue as string).toLocaleString('tr-TR').toLowerCase()
+          return dateString.includes(normalizedFilter)
+        }
+
+        return String(rawValue).toLowerCase().includes(normalizedFilter)
+      })
     })
-  }, [tasks, filterStatus, filterProcess])
+  }, [tasks, filters, columnConfigs])
 
-  const statusColumns = useMemo(
-    () => [
-      { key: 'pending', label: 'Beklemede', description: 'Atama bekleyen veya durdurulmuş görevler' },
-      { key: 'ready', label: 'Hazır', description: 'Başlatılmayı bekleyen görevler' },
-      { key: 'in_progress', label: 'Devam Ediyor', description: 'Üzerinde çalışılan görevler' },
-      { key: 'blocked', label: 'Engellendi', description: 'Beklemeye alınmış görevler' },
-      { key: 'completed', label: 'Tamamlandı', description: 'Kapatılan görevler' },
-      { key: 'canceled', label: 'İptal', description: 'İptal edilmiş görevler' },
-    ],
-    [],
-  )
+  const sortedTasks = useMemo(() => {
+    if (!sortConfig) {
+      return filteredTasks
+    }
 
-  const visibleColumns =
-    filterStatus === 'all'
-      ? statusColumns
-      : statusColumns.filter((column) => column.key === filterStatus)
+    const column = columnConfigs.find((col) => col.key === sortConfig.key)
+    if (!column) {
+      return filteredTasks
+    }
 
-  const renderTaskCard = (task: Task) => {
-    const statusInfo = STATUS_LABELS[task.status] || STATUS_LABELS.pending
-    const canStart = ['pending', 'ready'].includes(task.status)
-    const canComplete = task.status === 'in_progress'
+    const getComparableValue = (task: Task) => {
+      const value = column.accessor(task)
+      if (value == null) return null
 
-    return (
-      <Card key={task.id} className="border border-gray-200 shadow-sm">
-        <CardContent className="space-y-3 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <Badge className={statusInfo.className}>{statusInfo.label}</Badge>
-                <span className="text-xs text-gray-400">#{task.job.job_number}</span>
-              </div>
-              <p className="mt-1 text-sm font-semibold text-gray-900">
-                {task.process.name}
-              </p>
-            </div>
-            <FileText className="h-4 w-4 text-gray-300" />
-          </div>
+      if (column.type === 'number') {
+        return typeof value === 'number' ? value : Number(value)
+      }
 
-          <div className="space-y-1 text-xs text-gray-600">
-            <p className="font-medium text-gray-700">{task.job.title}</p>
-            <p>
-              <span className="text-gray-500">Müşteri: </span>
-              {task.job.customer_name || '—'}
-            </p>
-            <p>
-              <span className="text-gray-500">Atanan: </span>
-              {task.assigned_to?.name || '—'}
-            </p>
-            {task.machine?.name && (
-              <p>
-                <span className="text-gray-500">Makine: </span>
-                {task.machine.name}
-              </p>
-            )}
-          </div>
+      if (column.type === 'date') {
+        return value ? new Date(value as string).getTime() : null
+      }
 
-          <div className="flex items-center justify-end gap-2">
-            {canStart && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleStart(task.id)}
-                className="h-8 gap-1 text-xs"
-              >
-                <Play className="h-3.5 w-3.5" />
-                Başlat
-              </Button>
-            )}
-            {canComplete && (
-              <Button size="sm" onClick={() => handleComplete(task)} className="h-8 gap-1 text-xs">
-                <CheckCircle className="h-3.5 w-3.5" />
-                Tamamla
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    )
+      return String(value).toLowerCase()
+    }
+
+    const sorted = [...filteredTasks].sort((a, b) => {
+      const aValue = getComparableValue(a)
+      const bValue = getComparableValue(b)
+
+      if (aValue == null && bValue == null) return 0
+      if (aValue == null) return sortConfig.direction === 'asc' ? -1 : 1
+      if (bValue == null) return sortConfig.direction === 'asc' ? 1 : -1
+
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortConfig.direction === 'asc'
+          ? aValue.localeCompare(bValue, 'tr')
+          : bValue.localeCompare(aValue, 'tr')
+      }
+
+      return 0
+    })
+
+    return sorted
+  }, [filteredTasks, sortConfig, columnConfigs])
+
+  function toggleSort(key: string) {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) {
+        return { key, direction: 'asc' }
+      }
+
+      if (prev.direction === 'asc') {
+        return { key, direction: 'desc' }
+      }
+
+      return null
+    })
+  }
+
+  function resetFilters() {
+    setFilters(Object.fromEntries(columnConfigs.map((column) => [column.key, ''])))
+    setSortConfig(null)
   }
 
   return (
@@ -230,25 +446,9 @@ export default function AllTasksPage() {
           <p className="text-sm text-gray-500">Sistemdeki tüm iş adımlarını takip edin.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant={viewMode === 'table' ? 'default' : 'outline'}
-            size="sm"
-            className="gap-2"
-            onClick={() => setViewMode('table')}
-            aria-pressed={viewMode === 'table'}
-          >
-            <LayoutList className="h-4 w-4" />
-            Tablo
-          </Button>
-          <Button
-            variant={viewMode === 'kanban' ? 'default' : 'outline'}
-            size="sm"
-            className="gap-2"
-            onClick={() => setViewMode('kanban')}
-            aria-pressed={viewMode === 'kanban'}
-          >
-            <Kanban className="h-4 w-4" />
-            Kanban
+          <Button variant="outline" size="sm" onClick={resetFilters} className="gap-2">
+            <X className="h-4 w-4" />
+            Filtreleri Sıfırla
           </Button>
           <Button variant="outline" size="sm" onClick={loadTasks} disabled={loading}>
             <RefreshCcw className="mr-2 h-4 w-4" />
@@ -257,219 +457,136 @@ export default function AllTasksPage() {
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtreler</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Durum</label>
-            <div className="flex flex-wrap gap-2">
-              {['all', 'pending', 'ready', 'in_progress', 'completed', 'blocked', 'canceled'].map(
-                (status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    className={cn(
-                      'flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                      filterStatus === status
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table className="min-w-[1400px]">
+            <TableHeader>
+              <TableRow className="bg-gray-50">
+                {columnConfigs.map((column) => {
+                  const isActive = sortConfig?.key === column.key
+                  const sortLabel = isActive ? (sortConfig?.direction === 'asc' ? 'Artan' : 'Azalan') : 'Sırala'
+                  return (
+                    <TableHead key={column.key} className={cn('align-middle', column.width)}>
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(column.key)}
+                        className="flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-gray-700"
+                      >
+                        <span>{column.label}</span>
+                        <ArrowUpDown
+                          className={cn('h-4 w-4 text-gray-400', isActive && 'text-gray-700')}
+                          aria-hidden="true"
+                        />
+                        <span className="sr-only">{sortLabel}</span>
+                      </button>
+                    </TableHead>
+                  )
+                })}
+                <TableHead className="w-40 text-right">Aksiyonlar</TableHead>
+              </TableRow>
+              <TableRow className="bg-gray-50">
+                {columnConfigs.map((column) => (
+                  <TableCell key={`${column.key}-filter`} className={cn('py-2', column.width)}>
+                    {column.filterType === 'select' ? (
+                      <select
+                        value={filters[column.key] ?? ''}
+                        onChange={(event) =>
+                          setFilters((prev) => ({ ...prev, [column.key]: event.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700"
+                      >
+                        <option value="">Tümü</option>
+                        {column.options?.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        value={filters[column.key] ?? ''}
+                        onChange={(event) =>
+                          setFilters((prev) => ({ ...prev, [column.key]: event.target.value }))
+                        }
+                        placeholder={column.placeholder}
+                        className="h-8 text-xs"
+                      />
                     )}
-                    onClick={() => setFilterStatus(status)}
-                  >
-                    <Filter className="h-3 w-3" />
-                    {status === 'all'
-                      ? 'Tümü'
-                      : STATUS_LABELS[status]?.label || status.toUpperCase()}
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Süreç</label>
-            <select
-              value={filterProcess}
-              onChange={(e) => setFilterProcess(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="all">Tümü</option>
-              {processes.map((proc) => (
-                <option key={proc.id} value={proc.id}>
-                  {proc.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {viewMode === 'table' ? (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table className="min-w-[1100px]">
-              <TableHeader className="bg-gray-50">
+                  </TableCell>
+                ))}
+                <TableCell />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
                 <TableRow>
-                  <TableHead className="w-40">Durum</TableHead>
-                  <TableHead className="w-64">İş / Müşteri</TableHead>
-                  <TableHead className="w-72">Görev Açıklaması</TableHead>
-                  <TableHead className="w-56">Sorumlu / Makine</TableHead>
-                  <TableHead className="w-52">Tarihler</TableHead>
-                  <TableHead className="w-48">Süre Bilgisi</TableHead>
-                  <TableHead className="w-40 text-right">Aksiyonlar</TableHead>
+                  <TableCell colSpan={columnConfigs.length + 1} className="py-10 text-center text-sm text-gray-500">
+                    Görevler yükleniyor...
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-sm text-gray-500">
-                      Görevler yükleniyor...
-                    </TableCell>
-                  </TableRow>
-                ) : filteredTasks.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-sm text-gray-500">
-                      Seçili filtrelere göre görev bulunamadı.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredTasks.map((task) => {
-                    const statusMeta = STATUS_LABELS[task.status] || STATUS_LABELS.pending
-                    const canStart = task.status === 'ready'
-                    const canComplete = task.status === 'in_progress'
+              ) : sortedTasks.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={columnConfigs.length + 1} className="py-10 text-center text-sm text-gray-500">
+                    Seçili filtrelere göre görev bulunamadı.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                sortedTasks.map((task) => {
+                  const canStart = task.status === 'ready'
+                  const canComplete = task.status === 'in_progress'
 
-                    return (
-                      <TableRow key={task.id} className="align-top">
-                        <TableCell className="space-y-1">
-                          <Badge className={statusMeta.className}>{statusMeta.label}</Badge>
-                          <p className="text-xs text-gray-500">
-                            #{task.order_index + 1} · {task.process?.code}
-                          </p>
-                          <p className="text-[11px] text-gray-400">ID: {task.id.slice(0, 8)}</p>
-                        </TableCell>
-                        <TableCell className="space-y-1" title={task.job.description || undefined}>
-                          <p className="font-medium text-gray-900">{task.job.job_number}</p>
-                          <p className="text-sm text-gray-600">{task.job.title}</p>
-                          <p className="text-xs text-gray-500">Müşteri: {task.job.customer_name || '-'}</p>
-                          {task.job.description && (
-                            <p className="text-xs text-gray-400 line-clamp-2">{task.job.description}</p>
-                          )}
-                        </TableCell>
-                        <TableCell className="space-y-1">
-                          <p className="font-medium text-gray-900 flex items-center gap-1">
-                            <FileText className="h-3 w-3 text-gray-400" />
-                            {task.process?.name}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Görev Oluşturma:{' '}
-                            {task.created_at ? new Date(task.created_at).toLocaleString('tr-TR') : '-'}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            İş Oluşturma:{' '}
-                            {task.job.created_at ? new Date(task.job.created_at).toLocaleString('tr-TR') : '-'}
-                          </p>
-                        </TableCell>
-                        <TableCell className="space-y-1 text-sm text-gray-600">
-                          <p>
-                            <span className="font-semibold text-gray-700">Sorumlu:</span>{' '}
-                            {task.assigned_to?.name || 'Atanmamış'}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-gray-700">Makine:</span>{' '}
-                            {task.machine?.name || '-'}
-                          </p>
-                        </TableCell>
-                        <TableCell className="text-xs text-gray-600 space-y-1">
-                          <p>
-                            <span className="font-semibold text-gray-700">Başlangıç:</span>{' '}
-                            {task.started_at ? new Date(task.started_at).toLocaleString('tr-TR') : '-'}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-gray-700">Tamamlama:</span>{' '}
-                            {task.completed_at ? new Date(task.completed_at).toLocaleString('tr-TR') : '-'}
-                          </p>
-                        </TableCell>
-                        <TableCell className="text-xs text-gray-600 space-y-1">
-                          <p>
-                            <span className="font-semibold text-gray-700">Tahmini:</span>{' '}
-                            {task.estimated_duration ? `${task.estimated_duration} dk` : '-'}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-gray-700">Gerçekleşen:</span>{' '}
-                            {task.actual_duration ? `${task.actual_duration} dk` : '-'}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-gray-700">Üretim:</span>{' '}
-                            {task.production_quantity != null
-                              ? `${task.production_quantity} ${task.production_unit || ''}`
-                              : '-'}
-                          </p>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleStart(task.id)}
-                              disabled={!canStart}
-                            >
-                              <Play className="mr-2 h-4 w-4" />
-                              Başlat
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleComplete(task)}
-                              disabled={!canComplete}
-                            >
-                              <CheckCircle className="mr-2 h-4 w-4" />
-                              Tamamla
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
-      ) : (
-        <div className="overflow-x-auto pb-1">
-          <div className="grid auto-cols-[minmax(260px,320px)] grid-flow-col gap-4">
-          {visibleColumns.map((column) => {
-            const columnTasks = filteredTasks.filter((task) => task.status === column.key)
+                  return (
+                    <TableRow key={task.id} className="align-top">
+                      {columnConfigs.map((column) => {
+                        const rawValue = column.accessor(task)
+                        const displayValue =
+                          rawValue === null || rawValue === undefined
+                            ? '—'
+                            : typeof rawValue === 'string'
+                            ? rawValue.trim() === ''
+                              ? '—'
+                              : rawValue
+                            : rawValue
 
-            return (
-              <Card key={column.key} className="flex h-full flex-col">
-                <CardHeader className="border-b bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{column.label}</p>
-                      <p className="text-xs text-gray-500">{column.description}</p>
-                    </div>
-                    <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-gray-600 shadow-sm">
-                      {columnTasks.length}
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex flex-1 flex-col gap-3 p-3">
-                  {columnTasks.length === 0 ? (
-                    <div className="flex flex-1 items-center justify-center rounded border border-dashed border-gray-200 bg-white text-xs text-gray-500">
-                      Görev yok
-                    </div>
-                  ) : (
-                    columnTasks.map((task) => renderTaskCard(task))
-                  )}
-                </CardContent>
-              </Card>
-            )
-          })}
-          </div>
+                        return (
+                          <TableCell
+                            key={column.key}
+                            className={cn('align-top text-xs text-gray-700', column.width)}
+                          >
+                            {column.render ? column.render(task) : displayValue}
+                          </TableCell>
+                        )
+                      })}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleStart(task.id)}
+                            disabled={!canStart}
+                          >
+                            <Play className="mr-2 h-4 w-4" />
+                            Başlat
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleComplete(task)}
+                            disabled={!canComplete}
+                          >
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Tamamla
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
         </div>
-      )}
+      </Card>
     </div>
   )
 }

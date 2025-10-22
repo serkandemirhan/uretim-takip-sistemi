@@ -34,20 +34,20 @@ export function JobsStatsCards({ stats, onFilterChange }: JobsStatsCardsProps) {
         </CardContent>
       </Card>
 
-      {/* Delayed */}
+      {/* At Risk */}
       <Card
         className="border-red-200 bg-red-50 cursor-pointer hover:shadow-md transition-shadow"
-        onClick={() => onFilterChange?.('delayed')}
+        onClick={() => onFilterChange?.('at_risk')}
       >
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium text-red-900">
-            Geciken
+            Riskli
           </CardTitle>
           <AlertCircle className="w-5 h-5 text-red-600" />
         </CardHeader>
         <CardContent>
-          <div className="text-3xl font-bold text-red-900">{stats.delayed}</div>
-          <p className="text-xs text-red-700 mt-1">Acil müdahale</p>
+          <div className="text-3xl font-bold text-red-900">{stats.at_risk}</div>
+          <p className="text-xs text-red-700 mt-1">Yakın takip gereken işler</p>
         </CardContent>
       </Card>
 

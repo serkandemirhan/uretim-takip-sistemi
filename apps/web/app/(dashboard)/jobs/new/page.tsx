@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { jobsAPI, customersAPI, processesAPI, usersAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Plus, X, GripVertical, Workflow, Search } from 'lucide-react'
+import { ArrowLeft, Plus, X, GripVertical, Workflow, Search, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { handleApiError } from '@/lib/utils/error-handler'
@@ -67,6 +67,9 @@ export default function NewJobPage() {
   const [machines, setMachines] = useState<any[]>([])
   const [dealers, setDealers] = useState<any[]>([])
   const [loadingDealers, setLoadingDealers] = useState(false)
+  const [isAddingDealer, setIsAddingDealer] = useState(false)
+  const [newDealerName, setNewDealerName] = useState('')
+  const [creatingDealer, setCreatingDealer] = useState(false)
   
   const [formData, setFormData] = useState({
     title: '',
@@ -87,20 +90,8 @@ export default function NewJobPage() {
     loadData()
   }, [])
 
-  useEffect(() => {
-    const customerId = formData.customer_id
-    if (!customerId) {
-      setDealers([])
-      setFormData((prev) => {
-        if (!prev.dealer_id) {
-          return prev
-        }
-        return { ...prev, dealer_id: '' }
-      })
-      return
-    }
-
-    const fetchDealers = async () => {
+  const loadDealersForCustomer = useCallback(
+    async (customerId: string) => {
       try {
         setLoadingDealers(true)
         const response = await customersAPI.getDealers(customerId)
@@ -112,17 +103,84 @@ export default function NewJobPage() {
           }
           return { ...prev, dealer_id: '' }
         })
+        return list
       } catch (error) {
         handleApiError(error, 'Dealers load')
         setDealers([])
         setFormData((prev) => ({ ...prev, dealer_id: '' }))
+        return []
       } finally {
         setLoadingDealers(false)
       }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    const customerId = formData.customer_id
+    if (!customerId) {
+      setDealers([])
+      setFormData((prev) => {
+        if (!prev.dealer_id) {
+          return prev
+        }
+        return { ...prev, dealer_id: '' }
+      })
+      setIsAddingDealer(false)
+      setNewDealerName('')
+      return
     }
 
-    void fetchDealers()
-  }, [formData.customer_id])
+    void loadDealersForCustomer(customerId)
+  }, [formData.customer_id, loadDealersForCustomer])
+
+  const handleCancelCreateDealer = () => {
+    if (creatingDealer) {
+      return
+    }
+    setIsAddingDealer(false)
+    setNewDealerName('')
+  }
+
+  const handleCreateDealer = async () => {
+    const customerId = formData.customer_id
+    if (!customerId) {
+      toast.error('Önce bir müşteri seçmelisiniz')
+      return
+    }
+
+    const trimmedName = newDealerName.trim()
+    if (!trimmedName) {
+      toast.error('Bayi adı zorunludur')
+      return
+    }
+
+    setCreatingDealer(true)
+    try {
+      const response = await customersAPI.createDealer(customerId, { name: trimmedName })
+      const createdId = response?.data?.id ?? response?.id
+      if (!createdId) {
+        throw new Error('Oluşturulan bayinin kimliği alınamadı')
+      }
+
+      const dealerId = String(createdId)
+      const list = await loadDealersForCustomer(customerId)
+      if (!list.some((dealer: any) => dealer?.id === dealerId)) {
+        setDealers((prev) => {
+          const next = [...prev, { id: dealerId, name: trimmedName }]
+          return next.sort((a, b) => (a?.name ?? '').localeCompare(b?.name ?? '', 'tr', { sensitivity: 'base' }))
+        })
+      }
+      setFormData((prev) => ({ ...prev, dealer_id: dealerId }))
+      setIsAddingDealer(false)
+      setNewDealerName('')
+      toast.success('Bayi eklendi')
+    } catch (error) {
+      handleApiError(error, 'Bayi ekleme')
+    } finally {
+      setCreatingDealer(false)
+    }
+  }
 
   async function loadData() {
     try {
@@ -495,7 +553,31 @@ export default function NewJobPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="dealer_id">Bayi</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="dealer_id">Bayi</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => {
+                    if (!formData.customer_id) {
+                      toast.error('Önce bir müşteri seçmelisiniz')
+                      return
+                    }
+                    setIsAddingDealer(true)
+                    setNewDealerName('')
+                  }}
+                  disabled={
+                    loading ||
+                    loadingDealers ||
+                    creatingDealer ||
+                    !formData.customer_id ||
+                    isAddingDealer
+                  }
+                >
+                  Yeni Ekle
+                </Button>
+              </div>
               <select
                 id="dealer_id"
                 value={formData.dealer_id}
@@ -515,10 +597,49 @@ export default function NewJobPage() {
                   </option>
                 ))}
               </select>
+              {isAddingDealer && (
+                <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-3">
+                  <div className="space-y-2">
+                    <Input
+                      value={newDealerName}
+                      onChange={(e) => setNewDealerName(e.target.value)}
+                      placeholder="Yeni bayi adı"
+                      autoFocus
+                      disabled={creatingDealer}
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCancelCreateDealer}
+                        disabled={creatingDealer}
+                      >
+                        Vazgeç
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleCreateDealer}
+                        disabled={creatingDealer}
+                      >
+                        {creatingDealer ? (
+                          <span className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Kaydediliyor
+                          </span>
+                        ) : (
+                          'Kaydet'
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {loadingDealers && (
                 <p className="text-xs text-gray-500">Bayi listesi yükleniyor…</p>
               )}
-              {formData.customer_id && !loadingDealers && dealers.length === 0 && (
+              {formData.customer_id && !loadingDealers && dealers.length === 0 && !isAddingDealer && (
                 <p className="text-xs text-gray-500">
                   Bu müşteri için tanımlı bayi bulunmuyor.
                 </p>

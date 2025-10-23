@@ -2336,19 +2336,14 @@ async function handleCancel() {
 
                           return (
                             <div key={step.id} className="rounded-lg border bg-gray-50 p-3">
-                              <div className="flex items-center gap-2 mb-2">
+                              <div className="flex items-center gap-2">
                                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
                                   {index + 1}
                                 </span>
                                 <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium text-sm text-gray-900">
-                                      {step.process?.name || 'Süreç'}
-                                    </span>
-                                    <span className="text-xs text-gray-500">
-                                      {step.process?.group_name ? `(${step.process.group_name})` : ''}
-                                    </span>
-                                  </div>
+                                  <span className="font-medium text-sm text-gray-900">
+                                    {step.process?.name || 'Süreç'}
+                                  </span>
                                 </div>
                                 {canDelete && (
                                   <Button
@@ -2362,102 +2357,8 @@ async function handleCancel() {
                                   </Button>
                                 )}
                               </div>
-
-                              {/* Kompakt Form */}
-                              <div className="grid grid-cols-2 gap-2 text-xs">
-                                <div>
-                                  <Label className="text-xs">Sorumlu</Label>
-                                  <select
-                                    value={editForm?.assigned_to || ''}
-                                    onChange={(e) => handleStepFieldChange(step.id, 'assigned_to', e.target.value)}
-                                    className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
-                                    disabled={savingStepId === step.id}
-                                  >
-                                    <option value="">Seçilmedi</option>
-                                    {users.map((user) => (
-                                      <option key={user.id} value={user.id}>
-                                        {user.full_name || user.username}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div>
-                                  <Label className="text-xs">Makine</Label>
-                                  <select
-                                    value={editForm?.machine_id || ''}
-                                    onChange={(e) => handleStepFieldChange(step.id, 'machine_id', e.target.value)}
-                                    className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
-                                    disabled={savingStepId === step.id}
-                                  >
-                                    <option value="">Seçilmedi</option>
-                                    {machines.map((machine) => (
-                                      <option key={machine.id} value={machine.id}>
-                                        {machine.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div>
-                                  <Label className="text-xs">Termin Tarihi</Label>
-                                  <Input
-                                    type="date"
-                                    value={editForm?.due_date ?? ''}
-                                    onChange={(e) => handleStepFieldChange(step.id, 'due_date', e.target.value)}
-                                    className="h-7 text-xs"
-                                    disabled={savingStepId === step.id}
-                                    required
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs">Termin Saati</Label>
-                                  <Input
-                                    type="time"
-                                    value={editForm?.due_time ?? ''}
-                                    onChange={(e) => handleStepFieldChange(step.id, 'due_time', e.target.value)}
-                                    className="h-7 text-xs"
-                                    disabled={savingStepId === step.id}
-                                    required
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs">Tahmini Süre</Label>
-                                  <div className="flex items-center gap-1">
-                                    <Input
-                                      type="number"
-                                      min={0}
-                                      value={Number(editForm?.estimated_duration_days ?? currentDurationDays)}
-                                      onChange={(e) => handleStepFieldChange(step.id, 'estimated_duration_days', e.target.value)}
-                                      className="h-7 w-16 text-xs"
-                                      disabled={savingStepId === step.id}
-                                    />
-                                    <span className="text-[10px] uppercase text-gray-500">gün</span>
-                                    <Input
-                                      type="number"
-                                      min={0}
-                                      max={23}
-                                      value={Number(editForm?.estimated_duration_hours ?? currentDurationHours)}
-                                      onChange={(e) => handleStepFieldChange(step.id, 'estimated_duration_hours', e.target.value)}
-                                      className="h-7 w-16 text-xs"
-                                      disabled={savingStepId === step.id}
-                                    />
-                                    <span className="text-[10px] uppercase text-gray-500">saat</span>
-                                  </div>
-                                </div>
-                                <div className="flex items-end">
-                                  <label className="flex items-center gap-1 text-xs text-gray-600">
-                                    <input
-                                      type="checkbox"
-                                      checked={editForm?.is_parallel ?? false}
-                                      onChange={(e) => handleStepFieldChange(step.id, 'is_parallel', e.target.checked)}
-                                      disabled={savingStepId === step.id}
-                                      className="rounded"
-                                    />
-                                    Paralel
-                                  </label>
-                                </div>
-                              </div>
-
-                              <div className="mt-2 flex justify-end">
+                              <div className="hidden">{/* Form fields removed for cleaner UI */}</div>
+                              <div className="hidden">
                                 <Button
                                   type="button"
                                   size="sm"

@@ -864,7 +864,6 @@ export default function NewJobPage() {
                                 />
                                 <div>
                                   <div className="text-sm font-medium text-gray-900">{process.name}</div>
-                                  <div className="text-xs text-gray-500">{process.code}</div>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">

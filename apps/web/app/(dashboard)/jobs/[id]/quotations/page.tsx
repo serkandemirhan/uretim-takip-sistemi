@@ -45,6 +45,8 @@ type JobPayload = {
   status?: string | null
   customer?: { name?: string | null } | null
   due_date?: string | null
+  dealer?: string | null
+  description?: string | null
 }
 
 function formatCurrencyTRY(value?: number | string | null) {
@@ -236,31 +238,67 @@ export default function JobQuotationsPage() {
       </div>
 
       <Card>
-        <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-          <div>
-            <p className="text-xs uppercase text-gray-500">İş</p>
-            <p className="text-lg font-semibold text-gray-900">
-              {job ? jobTitle : jobLoading ? 'Yükleniyor...' : '—'}
-            </p>
-            {job?.customer?.name && (
-              <p className="text-sm text-gray-500">{job.customer.name}</p>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* İş Talep Numarası */}
             <div>
-              <p className="text-xs uppercase text-gray-500">Durum</p>
+              <p className="text-xs uppercase text-gray-500 mb-1">İş Talep Numarası</p>
+              <p className="text-sm font-medium text-gray-900">
+                {job?.job_number || (jobLoading ? 'Yükleniyor...' : '—')}
+              </p>
+            </div>
+
+            {/* İş Başlığı */}
+            <div>
+              <p className="text-xs uppercase text-gray-500 mb-1">İş Başlığı</p>
+              <p className="text-sm font-medium text-gray-900">
+                {job?.title || (jobLoading ? 'Yükleniyor...' : '—')}
+              </p>
+            </div>
+
+            {/* Müşteri */}
+            <div>
+              <p className="text-xs uppercase text-gray-500 mb-1">Müşteri</p>
+              <p className="text-sm font-medium text-gray-900">
+                {job?.customer?.name || (jobLoading ? 'Yükleniyor...' : '—')}
+              </p>
+            </div>
+
+            {/* Bayi */}
+            <div>
+              <p className="text-xs uppercase text-gray-500 mb-1">Bayi</p>
+              <p className="text-sm font-medium text-gray-900">
+                {job?.dealer || (jobLoading ? 'Yükleniyor...' : '—')}
+              </p>
+            </div>
+
+            {/* Durum */}
+            <div>
+              <p className="text-xs uppercase text-gray-500 mb-1">Durum</p>
               {jobLoading ? (
-                <span className="text-gray-400">Yükleniyor...</span>
+                <span className="text-sm text-gray-400">Yükleniyor...</span>
               ) : (
-                <Badge className={cn('mt-1', jobStatusColor)}>{jobStatusLabel}</Badge>
+                <Badge className={cn(jobStatusColor)}>{jobStatusLabel}</Badge>
               )}
             </div>
+
+            {/* Termin Tarihi */}
             <div>
-              <p className="text-xs uppercase text-gray-500">Teslim Tarihi</p>
-              <p className="mt-1 text-gray-700">
+              <p className="text-xs uppercase text-gray-500 mb-1">Termin Tarihi</p>
+              <p className="text-sm font-medium text-gray-900">
                 {job?.due_date ? formatDate(job.due_date) : jobLoading ? 'Yükleniyor...' : 'Belirtilmemiş'}
               </p>
             </div>
+
+            {/* Açıklama - Full width */}
+            {job?.description && (
+              <div className="md:col-span-2 lg:col-span-3">
+                <p className="text-xs uppercase text-gray-500 mb-1">Açıklama</p>
+                <p className="text-sm text-gray-700">
+                  {job.description}
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -334,6 +372,7 @@ export default function JobQuotationsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Teklif</TableHead>
+                    <TableHead>Açıklama</TableHead>
                     <TableHead>Durum</TableHead>
                     <TableHead>Kalem</TableHead>
                     <TableHead>Toplam</TableHead>
@@ -353,8 +392,13 @@ export default function JobQuotationsPage() {
                             {quotation.quotation_number || 'Numara yok'}
                           </div>
                         </TableCell>
+                        <TableCell className="text-sm text-gray-600 max-w-xs">
+                          <div className="truncate">
+                            {quotation.description || '—'}
+                          </div>
+                        </TableCell>
                         <TableCell>
-                          <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
                             <Badge className={getQuotationStatusColor(currentStatus)}>
                               {getQuotationStatusLabel(currentStatus)}
                             </Badge>
@@ -362,7 +406,7 @@ export default function JobQuotationsPage() {
                               value={currentStatus || 'draft'}
                               onChange={(event) => handleQuotationStatusChange(quotation.id, event.target.value)}
                               disabled={updatingQuotationId === quotation.id}
-                              className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                              className="rounded-md border border-gray-300 px-2 py-1 text-xs"
                             >
                               {QUOTATION_STATUS_OPTIONS.map((status) => (
                                 <option key={status} value={status}>

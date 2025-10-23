@@ -25,12 +25,14 @@ def create_app():
         close_connection_pool()
 
     # CORS - Tüm origin'lere izin ver (development için)
+    # max_age: Preflight response cache süresi (saniye) - performance için 1 saat
     CORS(app,
          resources={r"/api/*": {"origins": "*"}},
          supports_credentials=False,
          allow_headers=["Content-Type", "Authorization"],
          methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-         expose_headers=["Content-Type", "Authorization"]
+         expose_headers=["Content-Type", "Authorization"],
+         max_age=3600  # Preflight cache 1 saat
     )
     
     # Routes
@@ -57,6 +59,7 @@ def create_app():
     from app.routes.purchase_requests import purchase_requests_bp
     from app.routes.goods_receipts import goods_receipts_bp
     from app.routes.job_materials import job_materials_bp
+    from app.routes.stock_field_settings import stock_field_settings_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(users_bp)
@@ -81,6 +84,7 @@ def create_app():
     app.register_blueprint(purchase_requests_bp)
     app.register_blueprint(goods_receipts_bp)
     app.register_blueprint(job_materials_bp)
+    app.register_blueprint(stock_field_settings_bp)
 
     # Root endpoint
     @app.route('/', methods=['GET'])

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Layers, Settings2 } from 'lucide-react'
+import { Layers, Settings2, SlidersHorizontal } from 'lucide-react'
 
 const sections = [
   {
@@ -15,6 +15,12 @@ const sections = [
         description: 'Teklifler ve stok hareketlerinde kullanılacak birimleri tanımlayın.',
         href: '/settings/units',
         icon: Layers,
+      },
+      {
+        title: 'Stok Alanları',
+        description: 'Stok kartlarında kullanılacak özel alanları yapılandırın ve aktifleştirin.',
+        href: '/settings/stock-fields',
+        icon: SlidersHorizontal,
       },
     ],
   },

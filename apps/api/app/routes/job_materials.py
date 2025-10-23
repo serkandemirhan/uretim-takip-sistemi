@@ -34,6 +34,7 @@ def get_job_materials(job_id):
                 jm.unit, jm.status, jm.notes,
                 jm.created_at, jm.updated_at,
                 s.product_code, s.product_name, s.current_quantity as stock_quantity,
+                s.reserved_quantity, s.available_quantity,
                 s.category, s.unit_price, s.supplier_name
             FROM job_materials jm
             LEFT JOIN stocks s ON jm.product_id = s.id
@@ -54,6 +55,8 @@ def get_job_materials(job_id):
             'unit': m.get('unit', 'adet'),
             'status': m.get('status'),
             'stock_quantity': float(m['stock_quantity']) if m.get('stock_quantity') else 0,
+            'reserved_quantity': float(m['reserved_quantity']) if m.get('reserved_quantity') else 0,
+            'available_quantity': float(m['available_quantity']) if m.get('available_quantity') else 0,
             'unit_price': float(m['unit_price']) if m.get('unit_price') else 0,
             'supplier_name': m.get('supplier_name'),
             'notes': m.get('notes'),
@@ -151,11 +154,12 @@ def update_job_material(job_id, material_id):
 @job_materials_bp.route('/<uuid:job_id>/materials/<uuid:material_id>', methods=['DELETE'])
 @token_required
 def delete_job_material(job_id, material_id):
-    """İşten malzeme sil"""
+    """İşten malzeme sil (rezervasyonu iptal et)"""
     try:
         # Malzeme kontrolü
         material = execute_query_one("""
-            SELECT id, status, consumed_quantity FROM job_materials
+            SELECT id, product_id, status, consumed_quantity, allocated_quantity
+            FROM job_materials
             WHERE id = %s AND job_id = %s
         """, (str(material_id), str(job_id)))
 
@@ -166,8 +170,17 @@ def delete_job_material(job_id, material_id):
         if material.get('consumed_quantity') and float(material['consumed_quantity']) > 0:
             return jsonify({'error': 'Tüketilmiş malzeme silinemez'}), 400
 
+        # Eğer rezerve edilmişse (allocated_quantity > 0), reserved_quantity'yi azalt
+        allocated_qty = float(material.get('allocated_quantity') or 0)
+        if allocated_qty > 0 and material.get('product_id'):
+            execute_write("""
+                UPDATE stocks
+                SET reserved_quantity = GREATEST(0, reserved_quantity - %s)
+                WHERE id = %s
+            """, (allocated_qty, material['product_id']))
+
         execute_write("DELETE FROM job_materials WHERE id = %s", (str(material_id),))
-        return jsonify({'message': 'Malzeme silindi'}), 200
+        return jsonify({'message': 'Malzeme silindi ve rezervasyon iptal edildi'}), 200
     except Exception as e:
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
 
@@ -221,41 +234,55 @@ def check_materials_availability(job_id):
 @job_materials_bp.route('/<uuid:job_id>/materials/allocate', methods=['POST'])
 @token_required
 def allocate_materials(job_id):
-    """İş için malzemeleri rezerve et (stoktan düşmez, sadece allocated_quantity artar)"""
+    """İş için malzemeleri rezerve et (available_quantity azalır, reserved_quantity artar)"""
     try:
         # Önce stok kontrolü
         materials = execute_query("""
             SELECT
                 jm.id, jm.product_id, jm.required_quantity,
                 jm.allocated_quantity, jm.status,
-                s.current_quantity
+                s.current_quantity, s.reserved_quantity, s.available_quantity
             FROM job_materials jm
             LEFT JOIN stocks s ON jm.product_id = s.id
             WHERE jm.job_id = %s AND jm.status = 'pending'
         """, (str(job_id),))
 
-        # Yeterli stok var mı kontrol et
+        # Yeterli available_quantity var mı kontrol et
         for m in materials:
             required = float(m['required_quantity'] or 0)
             already_allocated = float(m['allocated_quantity'] or 0)
-            available = float(m['current_quantity'] or 0)
+            available = float(m['available_quantity'] or 0)
             needed = required - already_allocated
 
             if needed > available:
                 return jsonify({
-                    'error': f'Yetersiz stok',
+                    'error': f'Yetersiz kullanılabilir stok',
                     'product_id': str(m['product_id']),
                     'needed': float(needed),
                     'available': float(available)
                 }), 400
 
-        # Hepsini allocated olarak işaretle
-        execute_write("""
-            UPDATE job_materials
-            SET allocated_quantity = required_quantity,
-                status = 'allocated'
-            WHERE job_id = %s AND status = 'pending'
-        """, (str(job_id),))
+        # Malzemeleri allocated olarak işaretle ve reserved_quantity artır
+        for m in materials:
+            required = float(m['required_quantity'] or 0)
+            already_allocated = float(m['allocated_quantity'] or 0)
+            needed = required - already_allocated
+
+            if needed > 0:
+                # reserved_quantity artır
+                execute_write("""
+                    UPDATE stocks
+                    SET reserved_quantity = reserved_quantity + %s
+                    WHERE id = %s
+                """, (needed, m['product_id']))
+
+                # job_materials'da allocated olarak işaretle
+                execute_write("""
+                    UPDATE job_materials
+                    SET allocated_quantity = required_quantity,
+                        status = 'allocated'
+                    WHERE id = %s
+                """, (m['id'],))
 
         return jsonify({'message': 'Malzemeler rezerve edildi'}), 200
     except Exception as e:
@@ -282,8 +309,8 @@ def consume_materials(job_id):
 
             # Malzeme bilgisi
             material = execute_query_one("""
-                SELECT jm.id, jm.product_id, jm.required_quantity,
-                       jm.consumed_quantity, jm.unit, s.current_quantity
+                SELECT jm.id, jm.product_id, jm.required_quantity, jm.allocated_quantity,
+                       jm.consumed_quantity, jm.unit, s.current_quantity, s.reserved_quantity
                 FROM job_materials jm
                 LEFT JOIN stocks s ON jm.product_id = s.id
                 WHERE jm.id = %s AND jm.job_id = %s
@@ -320,12 +347,13 @@ def consume_materials(job_id):
                 VALUES (%s, 'OUT', %s, %s, 'İş malzeme tüketimi', 'Job Materials - Otomatik tüketim')
             """, (material['product_id'], consumed_qty, str(job_id)))
 
-            # Stok güncelle
+            # Stok güncelle: hem current_quantity hem de reserved_quantity azalt
             execute_write("""
                 UPDATE stocks
-                SET current_quantity = current_quantity - %s
+                SET current_quantity = current_quantity - %s,
+                    reserved_quantity = GREATEST(0, reserved_quantity - %s)
                 WHERE id = %s
-            """, (consumed_qty, material['product_id']))
+            """, (consumed_qty, consumed_qty, material['product_id']))
 
         return jsonify({'message': 'Malzemeler tüketildi ve stok güncellendi'}), 200
     except Exception as e:

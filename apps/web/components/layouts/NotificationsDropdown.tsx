@@ -17,8 +17,8 @@ export function NotificationsDropdown() {
 
   useEffect(() => {
     loadUnreadCount()
-    // Poll every 30 seconds
-    const interval = setInterval(loadUnreadCount, 30000)
+    // Poll every 60 seconds (reduced from 30 for better performance)
+    const interval = setInterval(loadUnreadCount, 60000)
     return () => clearInterval(interval)
   }, [])
 

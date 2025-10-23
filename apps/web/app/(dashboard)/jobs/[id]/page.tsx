@@ -45,6 +45,11 @@ import { FileText } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { getStatusLabel, getStatusColor, getPriorityLabel, getPriorityColor, formatDate } from '@/lib/utils/formatters'
+import {
+  getQuotationStatusColor,
+  getQuotationStatusLabel,
+  QUOTATION_STATUS_OPTIONS,
+} from '@/lib/utils/quotations'
 import { cn } from '@/lib/utils/cn'
 import { handleApiError, debugLog } from '@/lib/utils/error-handler'
 

@@ -18,6 +18,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { stocksAPI, stockMovementsAPI, jobsAPI } from '@/lib/api/client'
+import { useStockFieldSettings } from '@/lib/hooks/useStockFieldSettings'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -41,12 +42,55 @@ type Stock = {
   category?: string | null
   unit: string
   current_quantity: number
+  reserved_quantity: number
+  available_quantity: number
   min_quantity: number
   unit_price?: number | null
   currency: string
   supplier_name?: string | null
   description?: string | null
   is_critical: boolean
+  // Custom fields
+  group1?: string | null
+  group2?: string | null
+  group3?: string | null
+  group4?: string | null
+  group5?: string | null
+  group6?: string | null
+  group7?: string | null
+  group8?: string | null
+  group9?: string | null
+  group10?: string | null
+  category1?: string | null
+  category2?: string | null
+  category3?: string | null
+  category4?: string | null
+  category5?: string | null
+  category6?: string | null
+  category7?: string | null
+  category8?: string | null
+  category9?: string | null
+  category10?: string | null
+  string1?: string | null
+  string2?: string | null
+  string3?: string | null
+  string4?: string | null
+  string5?: string | null
+  string6?: string | null
+  string7?: string | null
+  string8?: string | null
+  string9?: string | null
+  string10?: string | null
+  properties1?: string | null
+  properties2?: string | null
+  properties3?: string | null
+  properties4?: string | null
+  properties5?: string | null
+  properties6?: string | null
+  properties7?: string | null
+  properties8?: string | null
+  properties9?: string | null
+  properties10?: string | null
 }
 
 type StockFormValues = {
@@ -60,6 +104,20 @@ type StockFormValues = {
   currency: string
   supplier_name: string
   description: string
+  group1?: string
+  group2?: string
+  group3?: string
+  group4?: string
+  group5?: string
+  category1?: string
+  category2?: string
+  category3?: string
+  string1?: string
+  string2?: string
+  properties1?: string
+  properties2?: string
+  // Note: Adding all 10 fields makes form too large,
+  // will add as needed in UI
 }
 
 const EMPTY_FORM: StockFormValues = {
@@ -77,15 +135,7 @@ const EMPTY_FORM: StockFormValues = {
 
 const STORAGE_KEY = 'stocks-inventory-table-settings-v1'
 
-type ColumnId =
-  | 'product_code'
-  | 'product_name'
-  | 'category'
-  | 'current_quantity'
-  | 'min_quantity'
-  | 'unit_price'
-  | 'supplier_name'
-  | 'actions'
+type ColumnId = string  // Dinamik kolonlar için string olarak değiştirdik
 
 type ColumnDefinition = {
   label: string
@@ -95,7 +145,7 @@ type ColumnDefinition = {
   minWidth?: number
 }
 
-const COLUMN_DEFINITIONS: Record<ColumnId, ColumnDefinition> = {
+const BASE_COLUMN_DEFINITIONS: Record<string, ColumnDefinition> = {
   product_code: {
     label: 'Ürün Kodu',
     align: 'left',
@@ -118,11 +168,25 @@ const COLUMN_DEFINITIONS: Record<ColumnId, ColumnDefinition> = {
     minWidth: 140,
   },
   current_quantity: {
-    label: 'Mevcut',
+    label: 'Fiziksel Stok',
     align: 'right',
     hideable: false,
-    defaultWidth: 160,
-    minWidth: 140,
+    defaultWidth: 140,
+    minWidth: 120,
+  },
+  reserved_quantity: {
+    label: 'Rezerve',
+    align: 'right',
+    hideable: true,
+    defaultWidth: 120,
+    minWidth: 100,
+  },
+  available_quantity: {
+    label: 'Kullanılabilir',
+    align: 'right',
+    hideable: false,
+    defaultWidth: 140,
+    minWidth: 120,
   },
   min_quantity: {
     label: 'Min',
@@ -154,28 +218,47 @@ const COLUMN_DEFINITIONS: Record<ColumnId, ColumnDefinition> = {
   },
 }
 
-const COLUMN_IDS = Object.keys(COLUMN_DEFINITIONS) as ColumnId[]
-
-const DEFAULT_COLUMN_ORDER: ColumnId[] = [...COLUMN_IDS]
-
-const NON_HIDEABLE_COLUMNS = COLUMN_IDS.filter(
-  (columnId) => COLUMN_DEFINITIONS[columnId].hideable === false
-)
-
-const DEFAULT_COLUMN_VISIBILITY: Record<ColumnId, boolean> = COLUMN_IDS.reduce(
-  (acc, columnId) => {
-    acc[columnId] = true
-    return acc
-  },
-  {} as Record<ColumnId, boolean>
-)
-
-NON_HIDEABLE_COLUMNS.forEach((columnId) => {
-  DEFAULT_COLUMN_VISIBILITY[columnId] = true
-})
-
 export default function StocksInventoryPage() {
   const router = useRouter()
+
+  // Dinamik stok alanları
+  const { activeFields, getLabel, isFieldActive, loading: fieldsLoading } = useStockFieldSettings()
+
+  // Dinamik kolon tanımları - aktif alanları ekle
+  const COLUMN_DEFINITIONS = useMemo(() => {
+    const definitions: Record<string, ColumnDefinition> = { ...BASE_COLUMN_DEFINITIONS }
+
+    // Aktif alanları ekle
+    activeFields.forEach((field) => {
+      definitions[field.field_key] = {
+        label: field.custom_label,
+        align: field.field_type === 'group' ? 'left' : 'left',
+        hideable: true,
+        defaultWidth: 140,
+        minWidth: 120,
+      }
+    })
+
+    return definitions
+  }, [activeFields])
+
+  const COLUMN_IDS = useMemo(() => Object.keys(COLUMN_DEFINITIONS), [COLUMN_DEFINITIONS])
+  const DEFAULT_COLUMN_ORDER = useMemo(() => [...COLUMN_IDS], [COLUMN_IDS])
+  const NON_HIDEABLE_COLUMNS = useMemo(
+    () => COLUMN_IDS.filter((columnId) => COLUMN_DEFINITIONS[columnId]?.hideable === false),
+    [COLUMN_IDS, COLUMN_DEFINITIONS]
+  )
+  const DEFAULT_COLUMN_VISIBILITY = useMemo(() => {
+    const visibility: Record<string, boolean> = {}
+    COLUMN_IDS.forEach((columnId) => {
+      visibility[columnId] = true
+    })
+    NON_HIDEABLE_COLUMNS.forEach((columnId) => {
+      visibility[columnId] = true
+    })
+    return visibility
+  }, [COLUMN_IDS, NON_HIDEABLE_COLUMNS])
+
   const [loading, setLoading] = useState(true)
   const [stocks, setStocks] = useState<Stock[]>([])
   const [filteredStocks, setFilteredStocks] = useState<Stock[]>([])
@@ -204,14 +287,106 @@ export default function StocksInventoryPage() {
     [columnOrder, columnVisibility]
   )
 
+  // Kolon genişliklerini hesapla - toplamı %100'e tamamla
+  const calculatedWidths = useMemo(() => {
+    const widths: Record<string, string> = {}
+
+    // Toplam pixel genişliğini hesapla
+    let totalPixels = 0
+    visibleColumns.forEach((columnId) => {
+      const definition = COLUMN_DEFINITIONS[columnId]
+      const width = columnWidths[columnId] ?? definition.defaultWidth
+      totalPixels += width
+    })
+
+    // Her kolonun yüzdesini hesapla
+    visibleColumns.forEach((columnId) => {
+      const definition = COLUMN_DEFINITIONS[columnId]
+      const width = columnWidths[columnId] ?? definition.defaultWidth
+      const percentage = (width / totalPixels) * 100
+      widths[columnId] = `${percentage.toFixed(2)}%`
+    })
+
+    return widths
+  }, [visibleColumns, columnWidths, COLUMN_DEFINITIONS])
+
   useEffect(() => {
-    void loadStocks()
-    void loadSummary()
+    let cancelled = false
+
+    async function fetchData() {
+      if (!cancelled) {
+        await loadStocks()
+        await loadSummary()
+      }
+    }
+
+    fetchData()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
     filterStocks()
   }, [stocks, q, showCriticalOnly])
+
+  // Aktif alanların string key listesi (array reference yerine primitive karşılaştırma için)
+  const activeFieldKeys = useMemo(() => activeFields.map(f => f.field_key).join(','), [activeFields])
+
+  // Aktif alanlar değiştiğinde kolonları güncelle
+  useEffect(() => {
+    if (fieldsLoading || !tableSettingsLoaded) return
+
+    // Yeni kolonları ekle
+    setColumnOrder((prevOrder) => {
+      const newOrder = [...prevOrder]
+
+      // Aktif alanları ekle (actions'dan önce)
+      activeFields.forEach((field) => {
+        if (!newOrder.includes(field.field_key)) {
+          const actionsIndex = newOrder.indexOf('actions')
+          if (actionsIndex !== -1) {
+            newOrder.splice(actionsIndex, 0, field.field_key)
+          } else {
+            newOrder.push(field.field_key)
+          }
+        }
+      })
+
+      // Artık aktif olmayan alanları kaldır
+      const filtered = newOrder.filter((col) => {
+        // Base kolonlar her zaman kalır
+        if (BASE_COLUMN_DEFINITIONS[col]) return true
+        // Aktif alanlarda varsa kalır
+        return activeFields.some((f) => f.field_key === col)
+      })
+
+      // Eğer değişiklik yoksa aynı reference'i döndür (sonsuz loop önleme)
+      if (JSON.stringify(filtered) === JSON.stringify(prevOrder)) {
+        return prevOrder
+      }
+
+      return filtered
+    })
+
+    // Visibility'yi güncelle
+    setColumnVisibility((prevVis) => {
+      const newVis = { ...prevVis }
+
+      // Aktif alanları görünür yap
+      activeFields.forEach((field) => {
+        newVis[field.field_key] = true
+      })
+
+      // Eğer değişiklik yoksa aynı reference'i döndür
+      if (JSON.stringify(newVis) === JSON.stringify(prevVis)) {
+        return prevVis
+      }
+
+      return newVis
+    })
+  }, [activeFieldKeys, fieldsLoading, tableSettingsLoaded])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -330,8 +505,11 @@ export default function StocksInventoryPage() {
     COLUMN_IDS.forEach((columnId) => {
       const value = rawWidths[columnId]
       if (typeof value === 'number' && !Number.isNaN(value)) {
-        const minWidth = COLUMN_DEFINITIONS[columnId].minWidth ?? 120
-        next[columnId] = Math.max(minWidth, Math.round(value))
+        const definition = COLUMN_DEFINITIONS[columnId]
+        if (definition) {
+          const minWidth = definition.minWidth ?? 120
+          next[columnId] = Math.max(minWidth, Math.round(value))
+        }
       }
     })
 
@@ -463,6 +641,24 @@ export default function StocksInventoryPage() {
             {stock.current_quantity} {stock.unit}
           </span>
         )
+      case 'reserved_quantity':
+        return (
+          <span className="text-sm text-orange-600">
+            {stock.reserved_quantity || 0} {stock.unit}
+          </span>
+        )
+      case 'available_quantity':
+        return (
+          <span className={`font-semibold ${
+            (stock.available_quantity || 0) <= 0
+              ? 'text-red-600'
+              : (stock.available_quantity || 0) <= (stock.min_quantity || 0)
+              ? 'text-orange-600'
+              : 'text-green-600'
+          }`}>
+            {stock.available_quantity || 0} {stock.unit}
+          </span>
+        )
       case 'min_quantity':
         return <span className="text-sm text-muted-foreground">{stock.min_quantity}</span>
       case 'unit_price':
@@ -497,6 +693,22 @@ export default function StocksInventoryPage() {
           </div>
         )
       default:
+        // Dinamik alanlar için
+        const fieldSetting = activeFields.find((f) => f.field_key === columnId)
+        if (fieldSetting) {
+          const value = (stock as any)[columnId]
+
+          // field_type'a göre rendering
+          if (fieldSetting.field_type === 'group') {
+            return value ? (
+              <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                {value}
+              </span>
+            ) : '-'
+          } else {
+            return <span className="text-sm">{value || '-'}</span>
+          }
+        }
         return null
     }
   }
@@ -530,7 +742,9 @@ export default function StocksInventoryPage() {
   async function openEditDialog(stock: Stock) {
     setDialogMode('edit')
     setActiveStockId(stock.id)
-    setForm({
+
+    // Base form alanları
+    const baseForm: any = {
       product_code: stock.product_code,
       product_name: stock.product_name,
       category: stock.category || '',
@@ -541,7 +755,14 @@ export default function StocksInventoryPage() {
       currency: stock.currency || 'TRY',
       supplier_name: stock.supplier_name || '',
       description: stock.description || '',
+    }
+
+    // Aktif alanları ekle
+    activeFields.forEach((field) => {
+      baseForm[field.field_key] = (stock as any)[field.field_key] || ''
     })
+
+    setForm(baseForm)
     setDialogOpen(true)
   }
 
@@ -564,6 +785,11 @@ export default function StocksInventoryPage() {
         supplier_name: form.supplier_name || null,
         description: form.description || null,
       }
+
+      // Aktif alanları payload'a ekle
+      activeFields.forEach((field) => {
+        payload[field.field_key] = (form as any)[field.field_key] || null
+      })
 
       if (dialogMode === 'create') {
         payload.current_quantity = parseFloat(form.current_quantity) || 0
@@ -606,8 +832,8 @@ export default function StocksInventoryPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="-mx-4 sm:-mx-6 lg:-mx-8 space-y-6">
+      <div className="flex items-center justify-between px-4 sm:px-6 lg:px-8">
         <div>
           <h1 className="text-3xl font-bold">Stok Yönetimi</h1>
           <p className="text-muted-foreground">Tüm stok kartları ve mevcut durumlar</p>
@@ -620,7 +846,7 @@ export default function StocksInventoryPage() {
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-4 px-4 sm:px-6 lg:px-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Toplam Stok Değeri (TRY)</CardTitle>
@@ -668,7 +894,7 @@ export default function StocksInventoryPage() {
       )}
 
       {/* Quick Actions */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3 px-4 sm:px-6 lg:px-8">
         <Link href="/stocks/movements">
           <Card className="cursor-pointer hover:shadow-md transition-shadow border-2 border-transparent hover:border-blue-200">
             <CardContent className="pt-6">
@@ -719,7 +945,8 @@ export default function StocksInventoryPage() {
       </div>
 
       {/* Filters */}
-      <Card>
+      <div className="px-4 sm:px-6 lg:px-8">
+        <Card>
         <CardContent className="pt-6">
           <div className="flex gap-4 items-center">
             <Input
@@ -740,6 +967,7 @@ export default function StocksInventoryPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
       {/* Stock List */}
       <Card>
@@ -755,12 +983,11 @@ export default function StocksInventoryPage() {
               Stok bulunamadı
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full table-auto">
+            <div className="w-full overflow-hidden">
+              <table className="w-full table-fixed border-collapse" style={{ tableLayout: 'fixed' }}>
                 <colgroup>
                   {visibleColumns.map((columnId) => {
-                    const width = columnWidths[columnId] ?? COLUMN_DEFINITIONS[columnId].defaultWidth
-                    return <col key={`col-${columnId}`} style={{ width: `${width}px` }} />
+                    return <col key={`col-${columnId}`} style={{ width: calculatedWidths[columnId] }} />
                   })}
                 </colgroup>
                 <thead>
@@ -776,7 +1003,6 @@ export default function StocksInventoryPage() {
                         <th
                           key={columnId}
                           className={`relative p-2 text-sm font-semibold ${alignClass} ${isDragTarget ? 'bg-blue-50' : ''}`}
-                          style={{ width: `${width}px`, minWidth: `${minWidth}px` }}
                           onDragOver={(event) => handleDragOver(event, columnId)}
                           onDrop={() => handleDrop(columnId)}
                           onDragLeave={() => setDragOverColumn(null)}
@@ -792,7 +1018,7 @@ export default function StocksInventoryPage() {
                             >
                               <GripVertical className="h-4 w-4" />
                             </button>
-                            <span className="whitespace-nowrap text-sm font-semibold">{definition.label}</span>
+                            <span className="text-sm font-semibold truncate">{definition.label}</span>
                           </div>
                           <span
                             className="absolute right-0 top-1/2 h-6 w-1.5 -translate-y-1/2 cursor-col-resize rounded bg-transparent hover:bg-blue-300"
@@ -822,10 +1048,11 @@ export default function StocksInventoryPage() {
                           <td
                             key={`${stock.id}-${columnId}`}
                             className={`p-2 align-top ${alignClass}`}
-                            style={{ width: `${width}px`, minWidth: `${minWidth}px` }}
                             onClick={columnId === 'actions' ? (event) => event.stopPropagation() : undefined}
                           >
-                            {renderCell(stock, columnId)}
+                            <div className="truncate">
+                              {renderCell(stock, columnId)}
+                            </div>
                           </td>
                         )
                       })}
@@ -851,6 +1078,10 @@ export default function StocksInventoryPage() {
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
             {columnOrder.map((columnId) => {
               const definition = COLUMN_DEFINITIONS[columnId]
+
+              // Eğer definition yoksa bu kolon kaldırılmış demektir, atla
+              if (!definition) return null
+
               const isVisible = columnVisibility[columnId] !== false
               const isMandatory = definition.hideable === false
               const currentIndex = columnOrder.indexOf(columnId)
@@ -860,28 +1091,29 @@ export default function StocksInventoryPage() {
                   key={`column-setting-${columnId}`}
                   className="flex items-center justify-between rounded-md border border-gray-200 bg-white p-3"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center rounded-md bg-gray-100 p-2">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="flex items-center justify-center rounded-md bg-gray-100 p-2 flex-shrink-0">
                       <GripVertical className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{definition.label}</span>
-                        {isMandatory && <span className="text-xs text-muted-foreground">(zorunlu)</span>}
+                        <span className="font-medium truncate">{definition.label}</span>
+                        {isMandatory && <span className="text-xs text-muted-foreground flex-shrink-0">(zorunlu)</span>}
                       </div>
-                      <label className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={isVisible}
-                          onChange={(event) => handleVisibilityToggle(columnId, event.target.checked)}
-                          disabled={isMandatory}
-                        />
-                        <span>{isVisible ? 'Görünür' : 'Gizli'}</span>
-                      </label>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                      <span className="whitespace-nowrap">{isVisible ? 'Görünür' : 'Gizli'}</span>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={isVisible}
+                        onChange={(event) => handleVisibilityToggle(columnId, event.target.checked)}
+                        disabled={isMandatory}
+                      />
+                    </label>
+                    <div className="h-6 w-px bg-gray-200"></div>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1022,6 +1254,27 @@ export default function StocksInventoryPage() {
                 rows={3}
               />
             </div>
+
+            {/* Dinamik Aktif Alanlar */}
+            {activeFields.length > 0 && (
+              <>
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-sm font-semibold mb-3 text-gray-700">Ek Bilgiler</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    {activeFields.map((field) => (
+                      <div key={field.field_key}>
+                        <label className="text-sm font-medium">{field.custom_label}</label>
+                        <Input
+                          value={(form as any)[field.field_key] || ''}
+                          onChange={(e) => setForm({ ...form, [field.field_key]: e.target.value })}
+                          placeholder={`${field.custom_label} girin...`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 mt-6">

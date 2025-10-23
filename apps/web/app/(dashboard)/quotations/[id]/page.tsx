@@ -1206,12 +1206,35 @@ export default function QuotationDetailPage() {
                                   onChange={() => {}}
                                   className="rounded"
                                 />
-                                <div>
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {stock.product_name}
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-gray-900">
+                                      {stock.product_name}
+                                    </span>
+                                    {stock.group1 && (
+                                      <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                                        {stock.group1}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-xs text-gray-500">
                                     {stock.product_code} • {stock.unit_price || 0} {stock.currency}
+                                  </div>
+                                  <div className="mt-1 flex items-center gap-3 text-xs">
+                                    <span className={`font-medium ${
+                                      (stock.available_quantity || 0) <= 0
+                                        ? 'text-red-600'
+                                        : (stock.available_quantity || 0) <= (stock.min_quantity || 0)
+                                        ? 'text-orange-600'
+                                        : 'text-green-600'
+                                    }`}>
+                                      Kullanılabilir: {stock.available_quantity || 0} {stock.unit}
+                                    </span>
+                                    {(stock.reserved_quantity || 0) > 0 && (
+                                      <span className="text-orange-600">
+                                        Rezerve: {stock.reserved_quantity} {stock.unit}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </div>

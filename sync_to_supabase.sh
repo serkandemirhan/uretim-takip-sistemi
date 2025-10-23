@@ -17,19 +17,28 @@ echo -e "${BLUE}Supabase Sync Script${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
-# Local PostgreSQL bilgileri
-LOCAL_HOST="${LOCAL_DB_HOST:-localhost}"
-LOCAL_PORT="${LOCAL_DB_PORT:-5432}"
-LOCAL_DB="${LOCAL_DB_NAME:-reklam_db}"
-LOCAL_USER="${LOCAL_DB_USER:-reklam_user}"
-LOCAL_PASS="${LOCAL_DB_PASS:-reklam_pass_123}"
 
-# Supabase bilgileri
-SUPABASE_HOST="${SUPABASE_HOST}"
-SUPABASE_PORT="${SUPABASE_PORT:-5432}"
-SUPABASE_DB="${SUPABASE_DB:-postgres}"
-SUPABASE_USER="${SUPABASE_USER:-postgres}"
-SUPABASE_PASS="${SUPABASE_PASS}"
+
+
+# Supabase Database Connection
+SUPABASE_HOST="db.qgfwskuyqrbalvhexecy.supabase.co"
+SUPABASE_PORT="5432"
+SUPABASE_DB="postgres"
+SUPABASE_USER="postgres"
+SUPABASE_PASS="5Abm2044serkan"
+
+# Local Database Connection (kaynak veritabanı)
+LOCAL_DB_HOST="localhost"
+LOCAL_DB_PORT="5432"
+LOCAL_DB_NAME="reklam_db"
+LOCAL_DB_USER="reklam_user"
+LOCAL_DB_PASS="reklam_pass_123"
+
+# Supabase Project Settings
+SUPABASE_PROJECT_URL="https://qgfwskuyqrbalvhexecy.supabase.co"
+SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZndza3V5cXJiYWx2aGV4ZWN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxMzE0NTEsImV4cCI6MjA3NTcwNzQ1MX0.okk14NAZYbflmy0j_rM6EnuWHC66aEaVf9tvfGzEBas"
+SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZndza3V5cXJiYWx2aGV4ZWN5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDEzMTQ1MSwiZXhwIjoyMDc1NzA3NDUxfQ.HzG9wWKdfU9oiwdRQjDM-n7D-mjDRmJihz5xvm_awQI"
+
 
 # Supabase bilgileri kontrol
 if [ -z "$SUPABASE_HOST" ] || [ -z "$SUPABASE_PASS" ]; then

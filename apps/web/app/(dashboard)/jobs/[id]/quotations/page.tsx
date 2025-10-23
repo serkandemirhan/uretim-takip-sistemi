@@ -260,7 +260,11 @@ export default function JobQuotationsPage() {
             <div>
               <p className="text-xs uppercase text-gray-500 mb-1">Müşteri</p>
               <p className="text-sm font-medium text-gray-900">
-                {job?.customer?.name || (jobLoading ? 'Yükleniyor...' : '—')}
+                {jobLoading ? 'Yükleniyor...' : (
+                  typeof job?.customer === 'string'
+                    ? job.customer
+                    : job?.customer?.name || '—'
+                )}
               </p>
             </div>
 

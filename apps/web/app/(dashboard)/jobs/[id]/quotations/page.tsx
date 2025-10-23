@@ -43,7 +43,7 @@ type JobPayload = {
   job_number?: string | null
   revision_no?: number | null
   status?: string | null
-  customer?: { name?: string | null } | null
+  customer?: string | { name?: string | null; id?: string } | null
   due_date?: string | null
   dealer?: string | null
   description?: string | null
@@ -391,14 +391,16 @@ export default function JobQuotationsPage() {
                     return (
                       <TableRow key={quotation.id}>
                         <TableCell>
-                          <div className="font-medium text-gray-900">{quotation.name}</div>
+                          <div className="font-medium text-gray-900">
+                            {typeof quotation.name === 'string' ? quotation.name : quotation.name?.name || 'İsimsiz'}
+                          </div>
                           <div className="text-xs text-gray-500">
                             {quotation.quotation_number || 'Numara yok'}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-gray-600 max-w-xs">
                           <div className="truncate">
-                            {quotation.description || '—'}
+                            {typeof quotation.description === 'string' ? quotation.description : '—'}
                           </div>
                         </TableCell>
                         <TableCell>

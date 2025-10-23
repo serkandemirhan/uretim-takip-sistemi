@@ -139,7 +139,7 @@ export default function JobQuotationCreatePage() {
       setSubmitting(true)
       await quotationsAPI.create(payload)
       toast.success('Teklif oluşturuldu')
-      router.push(`/jobs/${jobId}`)
+      router.push(`/jobs/${jobId}/quotations`)
     } catch (error: any) {
       handleApiError(error, 'Create quotation from job page')
       toast.error(error?.response?.data?.error || 'Teklif oluşturulamadı')

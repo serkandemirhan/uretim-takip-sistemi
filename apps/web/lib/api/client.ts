@@ -651,6 +651,34 @@ export const stockMovementsAPI = {
   },
 }
 
+// Stock Field Settings API
+export const stockFieldSettingsAPI = {
+  getAll: async (params?: { active_only?: boolean; field_type?: string }) => {
+    const response = await apiClient.get('/api/settings/stock-fields', { params })
+    return response.data
+  },
+
+  getById: async (field_key: string) => {
+    const response = await apiClient.get(`/api/settings/stock-fields/${field_key}`)
+    return response.data
+  },
+
+  updateBulk: async (settings: any[]) => {
+    const response = await apiClient.post('/api/settings/stock-fields', { settings })
+    return response.data
+  },
+
+  updateSingle: async (field_key: string, data: any) => {
+    const response = await apiClient.patch(`/api/settings/stock-fields/${field_key}`, data)
+    return response.data
+  },
+
+  reset: async () => {
+    const response = await apiClient.post('/api/settings/stock-fields/reset')
+    return response.data
+  },
+}
+
 // Purchase Orders API
 export const purchaseOrdersAPI = {
   getAll: async (params?: { stock_id?: string; status?: string }) => {

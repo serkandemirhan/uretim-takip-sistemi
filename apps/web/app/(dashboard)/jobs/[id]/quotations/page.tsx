@@ -89,6 +89,11 @@ export default function JobQuotationsPage() {
     try {
       const response = await jobsAPI.getById(currentJobId)
       const payload = (response?.data ?? response ?? null) as JobPayload | null
+
+      // Debug log
+      console.log('Raw job payload:', payload)
+      console.log('Customer type:', typeof payload?.customer, payload?.customer)
+
       if (payload?.id) {
         setJob(payload)
       } else {
@@ -108,6 +113,14 @@ export default function JobQuotationsPage() {
     try {
       const response = await quotationsAPI.getAll({ job_id: currentJobId })
       const payload = response?.data ?? response ?? []
+
+      // Debug log
+      console.log('Raw quotations payload:', payload)
+      if (Array.isArray(payload) && payload.length > 0) {
+        console.log('First quotation:', payload[0])
+        console.log('Quotation name type:', typeof payload[0]?.name, payload[0]?.name)
+      }
+
       setJobQuotations(Array.isArray(payload) ? payload : [])
     } catch (error) {
       handleApiError(error, 'Load quotations for job')

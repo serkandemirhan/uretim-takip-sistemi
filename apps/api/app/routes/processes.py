@@ -164,14 +164,19 @@ def create_process():
     """Yeni süreç oluştur"""
     try:
         data = request.get_json()
-        
+
         if not data.get('name') or not data.get('code'):
             return jsonify({'error': 'Süreç adı ve kodu gerekli'}), 400
-        
+
+        # folder_name yoksa code'dan üret
+        folder_name = data.get('folder_name')
+        if not folder_name or not folder_name.strip():
+            folder_name = data.get('code').upper()
+
         insert_query = """
-            INSERT INTO processes (name, code, description, is_machine_based, is_production, order_index, group_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, name, code, group_id
+            INSERT INTO processes (name, code, description, is_machine_based, is_production, order_index, group_id, folder_name)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, name, code, group_id, folder_name
         """
 
         params = (
@@ -181,7 +186,8 @@ def create_process():
             data.get('is_machine_based', False),
             data.get('is_production', False),
             data.get('order_index', 0),
-            data.get('group_id')
+            data.get('group_id'),
+            folder_name
         )
 
         conn = get_db_connection()
@@ -245,7 +251,13 @@ def update_process(process_id):
         if 'group_id' in data:
             update_fields.append("group_id = %s")
             params.append(data['group_id'])
-        
+
+        if 'folder_name' in data:
+            folder_name = (data.get('folder_name') or '').strip()
+            if folder_name:
+                update_fields.append("folder_name = %s")
+                params.append(folder_name)
+
         if not update_fields:
             return jsonify({'error': 'Güncellenecek alan bulunamadı'}), 400
         

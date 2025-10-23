@@ -110,11 +110,15 @@ def _resolve_folder_path(ref_type, ref_id):
             """
             SELECT js.id,
                    js.job_id,
-                   p.id AS process_id, p.code AS process_code,
+                   p.id AS process_id,
+                   p.code AS process_code,
+                   p.folder_name AS process_folder_name,
+                   pg.name AS process_group_name,
                    j.job_number, j.title,
                    c.id AS customer_id, c.name AS customer_name
             FROM job_steps js
             JOIN processes p ON p.id = js.process_id
+            LEFT JOIN process_groups pg ON pg.id = p.group_id
             JOIN jobs j ON j.id = js.job_id
             LEFT JOIN customers c ON c.id = j.customer_id
             WHERE js.id = %s
@@ -133,6 +137,8 @@ def _resolve_folder_path(ref_type, ref_id):
                 str(row["job_id"]),
                 row.get("process_code") or "PROC",
                 str(row["process_id"]),
+                row.get("process_group_name"),
+                row.get("process_folder_name"),
             )
         )
 

@@ -64,8 +64,32 @@ def job_folder_name(job_number: str, title: str, job_id: str) -> str:
 def job_prefix(customer_code: str, customer_id: str, job_number: str, title: str, job_id: str) -> str:
     return customer_prefix(customer_code, customer_id) + job_folder_name(job_number, title, job_id) + "/"
 
-def process_prefix(customer_code: str, customer_id: str, job_number: str, title: str, job_id: str, process_code: str, process_id: str) -> str:
+def process_prefix(
+    customer_code: str,
+    customer_id: str,
+    job_number: str,
+    title: str,
+    job_id: str,
+    process_code: str,
+    process_id: str,
+    process_group_name: str = None,
+    process_folder_name: str = None
+) -> str:
+    """
+    Generate process folder path with structure:
+    CUSTOMER/JOB_NUMBER_TITLE/PROCESS_GROUP/PROCESS_FOLDER/
+
+    Falls back to old structure if group/folder names not provided.
+    """
     job_pref = job_prefix(customer_code, customer_id, job_number, title, job_id)
+
+    # New structure with process group and folder name
+    if process_group_name and process_folder_name:
+        group_slug = slugify(process_group_name)
+        folder_slug = slugify(process_folder_name)
+        return f"{job_pref}{group_slug}/{folder_slug}/"
+
+    # Fallback to old structure
     proc = f"{(process_code or 'process').upper()}_{str(process_id)[:8]}"
     return f"{job_pref}{proc}/"
 

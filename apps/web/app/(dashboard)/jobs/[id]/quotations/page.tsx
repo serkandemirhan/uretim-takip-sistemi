@@ -44,8 +44,9 @@ type JobPayload = {
   revision_no?: number | null
   status?: string | null
   customer?: string | { name?: string | null; id?: string } | null
+  dealer?: string | { name?: string | null; id?: string } | null
+  created_by?: string | { name?: string | null; id?: string } | null
   due_date?: string | null
-  dealer?: string | null
   description?: string | null
 }
 
@@ -285,7 +286,11 @@ export default function JobQuotationsPage() {
             <div>
               <p className="text-xs uppercase text-gray-500 mb-1">Bayi</p>
               <p className="text-sm font-medium text-gray-900">
-                {job?.dealer || (jobLoading ? 'Yükleniyor...' : '—')}
+                {jobLoading ? 'Yükleniyor...' : (
+                  typeof job?.dealer === 'string'
+                    ? job.dealer
+                    : job?.dealer?.name || '—'
+                )}
               </p>
             </div>
 

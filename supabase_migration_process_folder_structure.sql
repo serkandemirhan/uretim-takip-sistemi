@@ -20,6 +20,50 @@ UPDATE processes
 SET folder_name = UPPER(code)
 WHERE folder_name IS NULL;
 
+-- -----------------------------------------------------------------------------
+-- Fix duplicate folder names within same group
+-- -----------------------------------------------------------------------------
+
+-- For processes in the same group with duplicate folder names,
+-- append a unique suffix (_1, _2, etc.)
+WITH duplicates AS (
+  SELECT
+    id,
+    folder_name,
+    group_id,
+    ROW_NUMBER() OVER (
+      PARTITION BY group_id, LOWER(folder_name)
+      ORDER BY created_at, id
+    ) as rn
+  FROM processes
+  WHERE deleted_at IS NULL
+    AND group_id IS NOT NULL
+)
+UPDATE processes p
+SET folder_name = d.folder_name || '_' || (d.rn - 1)
+FROM duplicates d
+WHERE p.id = d.id
+  AND d.rn > 1;
+
+-- Fix duplicate folder names for processes without a group
+WITH duplicates_no_group AS (
+  SELECT
+    id,
+    folder_name,
+    ROW_NUMBER() OVER (
+      PARTITION BY LOWER(folder_name)
+      ORDER BY created_at, id
+    ) as rn
+  FROM processes
+  WHERE deleted_at IS NULL
+    AND group_id IS NULL
+)
+UPDATE processes p
+SET folder_name = d.folder_name || '_' || (d.rn - 1)
+FROM duplicates_no_group d
+WHERE p.id = d.id
+  AND d.rn > 1;
+
 -- Make folder_name required for new processes
 ALTER TABLE processes
     ALTER COLUMN folder_name SET NOT NULL;

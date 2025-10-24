@@ -228,13 +228,15 @@ def get_job(job_id):
         
         # Job steps
         steps_query = """
-            SELECT 
+            SELECT
                 js.*,
                 p.name as process_name, p.code as process_code, p.description as process_description,
+                pg.name as process_group_name, pg.order_index as process_group_order_index,
                 u.full_name as assigned_to_name,
                 m.name as machine_name
             FROM job_steps js
             LEFT JOIN processes p ON js.process_id = p.id
+            LEFT JOIN process_groups pg ON p.group_id = pg.id
             LEFT JOIN users u ON js.assigned_to = u.id
             LEFT JOIN machines m ON js.machine_id = m.id
             WHERE js.job_id = %s
@@ -291,7 +293,9 @@ def get_job(job_id):
                         'id': str(step['process_id']),
                         'name': step['process_name'],
                         'code': step['process_code'],
-                        'description': step['process_description']
+                        'description': step['process_description'],
+                        'group_name': step.get('process_group_name'),
+                        'group_order_index': step.get('process_group_order_index')
                     },
                     'order_index': step['order_index'],
                     'status': step['status'],

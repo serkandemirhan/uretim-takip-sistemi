@@ -1241,7 +1241,7 @@ async function handleCancel() {
     }
 
     return (
-      <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
+      <div className="rounded-lg border bg-white shadow-sm overflow-hidden min-w-0">
         <button
           type="button"
           className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
@@ -1278,7 +1278,7 @@ async function handleCancel() {
           />
         </button>
         {isOpen && (
-          <div className="space-y-3 border-t px-4 py-3 max-w-full">
+          <div className="space-y-3 border-t px-4 py-3 max-w-full overflow-x-auto">
             {isEditingMode && editForm ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -1301,7 +1301,7 @@ async function handleCancel() {
                     </Button>
                   )}
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2 min-w-0">
                   <div className="space-y-2">
                     <Label>Süreç</Label>
                     <select
@@ -2147,7 +2147,7 @@ async function handleCancel() {
                       ))}
                     </select>
                   </div>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2 min-w-0">
                     <div className="space-y-2">
                       <Label htmlFor="job_due_date">Teslim Tarihi</Label>
                       <Input

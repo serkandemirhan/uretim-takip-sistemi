@@ -99,11 +99,15 @@ def get_jobs():
         
         jobs = execute_query(query, tuple(params))
 
-        jobs_list = []
-        for job in jobs:
-            # Get job steps - with full details
-            steps_query = """
+        # PERFORMANCE OPTIMIZATION: Fetch all job steps in a single query
+        # This eliminates N+1 query problem (was: 1 query per job, now: 1 query total)
+        job_ids = [job['id'] for job in jobs]
+
+        all_steps = []
+        if job_ids:
+            all_steps_query = """
                 SELECT
+                    js.job_id,
                     js.id,
                     js.process_id,
                     js.status,
@@ -122,14 +126,27 @@ def get_jobs():
                 FROM job_steps js
                 LEFT JOIN processes p ON js.process_id = p.id
                 LEFT JOIN users u ON js.assigned_to = u.id
-                WHERE js.job_id = %s
-                ORDER BY COALESCE(js.order_index, 0)
+                WHERE js.job_id = ANY(%s)
+                ORDER BY js.job_id, COALESCE(js.order_index, 0)
             """
             try:
-                job_steps = execute_query(steps_query, (job['id'],))
+                all_steps = execute_query(all_steps_query, (job_ids,))
             except Exception as e:
-                print(f"Error fetching steps for job {job['id']}: {str(e)}")
-                job_steps = []
+                print(f"Error fetching all job steps: {str(e)}")
+                all_steps = []
+
+        # Group steps by job_id for fast lookup
+        steps_by_job = {}
+        for step in all_steps:
+            job_id = step['job_id']
+            if job_id not in steps_by_job:
+                steps_by_job[job_id] = []
+            steps_by_job[job_id].append(step)
+
+        jobs_list = []
+        for job in jobs:
+            # Get pre-fetched steps for this job
+            job_steps = steps_by_job.get(job['id'], [])
 
             jobs_list.append({
                 'id': str(job['id']),

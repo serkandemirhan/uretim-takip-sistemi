@@ -86,6 +86,7 @@ export default function NewJobPage() {
   const [selectedProcessIds, setSelectedProcessIds] = useState<Set<string>>(new Set())
   const [draggingStepId, setDraggingStepId] = useState<string | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [expandedMainGroups, setExpandedMainGroups] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadData()
@@ -289,6 +290,29 @@ export default function NewJobPage() {
 
   const processSelectionCount = selectedProcessIds.size
 
+  // Group selected steps by their process group
+  const groupedSelectedSteps = useMemo(() => {
+    const grouped: { [key: string]: { name: string; steps: ProcessStep[] } } = {}
+
+    selectedSteps.forEach((step) => {
+      const groupName = step.group_name || 'Grupsuz Süreçler'
+      if (!grouped[groupName]) {
+        grouped[groupName] = { name: groupName, steps: [] }
+      }
+      grouped[groupName].steps.push(step)
+    })
+
+    return Object.values(grouped)
+  }, [selectedSteps])
+
+  // Initialize all main groups as expanded when steps exist
+  useEffect(() => {
+    if (selectedSteps.length > 0 && expandedMainGroups.size === 0) {
+      const allGroupNames = new Set(groupedSelectedSteps.map(g => g.name))
+      setExpandedMainGroups(allGroupNames)
+    }
+  }, [selectedSteps.length, groupedSelectedSteps, expandedMainGroups.size])
+
   const reorderSteps = (
     list: ProcessStep[],
     draggedProcessId: string,
@@ -360,6 +384,18 @@ export default function NewJobPage() {
         next.delete(groupId)
       } else {
         next.add(groupId)
+      }
+      return next
+    })
+  }
+
+  const toggleMainGroupExpansion = (groupName: string) => {
+    setExpandedMainGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupName)) {
+        next.delete(groupName)
+      } else {
+        next.add(groupName)
       }
       return next
     })
@@ -749,13 +785,35 @@ export default function NewJobPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-3 sm:gap-4 px-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                    <span className="flex-shrink-0 w-[44px]">Sıra</span>
-                    <span className="min-w-[200px] flex-1">Süreç</span>
-                    <span className="hidden sm:block w-6" aria-hidden="true"></span>
-                  </div>
-                  {selectedSteps.map((step, index) => {
+                <div className="space-y-3">
+                  {groupedSelectedSteps.map((group) => {
+                    const isExpanded = expandedMainGroups.has(group.name)
+                    const groupStepCount = group.steps.length
+
+                    return (
+                      <div key={group.name} className="border rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => toggleMainGroupExpansion(group.name)}
+                          className="w-full bg-gray-50 hover:bg-gray-100 px-3 py-2.5 text-sm font-medium text-gray-900 flex items-center justify-between transition-colors rounded-t-lg"
+                        >
+                          <div className="flex items-center gap-2">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-gray-500" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-gray-500" />
+                            )}
+                            <span>{group.name}</span>
+                            <Badge variant="secondary" className="ml-1 text-xs">
+                              {groupStepCount} süreç
+                            </Badge>
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="p-2 space-y-2">
+                            {group.steps.map((step) => {
+                              const index = selectedSteps.findIndex(s => s.process_id === step.process_id)
                     return (
                     <div
                       key={step.process_id}
@@ -797,6 +855,11 @@ export default function NewJobPage() {
                         </Button>
                       </div>
                     </div>
+                    )
+                  })}
+                          </div>
+                        )}
+                      </div>
                     )
                   })}
                 </div>

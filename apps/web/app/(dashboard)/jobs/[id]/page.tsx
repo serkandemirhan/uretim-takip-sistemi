@@ -1260,10 +1260,13 @@ async function handleCancel() {
     }
 
     return (
-      <div className="rounded-lg border bg-white shadow-sm overflow-hidden min-w-0">
+      <div className={cn(
+        "rounded-lg border bg-white shadow-sm overflow-hidden min-w-0 transition-all",
+        isOpen && "border-l-4 border-l-blue-500 bg-blue-50/30 shadow-md"
+      )}>
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+          className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left"
           onClick={onToggle}
         >
           <div className="flex items-center gap-3">
@@ -1297,7 +1300,7 @@ async function handleCancel() {
           />
         </button>
         {isOpen && (
-          <div className="space-y-3 border-t px-4 py-3 max-w-full overflow-x-auto">
+          <div className="space-y-3 border-t px-4 pl-8 py-3 max-w-full overflow-x-auto bg-white/50">
             {isEditingMode && editForm ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -2455,7 +2458,7 @@ async function handleCancel() {
                   groupedSteps.map((group) => (
                     <div key={group.name}>
                       {/* Group Header - Divider Style */}
-                      <div className="flex items-center gap-3 py-2 mb-1">
+                      <div className="flex items-center gap-3 py-1.5 mb-1">
                         <div className="h-px flex-1 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200"></div>
                         <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 rounded-full border border-blue-100">
                           <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">

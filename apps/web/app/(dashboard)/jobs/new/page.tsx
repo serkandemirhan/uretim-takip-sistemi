@@ -290,20 +290,25 @@ export default function NewJobPage() {
 
   const processSelectionCount = selectedProcessIds.size
 
-  // Group selected steps by their process group
+  // Group selected steps by their process group, maintaining group order
   const groupedSelectedSteps = useMemo(() => {
-    const grouped: { [key: string]: { name: string; steps: ProcessStep[] } } = {}
+    const grouped: { [key: string]: { name: string; steps: ProcessStep[]; order: number } } = {}
 
     selectedSteps.forEach((step) => {
       const groupName = step.group_name || 'Grupsuz Süreçler'
       if (!grouped[groupName]) {
-        grouped[groupName] = { name: groupName, steps: [] }
+        // Find the group's order from processGroups
+        const groupData = processGroups.find((g: any) => g.name === groupName)
+        const groupOrder = groupData?.order_index ?? 999
+
+        grouped[groupName] = { name: groupName, steps: [], order: groupOrder }
       }
       grouped[groupName].steps.push(step)
     })
 
-    return Object.values(grouped)
-  }, [selectedSteps])
+    // Sort groups by their order_index
+    return Object.values(grouped).sort((a, b) => a.order - b.order)
+  }, [selectedSteps, processGroups])
 
   // Initialize all main groups as expanded when steps exist
   useEffect(() => {
@@ -469,8 +474,24 @@ export default function NewJobPage() {
       return
     }
 
-    setSelectedSteps((prev) => [...prev, ...stepsToAdd])
-    toast.success(`${stepsToAdd.length} süreç eklendi`)
+    // Sort new steps by their group order before adding
+    const sortedStepsToAdd = stepsToAdd.sort((a, b) => {
+      const groupA = processGroups.find((g: any) => g.name === a.group_name)
+      const groupB = processGroups.find((g: any) => g.name === b.group_name)
+      const orderA = groupA?.order_index ?? 999
+      const orderB = groupB?.order_index ?? 999
+
+      // Sort by group order first
+      if (orderA !== orderB) {
+        return orderA - orderB
+      }
+
+      // Within same group, maintain selection order
+      return 0
+    })
+
+    setSelectedSteps((prev) => [...prev, ...sortedStepsToAdd])
+    toast.success(`${sortedStepsToAdd.length} süreç eklendi`)
     closeProcessPanel()
   }
 

@@ -30,3 +30,6 @@ build/
 # Supabase sync outputs
 supabase_sync_*/
 backup_*.sql
+
+# Screenshots
+screenshots/

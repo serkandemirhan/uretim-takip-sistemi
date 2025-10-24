@@ -47,6 +47,7 @@ def get_customers():
 
 @customers_bp.route('/<uuid:customer_id>', methods=['GET'])
 @token_required
+@permission_required('customers', 'view')
 def get_customer_detail(customer_id):
     """Tek müşteri"""
     try:
@@ -116,6 +117,7 @@ def get_customer_detail(customer_id):
 
 @customers_bp.route('/<uuid:customer_id>', methods=['PATCH'])
 @token_required
+@permission_required('customers', 'update')
 def update_customer(customer_id):
     """Müşteri güncelle (yalnızca gönderilen alanlar)"""
     try:
@@ -166,6 +168,7 @@ def update_customer(customer_id):
 
 @customers_bp.route('/<uuid:customer_id>', methods=['DELETE'])
 @token_required
+@permission_required('customers', 'delete')
 def delete_customer(customer_id):
     """Soft delete: is_active = false"""
     try:
@@ -210,6 +213,7 @@ def _dealer_payload(data):
 
 @customers_bp.route('', methods=['POST'])
 @token_required
+@permission_required('customers', 'create')
 def create_customer():
     try:
         data = request.get_json(force=True) or {}
@@ -280,6 +284,7 @@ def create_customer():
 
 @customers_bp.route('/<uuid:customer_id>/dealers', methods=['GET'])
 @token_required
+@permission_required('customers', 'view')
 def list_customer_dealers(customer_id):
     try:
         rows = execute_query("""
@@ -320,6 +325,7 @@ def list_customer_dealers(customer_id):
 
 @customers_bp.route('/<uuid:customer_id>/dealers', methods=['POST'])
 @token_required
+@permission_required('customers', 'create')
 def create_customer_dealer(customer_id):
     try:
         data = request.get_json(force=True) or {}
@@ -352,6 +358,7 @@ def create_customer_dealer(customer_id):
 
 @customers_bp.route('/<uuid:customer_id>/dealers/<uuid:dealer_id>', methods=['PATCH'])
 @token_required
+@permission_required('customers', 'update')
 def update_customer_dealer(customer_id, dealer_id):
     try:
         data = request.get_json(force=True) or {}
@@ -386,6 +393,7 @@ def update_customer_dealer(customer_id, dealer_id):
 
 @customers_bp.route('/<uuid:customer_id>/dealers/<uuid:dealer_id>', methods=['DELETE'])
 @token_required
+@permission_required('customers', 'delete')
 def delete_customer_dealer(customer_id, dealer_id):
     try:
         rows = execute_write("""

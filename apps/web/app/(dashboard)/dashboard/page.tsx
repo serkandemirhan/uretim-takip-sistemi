@@ -20,7 +20,7 @@ import {
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { getStatusLabel, getStatusColor, formatDate } from '@/lib/utils/formatters'
+import { getStatusLabel, getStatusColor } from '@/lib/utils/formatters'
 
 export default function DashboardPage() {
   const { user } = useAuth()

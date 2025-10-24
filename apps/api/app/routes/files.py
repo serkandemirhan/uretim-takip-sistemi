@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
 
 from app.config import Config
-from app.middleware.auth_middleware import token_required, role_required
+from app.middleware.auth_middleware import token_required, role_required, permission_required
 from app.models.database import execute_query, execute_query_one, execute_write
 from app.routes.notifications import create_notification
 from app.services.s3_client import get_s3
@@ -170,6 +170,7 @@ def _resolve_folder_path(ref_type, ref_id):
 
 @files_bp.route("/upload-url", methods=["POST"])
 @token_required
+@permission_required('files', 'create')
 def get_upload_url():
     data = request.get_json(force=True) or {}
 
@@ -232,6 +233,7 @@ def get_upload_url():
 
 @files_bp.route("/link", methods=["POST"])
 @token_required
+@permission_required('files', 'create')
 def link_file():
     data = request.get_json(force=True) or {}
 
@@ -366,6 +368,7 @@ def link_file():
 
 @files_bp.route("", methods=["GET"])
 @token_required
+@permission_required('files', 'view')
 def get_files():
     ref_type = request.args.get("ref_type")
     ref_id = request.args.get("ref_id")
@@ -427,6 +430,7 @@ def get_files():
 
 @files_bp.route("/by-job/<job_id>", methods=["GET"])
 @token_required
+@permission_required('files', 'view')
 def get_files_by_job(job_id):
     query = """
         SELECT
@@ -501,6 +505,7 @@ def get_files_by_job(job_id):
 
 @files_bp.route("/<file_id>/download-url", methods=["GET"])
 @token_required
+@permission_required('files', 'view')
 def get_download_url(file_id):
     file = execute_query_one(
         "SELECT bucket, object_key, filename FROM files WHERE id = %s", (file_id,)
@@ -532,6 +537,7 @@ def get_download_url(file_id):
 
 @files_bp.route("/<file_id>", methods=["DELETE"])
 @token_required
+@permission_required('files', 'delete')
 def delete_file(file_id):
     file = execute_query_one(
         "SELECT bucket, object_key FROM files WHERE id = %s", (file_id,)
@@ -580,7 +586,7 @@ def _allowed_process_ids():
 
 @files_bp.route("/explorer", methods=["GET"])
 @token_required
-@role_required(["yonetici"])
+@permission_required('files', 'view')
 def explorer():
     """Yönetici için tüm dosya envanterini getir"""
     try:

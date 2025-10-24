@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Plus, X, GripVertical, Workflow, Search, Loader2 } from 'lucide-react'
+import { ArrowLeft, Plus, X, GripVertical, Workflow, Search, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { handleApiError } from '@/lib/utils/error-handler'
@@ -85,6 +85,7 @@ export default function NewJobPage() {
   const [processSearch, setProcessSearch] = useState('')
   const [selectedProcessIds, setSelectedProcessIds] = useState<Set<string>>(new Set())
   const [draggingStepId, setDraggingStepId] = useState<string | null>(null)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadData()
@@ -336,6 +337,12 @@ export default function NewJobPage() {
   const openProcessPanel = () => {
     setSelectedProcessIds(new Set())
     setProcessSearch('')
+    // Expand all groups by default
+    const allGroupIds = new Set([
+      ...processGroups.map(g => g.id),
+      '__ungrouped__'
+    ])
+    setExpandedGroups(allGroupIds)
     setProcessPanelOpen(true)
   }
 
@@ -343,6 +350,19 @@ export default function NewJobPage() {
     setProcessPanelOpen(false)
     setSelectedProcessIds(new Set())
     setProcessSearch('')
+    setExpandedGroups(new Set())
+  }
+
+  const toggleGroupExpansion = (groupId: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      return next
+    })
   }
 
   const toggleProcessSelection = (processId: string) => {
@@ -830,13 +850,36 @@ export default function NewJobPage() {
                     {processSearch ? 'Arama sonucu bulunamadı' : 'Tanımlı süreç bulunmuyor'}
                   </p>
                 ) : (
-                  filteredProcessGroups.map((group) => (
-                    <div key={group.id} className="rounded-lg border">
-                      <div className="bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700">
-                        {group.name}
-                      </div>
-                      <div className="divide-y">
-                        {group.processes.map((process: any) => {
+                  filteredProcessGroups.map((group) => {
+                    const isExpanded = expandedGroups.has(group.id)
+                    const selectedInGroup = group.processes.filter((p: any) => selectedProcessIds.has(p.id)).length
+                    const totalInGroup = group.processes.length
+
+                    return (
+                      <div key={group.id} className="rounded-lg border">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroupExpansion(group.id)}
+                          className="w-full bg-gray-50 hover:bg-gray-100 px-3 py-2.5 text-sm font-medium text-gray-900 flex items-center justify-between transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-gray-500" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-gray-500" />
+                            )}
+                            <span>{group.name}</span>
+                            {selectedInGroup > 0 && (
+                              <Badge variant="secondary" className="ml-1 text-xs">
+                                {selectedInGroup}/{totalInGroup}
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-500">{totalInGroup} süreç</span>
+                        </button>
+                        {isExpanded && (
+                          <div className="divide-y">
+                            {group.processes.map((process: any) => {
                           const alreadyAdded = existingProcessIds.has(process.id)
                           const isSelected = selectedProcessIds.has(process.id)
                           return (
@@ -889,9 +932,11 @@ export default function NewJobPage() {
                             </button>
                           )
                         })}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
 

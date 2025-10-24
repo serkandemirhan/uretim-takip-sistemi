@@ -53,8 +53,8 @@ PAGES = [
 ]
 
 # Login bilgileri (production'da kullanmayın!)
-LOGIN_EMAIL = "admin@example.com"  # Değiştirin!
-LOGIN_PASSWORD = "your_password"   # Değiştirin!
+LOGIN_EMAIL = "admin"  # Değiştirin!
+LOGIN_PASSWORD = "admin123"   # Değiştirin!
 
 
 def create_output_dir():
@@ -69,9 +69,9 @@ def login(page):
         print("🔐 Login yapılıyor...")
         page.goto(f"{BASE_URL}/login", wait_until="networkidle")
 
-        # Email ve password input'larını doldur
-        page.fill('input[type="email"]', LOGIN_EMAIL)
-        page.fill('input[type="password"]', LOGIN_PASSWORD)
+        # Username ve password input'larını doldur
+        page.fill('input[id="username"]', LOGIN_EMAIL)
+        page.fill('input[id="password"]', LOGIN_PASSWORD)
 
         # Login butonuna tıkla
         page.click('button[type="submit"]')

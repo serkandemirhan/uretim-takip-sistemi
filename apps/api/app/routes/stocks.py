@@ -23,6 +23,7 @@ def _decimal(v):
 
 @stocks_bp.route('', methods=['GET'])
 @token_required
+@permission_required('stocks', 'view')
 def get_stocks():
     """Tüm stokları listele (yalnızca aktif)"""
     try:
@@ -91,6 +92,7 @@ def get_stocks():
 
 @stocks_bp.route('/<uuid:stock_id>', methods=['GET'])
 @token_required
+@permission_required('stocks', 'view')
 def get_stock_detail(stock_id):
     """Tek stok kartı detayı"""
     try:
@@ -148,6 +150,7 @@ def get_stock_detail(stock_id):
 
 @stocks_bp.route('', methods=['POST'])
 @token_required
+@permission_required('stocks', 'create')
 def create_stock():
     """Yeni stok kartı oluştur"""
     try:
@@ -254,6 +257,7 @@ def create_stock():
 
 @stocks_bp.route('/<uuid:stock_id>', methods=['PATCH'])
 @token_required
+@permission_required('stocks', 'update')
 def update_stock(stock_id):
     """Stok kartını güncelle"""
     try:
@@ -302,6 +306,7 @@ def update_stock(stock_id):
 
 @stocks_bp.route('/<uuid:stock_id>', methods=['DELETE'])
 @token_required
+@permission_required('stocks', 'delete')
 def delete_stock(stock_id):
     """Soft delete: is_active = false"""
     try:
@@ -320,6 +325,7 @@ def delete_stock(stock_id):
 
 @stocks_bp.route('/categories', methods=['GET'])
 @token_required
+@permission_required('stocks', 'view')
 def get_stock_categories():
     """Tüm stok kategorilerini listele"""
     try:
@@ -337,6 +343,7 @@ def get_stock_categories():
 
 @stocks_bp.route('/summary', methods=['GET'])
 @token_required
+@permission_required('stocks', 'view')
 def get_stock_summary():
     """Stok özeti: toplam değerler ve kritik stoklar"""
     try:

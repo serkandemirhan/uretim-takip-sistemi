@@ -82,9 +82,7 @@ export default function QuotationsPage() {
 
     try {
       setCreating(true)
-      console.log('Creating quotation:', newQuotation)
       const response = await quotationsAPI.create(newQuotation)
-      console.log('Quotation created:', response)
       toast.success('Teklif oluşturuldu')
       setShowCreateDialog(false)
       setNewQuotation({ name: '', customer_id: '', description: '' })

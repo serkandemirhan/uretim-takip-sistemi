@@ -130,6 +130,25 @@ const [newStep, setNewStep] = useState({
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({})
 
+  // Group steps by process group with order
+  const groupedSteps = useMemo(() => {
+    if (!job?.steps) return []
+
+    const grouped: { [key: string]: { name: string; steps: any[]; order: number } } = {}
+
+    job.steps.forEach((step: any) => {
+      const groupName = step.process?.group_name || 'Grupsuz Süreçler'
+      const groupOrder = step.process?.group_order_index ?? 999
+
+      if (!grouped[groupName]) {
+        grouped[groupName] = { name: groupName, steps: [], order: groupOrder }
+      }
+      grouped[groupName].steps.push(step)
+    })
+
+    return Object.values(grouped).sort((a, b) => a.order - b.order)
+  }, [job?.steps])
+
   useEffect(() => {
     if (params.id) {
       loadJob()
@@ -2431,9 +2450,27 @@ async function handleCancel() {
               </div>
             ) : (
               // Düzenleme modunda değilse - Normal görünüm
-              <div className="space-y-3 max-w-5xl overflow-x-hidden">
+              <div className="space-y-2 max-w-5xl overflow-x-hidden">
                 {job.steps && job.steps.length > 0 ? (
-                  job.steps.map((step: any) => {
+                  groupedSteps.map((group) => (
+                    <div key={group.name}>
+                      {/* Group Header - Divider Style */}
+                      <div className="flex items-center gap-3 py-2 mb-1">
+                        <div className="h-px flex-1 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200"></div>
+                        <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 rounded-full border border-blue-100">
+                          <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                            {group.name}
+                          </span>
+                          <span className="text-xs text-blue-600">
+                            {group.steps.length} süreç
+                          </span>
+                        </div>
+                        <div className="h-px flex-1 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200"></div>
+                      </div>
+
+                      {/* Steps in this group */}
+                      <div className="space-y-1.5">
+                        {group.steps.map((step: any) => {
                     const processId = step.process?.id ?? step.process_id
                     const processFiles = jobFiles.process_files?.find(
                       (pf: any) => pf.process_id === processId
@@ -2491,7 +2528,10 @@ async function handleCancel() {
                         }
                       />
                     )
-                  })
+                  })}
+                      </div>
+                    </div>
+                  ))
                 ) : (
                   <Card>
                     <CardContent className="py-8 text-center text-sm text-gray-500">

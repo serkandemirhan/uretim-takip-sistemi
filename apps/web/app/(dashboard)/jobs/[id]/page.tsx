@@ -1906,7 +1906,7 @@ async function handleCancel() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-hidden">
       {/* Back Button */}
       <Link href="/jobs">
         <Button variant="ghost" size="sm">
@@ -2109,8 +2109,8 @@ async function handleCancel() {
         </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
-        <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[360px_1fr] min-w-0">
+        <div className="space-y-6 min-w-0">
           <Card>
             <CardHeader>
               <CardTitle>Genel Bilgiler</CardTitle>
@@ -2272,7 +2272,7 @@ async function handleCancel() {
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0 overflow-x-hidden">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -2431,7 +2431,7 @@ async function handleCancel() {
               </div>
             ) : (
               // Düzenleme modunda değilse - Normal görünüm
-              <div className="space-y-3 max-w-5xl">
+              <div className="space-y-3 max-w-5xl overflow-x-hidden">
                 {job.steps && job.steps.length > 0 ? (
                   job.steps.map((step: any) => {
                     const processId = step.process?.id ?? step.process_id

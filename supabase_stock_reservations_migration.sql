@@ -55,16 +55,18 @@ COMMENT ON COLUMN stock_movements.reservation_id IS 'Links withdrawal to job res
 COMMENT ON COLUMN stock_movements.job_id IS 'Links movement to a specific job';
 
 -- =====================================================
--- 3. ADD RESERVED_QUANTITY COLUMN TO STOCKS
+-- 3. ADD RESERVED_QUANTITY AND ON_ORDER_QUANTITY COLUMNS TO STOCKS
 -- =====================================================
--- Add column if it doesn't exist
+-- Add columns if they don't exist
 ALTER TABLE stocks ADD COLUMN IF NOT EXISTS reserved_quantity DECIMAL(15, 3) DEFAULT 0 CHECK (reserved_quantity >= 0);
+ALTER TABLE stocks ADD COLUMN IF NOT EXISTS on_order_quantity DECIMAL(15, 3) DEFAULT 0 CHECK (on_order_quantity >= 0);
 
 -- Update available_quantity calculation if it exists as generated column
 -- Note: You may need to drop and recreate this depending on your current schema
 -- If available_quantity is a regular column, just update it manually or via triggers
 
 COMMENT ON COLUMN stocks.reserved_quantity IS 'Total quantity reserved for jobs (auto-calculated)';
+COMMENT ON COLUMN stocks.on_order_quantity IS 'Total quantity in approved purchase orders (auto-calculated)';
 
 -- =====================================================
 -- 4. FUNCTION TO AUTO-UPDATE RESERVED QUANTITY

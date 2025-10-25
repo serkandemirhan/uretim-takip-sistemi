@@ -146,12 +146,10 @@ ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS title VARCHAR(255);
 ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS description TEXT;
 
 -- Update existing records to have a title (only if title is null)
-UPDATE purchase_requests
-SET title = 'Satın Alma Talebi ' || request_number
-WHERE title IS NULL OR title = '';
-
--- Make title NOT NULL after populating (optional, comment out if you get errors)
--- ALTER TABLE purchase_requests ALTER COLUMN title SET NOT NULL;
+-- Note: Skipping auto-population as request_number column may not exist in all schemas
+-- UPDATE purchase_requests
+-- SET title = 'Satın Alma Talebi'
+-- WHERE title IS NULL OR title = '';
 
 COMMENT ON COLUMN purchase_requests.title IS 'Short descriptive title for the purchase request';
 COMMENT ON COLUMN purchase_requests.description IS 'Detailed description or notes';

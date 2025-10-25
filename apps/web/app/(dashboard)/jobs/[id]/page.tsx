@@ -2048,12 +2048,20 @@ async function handleCancel() {
           </>
         )}
         {job?.id && (
-          <Link href={`/jobs/${job.id}/quotations`}>
-            <Button variant="outline">
-              <Package className="w-4 h-4 mr-2" />
-              Tekliflere Git
-            </Button>
-          </Link>
+          <>
+            <Link href={`/jobs/${job.id}/quotations`}>
+              <Button variant="outline">
+                <FileText className="w-4 h-4 mr-2" />
+                Tekliflere Git
+              </Button>
+            </Link>
+            <Link href={`/jobs/${job.id}/materials`}>
+              <Button variant="outline">
+                <Package className="w-4 h-4 mr-2" />
+                Malzeme Rezervasyonları
+              </Button>
+            </Link>
+          </>
         )}
       </div>
     </div>

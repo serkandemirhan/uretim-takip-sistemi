@@ -33,3 +33,4 @@ backup_*.sql
 
 # Screenshots
 screenshots/
+screenshot_venv/

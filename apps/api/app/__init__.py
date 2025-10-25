@@ -60,6 +60,7 @@ def create_app():
     from app.routes.goods_receipts import goods_receipts_bp
     from app.routes.job_materials import job_materials_bp
     from app.routes.stock_field_settings import stock_field_settings_bp
+    from app.routes.stock_reservations import stock_reservations_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(users_bp)
@@ -85,6 +86,7 @@ def create_app():
     app.register_blueprint(goods_receipts_bp)
     app.register_blueprint(job_materials_bp)
     app.register_blueprint(stock_field_settings_bp)
+    app.register_blueprint(stock_reservations_bp)
 
     # Root endpoint
     @app.route('/', methods=['GET'])

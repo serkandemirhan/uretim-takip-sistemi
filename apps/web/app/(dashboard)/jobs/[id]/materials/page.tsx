@@ -309,7 +309,7 @@ export default function JobMaterialsPage() {
               <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>Bu iş için henüz malzeme eklenmemiş</p>
               <Link href={`/jobs/${jobId}`}>
-                <Button variant="link" className="mt-2">
+                <Button variant="ghost" className="mt-2">
                   İş detayına git
                 </Button>
               </Link>

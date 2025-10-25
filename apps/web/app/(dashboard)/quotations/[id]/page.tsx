@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import {
   ArrowLeft,
   Plus,
@@ -69,6 +71,8 @@ export default function QuotationDetailPage() {
   const [unitOptions, setUnitOptions] = useState<UnitOption[]>([])
   const [unitOptionsLoading, setUnitOptionsLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
+  const [showReservationDialog, setShowReservationDialog] = useState(false)
+  const [reservationDates, setReservationDates] = useState<{[key: string]: string}>({})
 
   useEffect(() => {
     if (params.id) {
@@ -156,8 +160,69 @@ export default function QuotationDetailPage() {
       toast.success('Teklif güncellendi')
       setIsEditing(false)
       await loadQuotation()
+
+      // If status changed to approved and there are items, show reservation dialog
+      if (formData.status === 'approved' && items.length > 0 && quotation?.job_id) {
+        // Initialize dates with today for all items
+        const today = new Date().toISOString().split('T')[0]
+        const dates: {[key: string]: string} = {}
+        items.forEach((item: any) => {
+          if (item.stock_id) {
+            dates[item.stock_id] = today
+          }
+        })
+        setReservationDates(dates)
+        setShowReservationDialog(true)
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Teklif güncellenemedi')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleCreateReservations() {
+    try {
+      setSaving(true)
+      const token = localStorage.getItem('token')
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+
+      const reservationsToCreate = items
+        .filter((item: any) => item.stock_id && reservationDates[item.stock_id])
+        .map((item: any) => ({
+          stock_id: item.stock_id,
+          reserved_quantity: item.quantity || 0,
+          planned_usage_date: reservationDates[item.stock_id],
+          notes: item.notes || '',
+        }))
+
+      if (reservationsToCreate.length === 0) {
+        toast.error('Rezervasyon oluşturulacak malzeme bulunamadı')
+        return
+      }
+
+      const response = await fetch(`${API_URL}/api/stock-reservations/bulk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          job_id: quotation.job_id,
+          quotation_id: quotation.id,
+          reservations: reservationsToCreate,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Rezervasyonlar oluşturulamadı')
+      }
+
+      toast.success(`${reservationsToCreate.length} malzeme rezerve edildi`)
+      setShowReservationDialog(false)
+    } catch (error: any) {
+      toast.error(error.message || 'Rezervasyon oluşturulurken hata oluştu')
     } finally {
       setSaving(false)
     }
@@ -613,7 +678,7 @@ export default function QuotationDetailPage() {
       </div>
 
       {/* Info Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-gray-500">Müşteri</div>
@@ -634,6 +699,30 @@ export default function QuotationDetailPage() {
             ) : (
               <div className="text-lg font-semibold text-gray-900">
                 {quotation.customer_name || '-'}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm text-gray-500">Durum</div>
+            {isEditing ? (
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                disabled={saving}
+              >
+                <option value="draft">Taslak</option>
+                <option value="active">Aktif</option>
+                <option value="approved">Onaylandı</option>
+                <option value="rejected">Reddedildi</option>
+                <option value="archived">Arşivlendi</option>
+              </select>
+            ) : (
+              <div className="text-lg font-semibold text-gray-900">
+                {getStatusLabel(quotation.status)}
               </div>
             )}
           </CardContent>
@@ -1251,6 +1340,70 @@ export default function QuotationDetailPage() {
           </div>
         </>
       )}
+
+      {/* Reservation Dialog */}
+      <Dialog open={showReservationDialog} onOpenChange={setShowReservationDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Malzeme Rezervasyonları Oluştur</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-gray-600">
+              Teklif onaylandı! Aşağıdaki malzemeler için rezervasyon tarihi seçin.
+            </p>
+
+            <div className="space-y-3">
+              {items.filter((item: any) => item.stock_id).map((item: any) => (
+                <div key={item.id} className="flex items-center gap-4 p-3 border rounded-lg">
+                  <div className="flex-1">
+                    <div className="font-medium">{item.product_name}</div>
+                    <div className="text-sm text-gray-600">
+                      {item.product_code} • {item.quantity} {item.unit}
+                    </div>
+                  </div>
+                  <div className="w-48">
+                    <Label className="text-xs">Planlanan Kullanım Tarihi</Label>
+                    <Input
+                      type="date"
+                      value={reservationDates[item.stock_id] || ''}
+                      onChange={(e) => setReservationDates({
+                        ...reservationDates,
+                        [item.stock_id]: e.target.value
+                      })}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {items.filter((item: any) => !item.stock_id).length > 0 && (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <strong>Not:</strong> Stok tanımı olmayan {items.filter((item: any) => !item.stock_id).length} malzeme için rezervasyon oluşturulamaz.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowReservationDialog(false)}
+              disabled={saving}
+            >
+              İptal
+            </Button>
+            <Button
+              onClick={handleCreateReservations}
+              disabled={saving}
+            >
+              {saving ? 'Oluşturuluyor...' : 'Rezervasyonları Oluştur'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

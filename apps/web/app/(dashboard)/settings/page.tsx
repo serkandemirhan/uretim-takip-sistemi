@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Layers, Settings2, SlidersHorizontal } from 'lucide-react'
+import { Layers, Settings2, SlidersHorizontal, ShieldCheck } from 'lucide-react'
 
 const sections = [
   {
@@ -21,6 +21,18 @@ const sections = [
         description: 'Stok kartlarında kullanılacak özel alanları yapılandırın ve aktifleştirin.',
         href: '/settings/stock-fields',
         icon: SlidersHorizontal,
+      },
+    ],
+  },
+  {
+    title: 'İK ve Özlük',
+    description: 'Çalışan özlük dokümanlarını, zorunluluk kurallarını ve denetim ayarlarını yönetin.',
+    items: [
+      {
+        title: 'Doküman Tipleri & Kurallar',
+        description: 'Özlük doküman tiplerini tanımlayın, zorunluluk kurallarını yapılandırın ve eşleştirmeleri yönetin.',
+        href: '/settings/hr/documents',
+        icon: ShieldCheck,
       },
     ],
   },

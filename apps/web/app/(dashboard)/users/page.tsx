@@ -267,20 +267,22 @@ export default function UsersPage() {
                             className="h-8"
                           />
                         ) : (
-                          <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-full bg-gray-100 ring-1 ring-gray-200 overflow-hidden flex items-center justify-center">
-                              {user.avatarDownloadUrl ? (
-                                <img
-                                  src={user.avatarDownloadUrl}
-                                  alt={user.full_name || user.username}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <UserCircle className="h-6 w-6 text-gray-400" />
-                              )}
-                            </div>
-                            <span className="font-medium text-gray-900">{user.full_name}</span>
+                        <Link href={`/users/${user.id}`} className="flex items-center gap-3 group">
+                          <div className="h-9 w-9 rounded-full bg-gray-100 ring-1 ring-gray-200 overflow-hidden flex items-center justify-center">
+                            {user.avatarDownloadUrl ? (
+                              <img
+                                src={user.avatarDownloadUrl}
+                                alt={user.full_name || user.username}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <UserCircle className="h-6 w-6 text-gray-400" />
+                            )}
                           </div>
+                            <span className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+                              {user.full_name}
+                            </span>
+                          </Link>
                         )}
                       </td>
 
@@ -341,6 +343,16 @@ export default function UsersPage() {
                           </div>
                         ) : (
                           <div className="flex justify-end gap-2">
+                            <Link href={`/users/${user.id}`}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                              >
+                                <UserCircle className="w-3 h-3 mr-1" />
+                                Görüntüle
+                              </Button>
+                            </Link>
                             <Button
                               size="sm"
                               variant="outline"

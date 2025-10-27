@@ -62,6 +62,7 @@ export default function LoginPage() {
                 placeholder="admin"
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                autoComplete="username"
                 required
                 disabled={loading}
               />
@@ -75,6 +76,7 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                autoComplete="current-password"
                 required
                 disabled={loading}
               />

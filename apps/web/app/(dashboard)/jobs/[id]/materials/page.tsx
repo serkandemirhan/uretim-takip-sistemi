@@ -1,23 +1,27 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
-  ArrowLeft,
-  Calendar,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import {
+ ArrowLeft,
   Package,
-  Plus,
-  Save,
-  Trash2,
-  AlertCircle,
+  AlertTriangle,
   CheckCircle,
   Clock,
-  X,
+  TrendingUp,
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -25,18 +29,57 @@ import { cn } from '@/lib/utils/cn'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
+interface Material {
+  id: string
+  quotation_id: string
+  quotation_number: string
+  quotation_name: string
+  approved_at: string | null
+  stock_id: string
+  product_code: string
+  product_name: string
+  category: string | null
+  quantity: number
+  unit: string
+  unit_price: number
+  notes: string | null
+  stock_quantity: number
+  reserved_quantity: number
+  available_quantity: number
+  supplier_name: string | null
+}
+
+interface Reservation {
+  id: string
+  job_id: string
+  quotation_id: string
+  stock_id: string
+  reserved_quantity: number
+  used_quantity: number
+  planned_usage_date: string
+  status: string
+  notes: string | null
+  product_code: string
+  product_name: string
+}
+
 export default function JobMaterialsPage() {
   const params = useParams()
-  const router = useRouter()
   const jobId = params.id as string
 
   const [job, setJob] = useState<any>(null)
-  const [jobMaterials, setJobMaterials] = useState<any[]>([])
-  const [reservations, setReservations] = useState<any[]>([])
+  const [materials, setMaterials] = useState<Material[]>([])
+  const [reservations, setReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // Load job details and reservations
+  // Dialog states
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showInsufficientStockWarning, setShowInsufficientStockWarning] = useState(false)
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
+  const [reservationDate, setReservationDate] = useState('')
+  const [reservationNotes, setReservationNotes] = useState('')
+
   useEffect(() => {
     loadData()
   }, [jobId])
@@ -46,27 +89,27 @@ export default function JobMaterialsPage() {
       setLoading(true)
       const token = localStorage.getItem('token')
 
-      // Load job details
-      const jobRes = await fetch(`${API_URL}/api/jobs/${jobId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const [jobRes, materialsRes, reservationsRes] = await Promise.all([
+        fetch(`${API_URL}/api/jobs/${jobId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/api/quotations/job/${jobId}/approved-materials`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/api/stock-reservations/job/${jobId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ])
+
       if (!jobRes.ok) throw new Error('Job yüklenemedi')
       const jobData = await jobRes.json()
       setJob(jobData)
 
-      // Load job materials
-      const materialsRes = await fetch(`${API_URL}/api/job-materials?job_id=${jobId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
       if (materialsRes.ok) {
         const materialsData = await materialsRes.json()
-        setJobMaterials(materialsData)
+        setMaterials(materialsData)
       }
 
-      // Load reservations
-      const reservationsRes = await fetch(`${API_URL}/api/stock-reservations/job/${jobId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
       if (reservationsRes.ok) {
         const reservationsData = await reservationsRes.json()
         setReservations(reservationsData)
@@ -78,33 +121,33 @@ export default function JobMaterialsPage() {
     }
   }
 
-  const createReservationsFromMaterials = async () => {
+  const handleReserveClick = (material: Material) => {
+    setSelectedMaterial(material)
+    setReservationDate(new Date().toISOString().split('T')[0])
+    setReservationNotes(material.notes || '')
+
+    const hasEnoughStock = material.available_quantity >= material.quantity
+
+    if (hasEnoughStock) {
+      // Yeterli stok var, direkt modal aç
+      setShowCreateDialog(true)
+    } else {
+      // Yetersiz stok, uyarı göster
+      setShowInsufficientStockWarning(true)
+    }
+  }
+
+  const proceedWithInsufficientStock = () => {
+    setShowInsufficientStockWarning(false)
+    setShowCreateDialog(true)
+  }
+
+  const createReservation = async () => {
+    if (!selectedMaterial) return
+
     try {
       setSaving(true)
       const token = localStorage.getItem('token')
-
-      // Prepare reservations data with default dates
-      const today = new Date().toISOString().split('T')[0]
-      const reservationsToCreate = jobMaterials
-        .filter((material) => {
-          // Only create if not already reserved
-          const existingReservation = reservations.find(
-            (res) => res.stock_id === material.product_id && res.status !== 'cancelled'
-          )
-          return !existingReservation
-        })
-        .map((material) => ({
-          stock_id: material.product_id,
-          job_material_id: material.id,
-          reserved_quantity: material.quantity,
-          planned_usage_date: today,
-          notes: material.notes || '',
-        }))
-
-      if (reservationsToCreate.length === 0) {
-        toast.info('Tüm malzemeler zaten rezerve edilmiş')
-        return
-      }
 
       const res = await fetch(`${API_URL}/api/stock-reservations/bulk`, {
         method: 'POST',
@@ -114,8 +157,15 @@ export default function JobMaterialsPage() {
         },
         body: JSON.stringify({
           job_id: jobId,
-          quotation_id: job?.quotation_id,
-          reservations: reservationsToCreate,
+          quotation_id: selectedMaterial.quotation_id,
+          reservations: [
+            {
+              stock_id: selectedMaterial.stock_id,
+              reserved_quantity: selectedMaterial.quantity,
+              planned_usage_date: reservationDate,
+              notes: reservationNotes,
+            },
+          ],
         }),
       })
 
@@ -124,7 +174,9 @@ export default function JobMaterialsPage() {
         throw new Error(error.error || 'Rezervasyon oluşturulamadı')
       }
 
-      toast.success(`${reservationsToCreate.length} malzeme rezerve edildi`)
+      toast.success('Rezervasyon oluşturuldu')
+      setShowCreateDialog(false)
+      setSelectedMaterial(null)
       loadData()
     } catch (error: any) {
       toast.error(error.message || 'Rezervasyon oluşturulurken hata oluştu')
@@ -189,27 +241,68 @@ export default function JobMaterialsPage() {
     }
   }
 
-  const getReservationForMaterial = (materialId: string, stockId: string) => {
+  const getReservationForMaterial = (stockId: string) => {
     return reservations.find(
-      (res) =>
-        (res.job_material_id === materialId || res.stock_id === stockId) &&
-        res.status !== 'cancelled'
+      (res) => res.stock_id === stockId && res.status !== 'cancelled'
     )
   }
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      active: { label: 'Aktif', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-      partially_used: { label: 'Kısmi Kullanılmış', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-      fully_used: { label: 'Tamamen Kullanılmış', color: 'bg-green-100 text-green-700 border-green-200' },
-      cancelled: { label: 'İptal Edildi', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+  const getStockStatus = (material: Material) => {
+    const hasEnoughStock = material.available_quantity >= material.quantity
+
+    if (hasEnoughStock) {
+      return {
+        label: '✔ Yeterli Stok',
+        color: 'text-green-700 bg-green-50 border-green-200',
+        icon: CheckCircle,
+      }
+    } else {
+      return {
+        label: 'Eksik Stok',
+        color: 'text-red-700 bg-red-50 border-red-200',
+        icon: AlertTriangle,
+      }
     }
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.active
-    return (
-      <Badge variant="outline" className={cn('text-xs', config.color)}>
-        {config.label}
-      </Badge>
-    )
+  }
+
+  const getReservationStatus = (reservation: Reservation | undefined) => {
+    if (!reservation) {
+      return {
+        label: 'Bekliyor',
+        color: 'text-gray-700 bg-gray-50 border-gray-200',
+        icon: Clock,
+      }
+    }
+
+    if (reservation.status === 'active') {
+      return {
+        label: `Rezerve Edildi: ${reservation.used_quantity}/${reservation.reserved_quantity}`,
+        color: 'text-blue-700 bg-blue-50 border-blue-300',
+        icon: CheckCircle,
+      }
+    }
+
+    if (reservation.status === 'partially_used') {
+      return {
+        label: `Rezerve Edildi: ${reservation.used_quantity}/${reservation.reserved_quantity}`,
+        color: 'text-blue-700 bg-blue-50 border-blue-300',
+        icon: CheckCircle,
+      }
+    }
+
+    if (reservation.status === 'fully_used') {
+      return {
+        label: 'Kullanıldı',
+        color: 'text-green-700 bg-green-50 border-green-200',
+        icon: CheckCircle,
+      }
+    }
+
+    return {
+      label: 'Bekliyor',
+      color: 'text-gray-700 bg-gray-50 border-gray-200',
+      icon: Clock,
+    }
   }
 
   if (loading) {
@@ -227,16 +320,16 @@ export default function JobMaterialsPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-red-600 mx-auto" />
+          <AlertTriangle className="h-12 w-12 text-red-600 mx-auto" />
           <p className="mt-4 text-gray-600">İş bulunamadı</p>
         </div>
       </div>
     )
   }
 
-  const hasUnreservedMaterials = jobMaterials.some(
-    (material) => !getReservationForMaterial(material.id, material.product_id)
-  )
+  const unreservedCount = materials.filter(
+    (material) => !getReservationForMaterial(material.stock_id)
+  ).length
 
   return (
     <div className="space-y-6 p-6">
@@ -256,134 +349,152 @@ export default function JobMaterialsPage() {
             </p>
           </div>
         </div>
-
-        {hasUnreservedMaterials && (
-          <Button onClick={createReservationsFromMaterials} disabled={saving}>
-            <Plus className="h-4 w-4 mr-2" />
-            {saving ? 'Rezerve Ediliyor...' : 'Tüm Malzemeleri Rezerve Et'}
+        <Link href={`/jobs/${jobId}/material-tracking`}>
+          <Button variant="outline">
+            <TrendingUp className="h-4 w-4 mr-2" />
+            Malzeme Takibi
           </Button>
-        )}
+        </Link>
       </div>
 
-      {/* Info Card */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-4 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Toplam Malzeme</p>
-              <p className="text-2xl font-bold">{jobMaterials.length}</p>
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm text-gray-600 mb-1">Onaylı Malzeme</div>
+            <div className="text-3xl font-bold text-gray-900">{materials.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm text-gray-600 mb-1">Rezerve Edildi</div>
+            <div className="text-3xl font-bold text-blue-600">
+              {reservations.filter((r) => r.status === 'active' || r.status === 'partially_used').length}
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Rezerve Edilmiş</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {reservations.filter((r) => r.status === 'active' || r.status === 'partially_used').length}
-              </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm text-gray-600 mb-1">Bekliyor</div>
+            <div className="text-3xl font-bold text-orange-600">{unreservedCount}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm text-gray-600 mb-1">Kullanıldı</div>
+            <div className="text-3xl font-bold text-green-600">
+              {reservations.filter((r) => r.status === 'fully_used').length}
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Kullanılmış</p>
-              <p className="text-2xl font-bold text-green-600">
-                {reservations.filter((r) => r.status === 'fully_used').length}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">İptal Edilmiş</p>
-              <p className="text-2xl font-bold text-gray-600">
-                {reservations.filter((r) => r.status === 'cancelled').length}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Materials & Reservations Table */}
+      {/* Materials Table */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Malzeme Listesi ve Rezervasyonlar
+            Onaylanmış Teklif Malzemeleri
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {jobMaterials.length === 0 ? (
+          {materials.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Bu iş için henüz malzeme eklenmemiş</p>
-              <Link href={`/jobs/${jobId}`}>
-                <Button variant="ghost" className="mt-2">
-                  İş detayına git
-                </Button>
-              </Link>
+              <p>Bu iş için henüz onaylanmış teklif bulunmuyor</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b text-left text-sm">
-                    <th className="pb-3 font-medium text-gray-700">Malzeme</th>
-                    <th className="pb-3 font-medium text-gray-700">Kod</th>
-                    <th className="pb-3 font-medium text-gray-700 text-right">Miktar</th>
-                    <th className="pb-3 font-medium text-gray-700">Birim</th>
-                    <th className="pb-3 font-medium text-gray-700">Planlanan Kullanım Tarihi</th>
-                    <th className="pb-3 font-medium text-gray-700">Durum</th>
-                    <th className="pb-3 font-medium text-gray-700 text-right">Kullanılan</th>
-                    <th className="pb-3 font-medium text-gray-700 text-right">İşlemler</th>
+                  <tr className="border-b">
+                    <th className="text-left pb-3 px-4 font-medium text-gray-700">Teklif</th>
+                    <th className="text-left pb-3 px-4 font-medium text-gray-700">Malzeme</th>
+                    <th className="text-left pb-3 px-4 font-medium text-gray-700">Kod</th>
+                    <th className="text-right pb-3 px-4 font-medium text-gray-700">Miktar</th>
+                    <th className="text-left pb-3 px-4 font-medium text-gray-700">Fiziksel Stok</th>
+                    <th className="text-left pb-3 px-4 font-medium text-gray-700">Rezerve</th>
+                    <th className="text-left pb-3 px-4 font-medium text-gray-700">Kullanılabilir</th>
+                    <th className="text-left pb-3 px-4 font-medium text-gray-700">Stok Durumu</th>
+                    <th className="text-left pb-3 px-4 font-medium text-gray-700">Rezervasyon Durumu</th>
+                    <th className="text-left pb-3 px-4 font-medium text-gray-700">Planlanan Tarih</th>
+                    <th className="text-right pb-3 px-4 font-medium text-gray-700">İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {jobMaterials.map((material) => {
-                    const reservation = getReservationForMaterial(material.id, material.product_id)
+                  {materials.map((material) => {
+                    const reservation = getReservationForMaterial(material.stock_id)
+                    const stockStatus = getStockStatus(material)
+                    const reservationStatus = getReservationStatus(reservation)
+                    const StatusIcon = stockStatus.icon
+                    const ReservationIcon = reservationStatus.icon
+
                     return (
                       <tr key={material.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3">
+                        <td className="py-3 px-4">
+                          <div className="text-sm font-medium">{material.quotation_number}</div>
+                          <div className="text-xs text-gray-500">{material.quotation_name}</div>
+                        </td>
+                        <td className="py-3 px-4">
                           <div className="font-medium">{material.product_name}</div>
                           {material.category && (
                             <div className="text-xs text-gray-500">{material.category}</div>
                           )}
                         </td>
-                        <td className="py-3 text-sm text-gray-600">{material.product_code}</td>
-                        <td className="py-3 text-right font-medium">{material.quantity}</td>
-                        <td className="py-3 text-sm text-gray-600">{material.unit}</td>
-                        <td className="py-3">
+                        <td className="py-3 px-4 text-sm text-gray-600">{material.product_code}</td>
+                        <td className="py-3 px-4 text-right font-bold text-lg">
+                          {material.quantity} <span className="text-sm text-gray-500">{material.unit}</span>
+                        </td>
+                        <td className="py-3 px-4 text-sm">{material.stock_quantity} {material.unit}</td>
+                        <td className="py-3 px-4 text-sm text-orange-600">-{material.reserved_quantity} {material.unit}</td>
+                        <td className="py-3 px-4 text-sm font-semibold">
+                          <span className={cn(
+                            material.available_quantity >= material.quantity ? 'text-green-600' : 'text-red-600'
+                          )}>
+                            {material.available_quantity} {material.unit}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant="outline" className={cn('text-xs font-medium border', stockStatus.color)}>
+                            <StatusIcon className="h-3 w-3 mr-1 inline" />
+                            {stockStatus.label}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant="outline" className={cn('text-xs font-medium border', reservationStatus.color)}>
+                            <ReservationIcon className="h-3 w-3 mr-1 inline" />
+                            {reservationStatus.label}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4">
                           {reservation ? (
                             <Input
                               type="date"
                               value={reservation.planned_usage_date || ''}
                               onChange={(e) => updateReservationDate(reservation.id, e.target.value)}
-                              className="w-48"
+                              className="w-36 text-sm"
                               disabled={reservation.status === 'fully_used' || reservation.status === 'cancelled'}
                             />
                           ) : (
                             <span className="text-sm text-gray-400">-</span>
                           )}
                         </td>
-                        <td className="py-3">
+                        <td className="py-3 px-4 text-right">
                           {reservation ? (
-                            getStatusBadge(reservation.status)
-                          ) : (
-                            <Badge variant="outline" className="text-xs bg-gray-100 text-gray-600">
-                              Rezerve Edilmemiş
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="py-3 text-right">
-                          {reservation ? (
-                            <div className="text-sm">
-                              <span className="font-medium">{reservation.used_quantity}</span>
-                              <span className="text-gray-400"> / {reservation.reserved_quantity}</span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-400">-</span>
-                          )}
-                        </td>
-                        <td className="py-3 text-right">
-                          {reservation && reservation.status !== 'cancelled' && reservation.used_quantity === 0 && (
                             <Button
-                              variant="ghost"
+                              variant="destructive"
                               size="sm"
                               onClick={() => cancelReservation(reservation.id)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              disabled={reservation.status === 'fully_used' || reservation.status === 'cancelled' || reservation.used_quantity > 0}
                             >
-                              <X className="h-4 w-4" />
+                              İptal Et
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => handleReserveClick(material)}
+                            >
+                              Rezerve Et
                             </Button>
                           )}
                         </td>
@@ -397,23 +508,143 @@ export default function JobMaterialsPage() {
         </CardContent>
       </Card>
 
-      {/* Help Text */}
-      <Card className="bg-blue-50 border-blue-200">
-        <CardContent className="pt-6">
-          <div className="flex gap-3">
-            <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-900">
-              <p className="font-medium mb-2">Malzeme Rezervasyonları Hakkında</p>
-              <ul className="space-y-1 list-disc list-inside text-blue-800">
-                <li>Her malzeme için planlanan kullanım tarihini seçin</li>
-                <li>Satın almacı bu tarihlere göre tedarik planlaması yapacak</li>
-                <li>İş başlamadan önce rezervasyonları iptal edebilirsiniz</li>
-                <li>Depodan malzeme çıkışı yapıldığında otomatik olarak "Kullanılan" miktarı güncellenir</li>
-              </ul>
+      {/* Insufficient Stock Warning Dialog */}
+      <Dialog open={showInsufficientStockWarning} onOpenChange={setShowInsufficientStockWarning}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3 text-orange-600">
+              <AlertTriangle className="h-6 w-6" />
+              <DialogTitle>Yetersiz Stok Uyarısı</DialogTitle>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </DialogHeader>
+
+          {selectedMaterial && (
+            <div className="space-y-4 py-4">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <p className="text-sm text-orange-900">
+                  <strong>{selectedMaterial.product_name}</strong> için yeterli stok bulunmamaktadır.
+                </p>
+                <div className="mt-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Gerekli miktar:</span>
+                    <span className="font-semibold">{selectedMaterial.quantity} {selectedMaterial.unit}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Kullanılabilir stok:</span>
+                    <span className="font-semibold text-red-600">{selectedMaterial.available_quantity} {selectedMaterial.unit}</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-1 mt-1">
+                    <span>Eksik miktar:</span>
+                    <span className="font-bold text-red-700">
+                      {selectedMaterial.quantity - selectedMaterial.available_quantity} {selectedMaterial.unit}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-900">
+                  <strong>Bu işlem satın alma süreci başlatacaktır.</strong>
+                </p>
+                <p className="text-xs text-blue-800 mt-2">
+                  Rezervasyon oluşturulduğunda, satın alma departmanı eksik {selectedMaterial.quantity - selectedMaterial.available_quantity} {selectedMaterial.unit} için
+                  otomatik olarak bilgilendirilecek ve tedarik süreci başlayacaktır.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowInsufficientStockWarning(false)
+                setSelectedMaterial(null)
+              }}
+            >
+              İptal
+            </Button>
+            <Button
+              onClick={proceedWithInsufficientStock}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Devam Et ve Rezerve Et
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Reservation Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Malzeme Rezervasyonu Oluştur</DialogTitle>
+            <DialogDescription>
+              Rezervasyon tarihi ve notları belirleyin
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedMaterial && (
+            <div className="space-y-4 py-4">
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Malzeme:</span>
+                  <span className="font-medium">{selectedMaterial.product_name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Kod:</span>
+                  <span className="font-medium">{selectedMaterial.product_code}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Miktar:</span>
+                  <span className="font-medium">{selectedMaterial.quantity} {selectedMaterial.unit}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reservation-date">Planlanan Kullanım Tarihi *</Label>
+                <Input
+                  id="reservation-date"
+                  type="date"
+                  value={reservationDate}
+                  onChange={(e) => setReservationDate(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reservation-notes">Notlar (Opsiyonel)</Label>
+                <Input
+                  id="reservation-notes"
+                  type="text"
+                  value={reservationNotes}
+                  onChange={(e) => setReservationNotes(e.target.value)}
+                  placeholder="Rezervasyon için not ekleyin"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCreateDialog(false)
+                setSelectedMaterial(null)
+              }}
+              disabled={saving}
+            >
+              İptal
+            </Button>
+            <Button
+              onClick={createReservation}
+              disabled={saving || !reservationDate}
+            >
+              {saving ? 'Oluşturuluyor...' : 'Rezervasyon Oluştur'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

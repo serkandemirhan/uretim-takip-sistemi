@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, FileText, Loader2, Plus, Search } from 'lucide-react'
+import { ArrowLeft, FileText, Loader2, Package, Plus, Search, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { jobsAPI, quotationsAPI } from '@/lib/api/client'
@@ -114,7 +114,7 @@ export default function JobQuotationsPage() {
       setJobQuotations(Array.isArray(payload) ? payload : [])
     } catch (error) {
       handleApiError(error, 'Load quotations for job')
-      toast.error('Teklifler yüklenemedi')
+      toast.error('Malzeme listeleri yüklenemedi')
       setJobQuotations([])
     } finally {
       setQuotationsLoading(false)
@@ -190,11 +190,11 @@ export default function JobQuotationsPage() {
     try {
       setUpdatingQuotationId(quotationId)
       await quotationsAPI.update(quotationId, { status: nextStatus })
-      toast.success('Teklif durumu güncellendi')
+      toast.success('Malzeme listesi durumu güncellendi')
       await loadJobQuotations(jobId)
     } catch (error: any) {
       handleApiError(error, 'Update quotation status in list')
-      toast.error(error?.response?.data?.error || 'Teklif durumu güncellenemedi')
+      toast.error(error?.response?.data?.error || 'Malzeme listesi durumu güncellenemedi')
     } finally {
       setUpdatingQuotationId(null)
     }
@@ -211,10 +211,10 @@ export default function JobQuotationsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Teklifler</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Malzeme Listeleri</h1>
           <p className="text-sm text-gray-500">
             {job
-              ? `${jobTitle}${revisionLabel ? ` (${revisionLabel})` : ''} işi için oluşturulan teklifler`
+              ? `${jobTitle}${revisionLabel ? ` (${revisionLabel})` : ''} işi için malzeme listeleri`
               : jobLoading
               ? 'İş bilgisi yükleniyor...'
               : 'İş bilgisi bulunamadı'}
@@ -230,10 +230,26 @@ export default function JobQuotationsPage() {
             </Link>
           )}
           {jobId && (
+            <Link href={`/jobs/${jobId}/materials`}>
+              <Button variant="outline">
+                <Package className="mr-2 h-4 w-4" />
+                Malzeme Rezervasyonları
+              </Button>
+            </Link>
+          )}
+          {jobId && (
+            <Link href={`/jobs/${jobId}/material-tracking`}>
+              <Button variant="outline">
+                <TrendingUp className="mr-2 h-4 w-4" />
+                Malzeme Takibi
+              </Button>
+            </Link>
+          )}
+          {jobId && (
             <Link href={`/jobs/${jobId}/quotation/new`}>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
-                Yeni Teklif
+                Yeni Malzeme Listesi
               </Button>
             </Link>
           )}
@@ -317,8 +333,8 @@ export default function JobQuotationsPage() {
       <Card>
         <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <CardTitle>Tüm Teklifler</CardTitle>
-            <p className="text-sm text-gray-500">Bu iş talebi için oluşturulan tüm teklifleri yönetin.</p>
+            <CardTitle>Tüm Malzeme Listeleri</CardTitle>
+            <p className="text-sm text-gray-500">Bu iş talebi için oluşturulan tüm malzeme listelerini yönetin.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {JOB_QUOTATION_HEADER_FILTERS.map((filter) => {
@@ -347,7 +363,7 @@ export default function JobQuotationsPage() {
               <Input
                 value={quotationSearchTerm}
                 onChange={(event) => setQuotationSearchTerm(event.target.value)}
-                placeholder="Teklif ara..."
+                placeholder="Malzeme listesi ara..."
                 className="pl-10"
               />
             </div>
@@ -361,14 +377,14 @@ export default function JobQuotationsPage() {
             <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
               <p>
                 {jobQuotations.length === 0
-                  ? 'Bu iş talebi için henüz teklif oluşturulmamış.'
-                  : 'Seçili filtrelerle eşleşen teklif bulunamadı.'}
+                  ? 'Bu iş talebi için henüz malzeme listesi oluşturulmamış.'
+                  : 'Seçili filtrelerle eşleşen malzeme listesi bulunamadı.'}
               </p>
               {jobQuotations.length === 0 ? (
                 <Link href={`/jobs/${jobId}/quotation/new`}>
                   <Button size="sm" variant="outline">
                     <Plus className="mr-2 h-4 w-4" />
-                    İlk Teklifi Oluştur
+                    İlk Malzeme Listesini Oluştur
                   </Button>
                 </Link>
               ) : (
@@ -382,7 +398,7 @@ export default function JobQuotationsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Teklif</TableHead>
+                    <TableHead>Malzeme Listesi</TableHead>
                     <TableHead>Açıklama</TableHead>
                     <TableHead>Durum</TableHead>
                     <TableHead>Kalem</TableHead>

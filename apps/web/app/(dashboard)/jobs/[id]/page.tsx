@@ -40,6 +40,7 @@ import {
   X,
   Plus,
   Trash2,
+  TrendingUp,
 } from 'lucide-react'
 import { FileText } from 'lucide-react'
 import Link from 'next/link'
@@ -2059,6 +2060,12 @@ async function handleCancel() {
               <Button variant="outline">
                 <Package className="w-4 h-4 mr-2" />
                 Malzeme Rezervasyonları
+              </Button>
+            </Link>
+            <Link href={`/jobs/${job.id}/material-tracking`}>
+              <Button variant="outline">
+                <TrendingUp className="w-4 h-4 mr-2" />
+                Malzeme Takibi
               </Button>
             </Link>
           </>

@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify
 from app.middleware.auth_middleware import token_required, permission_required
 from app.models.database import execute_query, execute_write
 import uuid
+from datetime import datetime
 
 stock_reservations_bp = Blueprint('stock_reservations', __name__, url_prefix='/api/stock-reservations')
 
@@ -105,7 +106,7 @@ def get_reservations():
 @stock_reservations_bp.route('/bulk', methods=['POST'])
 @token_required
 @permission_required('stocks', 'create')
-def create_bulk_reservations(current_user):
+def create_bulk_reservations():
     """Create multiple reservations for a job"""
     try:
         data = request.get_json()
@@ -148,7 +149,7 @@ def create_bulk_reservations(current_user):
                 res_data['reserved_quantity'],
                 res_data['planned_usage_date'],
                 res_data.get('notes'),
-                current_user['id']
+                request.current_user['user_id']
             ))
 
             created_reservations.append(reservation_id)
@@ -168,7 +169,7 @@ def create_bulk_reservations(current_user):
 @stock_reservations_bp.route('/<uuid:reservation_id>', methods=['PATCH'])
 @token_required
 @permission_required('stocks', 'update')
-def update_reservation(reservation_id, current_user):
+def update_reservation(reservation_id):
     """Update a reservation (quantity, date, notes)"""
     try:
         data = request.get_json()
@@ -222,7 +223,7 @@ def update_reservation(reservation_id, current_user):
 @stock_reservations_bp.route('/<uuid:reservation_id>/cancel', methods=['POST'])
 @token_required
 @permission_required('stocks', 'delete')
-def cancel_reservation(reservation_id, current_user):
+def cancel_reservation(reservation_id):
     """Cancel a reservation"""
     try:
         data = request.get_json()
@@ -249,9 +250,95 @@ def cancel_reservation(reservation_id, current_user):
                 cancellation_reason = %s,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
-        """, (current_user['id'], cancellation_reason, str(reservation_id)))
+        """, (request.current_user['user_id'], cancellation_reason, str(reservation_id)))
 
         return jsonify({'message': 'Reservation cancelled successfully'}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# =====================================================
+# USE RESERVATION (Create stock movement from reservation)
+# =====================================================
+@stock_reservations_bp.route('/<uuid:reservation_id>/use', methods=['POST'])
+@token_required
+@permission_required('stocks', 'create')
+def use_reservation(reservation_id):
+    """Create a stock movement (OUT) from a reservation"""
+    try:
+        data = request.get_json()
+        quantity_to_use = float(data.get('quantity', 0))
+
+        if quantity_to_use <= 0:
+            return jsonify({'error': 'Quantity must be greater than 0'}), 400
+
+        # Get reservation details
+        reservation = execute_query("""
+            SELECT sr.*, s.product_code, s.product_name, s.unit, s.current_quantity,
+                   j.job_number, j.title as job_title
+            FROM stock_reservations sr
+            JOIN stocks s ON sr.stock_id = s.id
+            JOIN jobs j ON sr.job_id = j.id
+            WHERE sr.id = %s
+        """, (str(reservation_id),))
+
+        if not reservation:
+            return jsonify({'error': 'Reservation not found'}), 404
+
+        res = reservation[0]
+
+        # Check if reservation is active
+        if res['status'] not in ['active', 'partially_used']:
+            return jsonify({'error': f'Cannot use reservation with status: {res["status"]}'}), 400
+
+        # Calculate remaining quantity
+        remaining = float(res['reserved_quantity']) - float(res['used_quantity'])
+
+        if quantity_to_use > remaining:
+            return jsonify({'error': f'Quantity exceeds remaining reservation ({remaining} {res["unit"]} available)'}), 400
+
+        # Check if stock has enough quantity
+        if quantity_to_use > float(res['current_quantity']):
+            return jsonify({'error': f'Insufficient stock ({res["current_quantity"]} {res["unit"]} available)'}), 400
+
+        # Create stock movement
+        movement_id = str(uuid.uuid4())
+        execute_write("""
+            INSERT INTO stock_movements
+              (id, stock_id, movement_type, quantity, job_id, purpose, notes, created_at, created_by)
+            VALUES
+              (%s, %s, 'OUT', %s, %s, %s, %s, NOW(), %s)
+        """, (
+            movement_id,
+            str(res['stock_id']),
+            quantity_to_use,
+            str(res['job_id']),
+            f"Rezervasyon kullanımı - {res['job_number']}: {res['job_title']}",
+            data.get('notes', f"Rezervasyon ID: {reservation_id}"),
+            request.current_user['user_id']
+        ))
+
+        # Update reservation used_quantity
+        new_used_quantity = float(res['used_quantity']) + quantity_to_use
+        new_status = 'fully_used' if new_used_quantity >= float(res['reserved_quantity']) else 'partially_used'
+
+        execute_write("""
+            UPDATE stock_reservations
+            SET used_quantity = %s,
+                status = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (new_used_quantity, new_status, str(reservation_id)))
+
+        return jsonify({
+            'message': 'Stock movement created successfully',
+            'movement_id': movement_id,
+            'used_quantity': quantity_to_use,
+            'new_total_used': new_used_quantity,
+            'remaining': float(res['reserved_quantity']) - new_used_quantity,
+            'status': new_status
+        }), 201
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

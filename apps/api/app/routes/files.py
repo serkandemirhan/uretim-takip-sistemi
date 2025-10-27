@@ -164,6 +164,34 @@ def _resolve_folder_path(ref_type, ref_id):
 
         return f"stocks/{product_code}/{date_str}_{movement_id}/"
 
+    if ref_type == "hr_employee_document":
+        row = execute_query_one(
+            """
+            SELECT hed.id,
+                   hed.user_id,
+                   u.full_name,
+                   u.username,
+                   dt.code AS document_code,
+                   dt.folder_code
+            FROM hr_employee_documents hed
+            JOIN users u ON u.id = hed.user_id
+            JOIN hr_document_types dt ON dt.id = hed.document_type_id
+            WHERE hed.id = %s
+            """,
+            (ref_id_str,),
+        )
+        if not row:
+            return None
+
+        full_name = row.get("full_name") or row.get("username") or "employee"
+        user_slug = secure_filename(full_name) or "employee"
+        user_folder = f"{user_slug}_{str(row['user_id'])[:8]}"
+        folder_code = row.get("folder_code") or row.get("document_code") or "document"
+        doc_folder = secure_filename(folder_code) or "document"
+        doc_folder = doc_folder.upper()
+
+        return _ensure_trailing_slash(f"hr/{user_folder}/{doc_folder}")
+
     # Fallback: use sanitized ref_type/ref_id
     return f"{secure_filename(ref_type)}/{secure_filename(ref_id_str)}/"
 

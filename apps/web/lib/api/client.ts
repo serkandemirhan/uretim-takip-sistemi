@@ -1,5 +1,7 @@
 import axios from 'axios'
 
+type FileRefType = 'job' | 'job_step' | 'stock_movement' | 'user' | 'hr_employee_document'
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
 export const apiClient = axios.create({
@@ -464,7 +466,7 @@ export const dashboardAPI = {
 export const filesAPI = {
   // presigned PUT için URL al
   getUploadUrl: async (payload: {
-    ref_type: 'job' | 'job_step' | 'stock_movement' | 'user'
+    ref_type: FileRefType
     ref_id: string
     filename: string
     content_type: string
@@ -476,7 +478,7 @@ export const filesAPI = {
   
 // yüklenen objeyi DB’ye linkle (bucket + object_key zorunlu)
   link: async (payload: {
-    ref_type: 'job' | 'job_step' | 'stock_movement' | 'user'
+    ref_type: FileRefType
     ref_id: string
     bucket: string
     object_key: string
@@ -494,7 +496,7 @@ export const filesAPI = {
     filename: string
     file_size?: number
     content_type?: string
-    ref_type: 'job' | 'job_step' | 'stock_movement' | 'user'
+    ref_type: FileRefType
     ref_id: string
     folder_path?: string
   }) => {
@@ -525,6 +527,93 @@ export const filesAPI = {
 
   getExplorer: async () => {
     const response = await apiClient.get('/api/files/explorer')
+    return response.data
+  },
+}
+
+export const hrDocumentsAPI = {
+  getDocumentTypes: async (params?: { include_inactive?: boolean }) => {
+    const response = await apiClient.get('/api/hr/document-types', { params })
+    return response.data
+  },
+  createDocumentType: async (data: any) => {
+    const response = await apiClient.post('/api/hr/document-types', data)
+    return response.data
+  },
+  updateDocumentType: async (id: string, data: any) => {
+    const response = await apiClient.patch(`/api/hr/document-types/${id}`, data)
+    return response.data
+  },
+
+  listDocumentRequirements: async (params?: { document_type_id?: string; role_id?: string }) => {
+    const response = await apiClient.get('/api/hr/document-requirements', { params })
+    return response.data
+  },
+  createDocumentRequirement: async (data: any) => {
+    const response = await apiClient.post('/api/hr/document-requirements', data)
+    return response.data
+  },
+  deleteDocumentRequirement: async (id: string) => {
+    const response = await apiClient.delete(`/api/hr/document-requirements/${id}`)
+    return response.data
+  },
+  syncDocumentRequirement: async (id: string) => {
+    const response = await apiClient.post(`/api/hr/document-requirements/${id}/sync`)
+    return response.data
+  },
+
+  listEmployeeDocuments: async (params?: { user_id?: string; status?: string; document_type_id?: string; category?: string }) => {
+    const response = await apiClient.get('/api/hr/employee-documents', { params })
+    return response.data
+  },
+
+  getEmployeeDocument: async (id: string) => {
+    const response = await apiClient.get(`/api/hr/employee-documents/${id}`)
+    return response.data
+  },
+
+  getSummary: async (params?: { user_id?: string; category?: string }) => {
+    const response = await apiClient.get('/api/hr/employee-documents/summary', { params })
+    return response.data
+  },
+
+  createEmployeeDocument: async (data: any) => {
+    const response = await apiClient.post('/api/hr/employee-documents', data)
+    return response.data
+  },
+
+  createDocumentVersion: async (documentId: string, data: any) => {
+    const response = await apiClient.post(`/api/hr/employee-documents/${documentId}/versions`, data)
+    return response.data
+  },
+
+  approveDocumentVersion: async (versionId: string, data?: { note?: string; valid_from?: string; valid_until?: string }) => {
+    const response = await apiClient.post(`/api/hr/document-versions/${versionId}/approve`, data || {})
+    return response.data
+  },
+
+  rejectDocumentVersion: async (versionId: string, data?: { note?: string }) => {
+    const response = await apiClient.post(`/api/hr/document-versions/${versionId}/reject`, data || {})
+    return response.data
+  },
+
+  listShareLinks: async (documentId: string) => {
+    const response = await apiClient.get(`/api/hr/employee-documents/${documentId}/share-links`)
+    return response.data
+  },
+
+  createShareLink: async (documentId: string, data: any) => {
+    const response = await apiClient.post(`/api/hr/employee-documents/${documentId}/share-links`, data)
+    return response.data
+  },
+
+  deactivateShareLink: async (shareLinkId: string) => {
+    const response = await apiClient.post(`/api/hr/document-share-links/${shareLinkId}/deactivate`)
+    return response.data
+  },
+
+  runExpiryCheck: async (data?: { reference_date?: string }) => {
+    const response = await apiClient.post('/api/hr/employee-documents/cron/expiry-check', data || {})
     return response.data
   },
 }

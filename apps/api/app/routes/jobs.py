@@ -2069,6 +2069,125 @@ def delete_job_step(step_id):
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
 
 
+@jobs_bp.route('/<job_id>/material-tracking', methods=['GET'])
+@token_required
+def get_job_material_tracking(job_id):
+    """İş için malzeme takibi: planlanan vs kullanılan malzemeler (planlı ve plansız)"""
+    try:
+        query = """
+            WITH planned_materials AS (
+                SELECT
+                    qi.stock_id,
+                    qi.product_code,
+                    qi.product_name,
+                    qi.unit,
+                    SUM(qi.quantity) as planned_quantity
+                FROM quotation_items qi
+                JOIN quotations q ON qi.quotation_id = q.id
+                WHERE q.job_id = %s
+                AND q.status = 'approved'
+                AND qi.stock_id IS NOT NULL
+                GROUP BY qi.stock_id, qi.product_code, qi.product_name, qi.unit
+            ),
+            used_materials AS (
+                SELECT
+                    sm.stock_id,
+                    SUM(sm.quantity) as used_quantity
+                FROM stock_movements sm
+                WHERE sm.job_id = %s
+                AND sm.movement_type = 'OUT'
+                GROUP BY sm.stock_id
+            ),
+            reserved_materials AS (
+                SELECT
+                    sr.stock_id,
+                    SUM(sr.reserved_quantity) as reserved_quantity,
+                    SUM(sr.used_quantity) as reserved_used_quantity
+                FROM stock_reservations sr
+                WHERE sr.job_id = %s
+                AND sr.status IN ('active', 'partially_used')
+                GROUP BY sr.stock_id
+            ),
+            all_stock_ids AS (
+                SELECT stock_id FROM planned_materials
+                UNION
+                SELECT stock_id FROM used_materials
+                UNION
+                SELECT stock_id FROM reserved_materials
+            )
+            SELECT
+                asi.stock_id,
+                COALESCE(pm.product_code, s.product_code) as product_code,
+                COALESCE(pm.product_name, s.product_name) as product_name,
+                COALESCE(pm.unit, s.unit) as unit,
+                COALESCE(pm.planned_quantity, 0) as planned_quantity,
+                COALESCE(um.used_quantity, 0) as used_quantity,
+                COALESCE(rm.reserved_quantity, 0) as reserved_quantity,
+                COALESCE(rm.reserved_used_quantity, 0) as reserved_used_quantity,
+                COALESCE(s.current_quantity, 0) as stock_current_quantity
+            FROM all_stock_ids asi
+            LEFT JOIN planned_materials pm ON asi.stock_id = pm.stock_id
+            LEFT JOIN used_materials um ON asi.stock_id = um.stock_id
+            LEFT JOIN reserved_materials rm ON asi.stock_id = rm.stock_id
+            JOIN stocks s ON asi.stock_id = s.id
+            ORDER BY COALESCE(pm.product_name, s.product_name)
+        """
+
+        materials = execute_query(query, (job_id, job_id, job_id))
+
+        materials_list = []
+        for material in materials:
+            planned = float(material['planned_quantity'])
+            used = float(material['used_quantity'])
+            reserved = float(material['reserved_quantity'])
+            reserved_used = float(material['reserved_used_quantity'])
+
+            # Kalan kullanılacak miktar
+            remaining = planned - used
+
+            # Henüz kullanılmamış rezervasyon
+            unused_reservation = reserved - reserved_used
+
+            # Durum hesaplama
+            if planned == 0:
+                # Planlanmamış ama kullanılmış malzeme
+                if used > 0:
+                    status = 'unplanned'  # Plansız kullanım
+                else:
+                    status = 'not_started'
+            elif used >= planned:
+                if used > planned:
+                    status = 'exceeded'  # Planlananın üzerinde kullanıldı
+                else:
+                    status = 'completed'  # Tam olarak planlanan kadar kullanıldı
+            elif used > 0:
+                status = 'in_progress'  # Kısmen kullanıldı
+            else:
+                status = 'not_started'  # Hiç kullanılmadı
+
+            materials_list.append({
+                'stock_id': str(material['stock_id']),
+                'product_code': material['product_code'],
+                'product_name': material['product_name'],
+                'unit': material['unit'],
+                'planned_quantity': planned,
+                'used_quantity': used,
+                'remaining_quantity': remaining,
+                'reserved_quantity': reserved,
+                'reserved_used_quantity': reserved_used,
+                'unused_reservation': unused_reservation,
+                'stock_current_quantity': float(material['stock_current_quantity']),
+                'usage_percentage': round((used / planned * 100) if planned > 0 else 100, 1),
+                'status': status
+            })
+
+        return jsonify({'data': materials_list}), 200
+
+    except Exception as e:
+        print(f"Error getting material tracking: {str(e)}")
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
 @jobs_bp.route('/<job_id>/timeline', methods=['GET'])
 @token_required
 def get_job_timeline(job_id):

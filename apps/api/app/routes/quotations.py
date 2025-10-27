@@ -814,3 +814,65 @@ def reorder_items(quotation_id):
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@quotations_bp.route('/job/<job_id>/approved-materials', methods=['GET'])
+@token_required
+def get_job_approved_quotation_materials(job_id):
+    """
+    Get all materials from approved quotations for a specific job.
+    This is used in the job materials reservation page.
+    """
+    try:
+        # Get all approved quotations for this job with their items
+        materials = execute_query("""
+            SELECT
+                qi.id as item_id,
+                qi.quotation_id,
+                qi.stock_id,
+                qi.product_code,
+                qi.product_name,
+                qi.category,
+                qi.quantity,
+                qi.unit,
+                qi.notes,
+                q.quotation_number,
+                q.name as quotation_name,
+                q.updated_at,
+                s.current_quantity as stock_quantity,
+                s.reserved_quantity,
+                s.available_quantity,
+                s.supplier_name,
+                s.unit_price
+            FROM quotation_items qi
+            INNER JOIN quotations q ON qi.quotation_id = q.id
+            LEFT JOIN stocks s ON qi.stock_id = s.id
+            WHERE q.job_id = %s
+              AND q.status = 'approved'
+              AND qi.stock_id IS NOT NULL
+            ORDER BY q.updated_at DESC, qi.order_index
+        """, (str(job_id),))
+
+        data = [{
+            'id': str(m['item_id']),
+            'quotation_id': str(m['quotation_id']),
+            'quotation_number': m['quotation_number'],
+            'quotation_name': m['quotation_name'],
+            'approved_at': m['updated_at'].isoformat() if m.get('updated_at') else None,
+            'stock_id': str(m['stock_id']),
+            'product_code': m['product_code'],
+            'product_name': m['product_name'],
+            'category': m.get('category'),
+            'quantity': float(m['quantity']) if m.get('quantity') else 0,
+            'unit': m.get('unit', 'adet'),
+            'unit_price': float(m['unit_price']) if m.get('unit_price') else 0,
+            'notes': m.get('notes'),
+            'stock_quantity': float(m['stock_quantity']) if m.get('stock_quantity') else 0,
+            'reserved_quantity': float(m['reserved_quantity']) if m.get('reserved_quantity') else 0,
+            'available_quantity': float(m['available_quantity']) if m.get('available_quantity') else 0,
+            'supplier_name': m.get('supplier_name'),
+        } for m in materials]
+
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500

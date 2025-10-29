@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { usersAPI, hrDocumentsAPI, filesAPI } from '@/lib/api/client'
@@ -102,8 +102,10 @@ type DocumentFetchResponse = {
   requires_approval?: boolean
 }
 
-export default function UserDetailPage({ params }: { params: { id: string } }) {
+export default function UserDetailPage() {
   const router = useRouter()
+  const params = useParams()
+  const userId = params?.id as string
   const { user: currentUser } = useAuth()
   const [user, setUser] = useState<UserDetail | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
@@ -114,22 +116,22 @@ export default function UserDetailPage({ params }: { params: { id: string } }) {
   const [categoryFilter, setCategoryFilter] = useState('')
 
   useEffect(() => {
-    void loadUser()
+    if (userId) void loadUser()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id])
+  }, [userId])
 
   useEffect(() => {
-    void loadDocuments()
+    if (userId) void loadDocuments()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id, categoryFilter])
+  }, [userId, categoryFilter])
 
   async function loadUser() {
     try {
       setLoadingUser(true)
-      const response = await usersAPI.getById(params.id)
+      const response = await usersAPI.getById(userId)
       const data = response?.data ?? response
       const detail: UserDetail = {
-        id: String(data?.id || data?.data?.id || params.id),
+        id: String(data?.id || data?.data?.id || userId),
         full_name: data?.full_name || data?.data?.full_name || '—',
         username: data?.username || data?.data?.username || '—',
         email: data?.email || data?.data?.email || '—',
@@ -162,7 +164,7 @@ export default function UserDetailPage({ params }: { params: { id: string } }) {
   async function loadDocuments() {
     try {
       setLoadingDocs(true)
-      const response = await hrDocumentsAPI.listEmployeeDocuments({ user_id: params.id, category: categoryFilter || undefined })
+      const response = await hrDocumentsAPI.listEmployeeDocuments({ user_id: userId, category: categoryFilter || undefined })
       const raw = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : []
       const mapped: EmployeeDocument[] = raw.map((item: DocumentFetchResponse) => ({
         id: String(item.id),

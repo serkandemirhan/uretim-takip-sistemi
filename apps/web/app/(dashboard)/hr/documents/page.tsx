@@ -397,6 +397,40 @@ export default function HrDocumentsPage() {
     return <Badge className={cn('capitalize', style)}>{label}</Badge>
   }
 
+  function handleExportCsv() {
+    if (!documents.length) {
+      toast.info('İndirilecek kayıt bulunmuyor')
+      return
+    }
+
+    const header = ['Klasör', 'Kod', 'Doküman', 'Personel', 'Statü', 'Geçerlilik Başlangıç', 'Geçerlilik Bitiş']
+    const rows = documents.map((doc) => [
+      doc.document_folder_code || '',
+      doc.document_type_code,
+      doc.document_type_name,
+      doc.user_name || '',
+      STATUS_LABELS[doc.status] || doc.status,
+      doc.valid_from || '',
+      doc.valid_until || '',
+    ])
+
+    const csvContent = [header, ...rows]
+      .map((columns) => columns.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const suffix = categoryFilter || 'all'
+
+    link.href = url
+    link.setAttribute('download', `hr_documents_${suffix}_${new Date().toISOString().slice(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -805,33 +839,3 @@ export default function HrDocumentsPage() {
     </div>
   )
 }
-  function handleExportCsv() {
-    if (!documents.length) {
-      toast.info('İndirilecek kayıt bulunmuyor')
-      return
-    }
-    const header = ['Klasör', 'Kod', 'Doküman', 'Personel', 'Statü', 'Geçerlilik Başlangıç', 'Geçerlilik Bitiş']
-    const rows = documents.map((doc) => [
-      doc.document_folder_code || '',
-      doc.document_type_code,
-      doc.document_type_name,
-      doc.user_name || '',
-      STATUS_LABELS[doc.status] || doc.status,
-      doc.valid_from || '',
-      doc.valid_until || '',
-    ])
-    const csvContent = [header, ...rows].map((columns) =>
-      columns.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')
-    ).join('\n')
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    const suffix = categoryFilter || 'all'
-    link.href = url
-    link.setAttribute('download', `hr_documents_${suffix}_${new Date().toISOString().slice(0,10)}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  }

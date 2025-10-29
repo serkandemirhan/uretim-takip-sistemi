@@ -524,7 +524,7 @@ export default function HrDocumentSettingsPage() {
                     onChange={(e) => setTypeForm((prev) => ({ ...prev, metadataSchema: e.target.value }))}
                   />
                   <p className="text-xs text-gray-500">
-                    Örn. {{ '"fields"' : '["issue_date","archive_no"]' }}. Bu alanlar yükleme formunda gösterilir.
+                    Örn. {'{"fields": ["issue_date","archive_no"]}'}. Bu alanlar yükleme formunda gösterilir.
                   </p>
                 </div>
                 <DialogFooter>

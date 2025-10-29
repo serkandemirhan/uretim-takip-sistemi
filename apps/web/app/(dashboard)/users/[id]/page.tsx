@@ -84,6 +84,7 @@ type EmployeeDocument = {
   document_type_id: string
   document_type_code: string
   document_type_name: string
+  document_folder_code?: string | null
   status: string
   valid_from?: string | null
   valid_until?: string | null

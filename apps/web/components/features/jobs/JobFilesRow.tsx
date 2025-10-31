@@ -201,7 +201,7 @@ export function JobFilesRow({
       )}
 
       <TooltipProvider>
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-3">
           {visibleFiles.map((file) => {
             const rawName = file.file_name || file.filename || file.file_path?.split('/').pop() || 'Dosya'
             const fileName = rawName
@@ -213,7 +213,7 @@ export function JobFilesRow({
             return (
               <div
                 key={file.id}
-                className="relative group w-full sm:w-[220px]"
+                className="relative group w-full max-w-[140px] sm:w-[140px]"
                 onMouseEnter={() => setHoveredFile(file.id)}
                 onMouseLeave={() => setHoveredFile(null)}
                 onFocus={() => setHoveredFile(file.id)}
@@ -223,15 +223,15 @@ export function JobFilesRow({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div
-                      className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm outline-none transition-all hover:-translate-y-1 hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                      className="flex h-full min-h-[160px] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm outline-none transition-all hover:-translate-y-1 hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                       tabIndex={0}
                     >
                       <div
                         className={cn(
                           'w-full bg-gray-100',
                           imageFile
-                            ? 'h-32 overflow-hidden'
-                            : 'flex h-32 items-center justify-center bg-blue-50 text-blue-600',
+                            ? 'h-20 overflow-hidden'
+                            : 'flex h-20 items-center justify-center bg-blue-50 text-blue-600',
                         )}
                       >
                         {imageFile ? (
@@ -242,20 +242,20 @@ export function JobFilesRow({
                             loading="lazy"
                           />
                         ) : (
-                          <div className="flex flex-col items-center justify-center gap-2">
+                          <div className="flex flex-col items-center justify-center gap-1 text-center px-1">
                             {getFileIcon(file.file_name || file.filename || rawName, file.file_type)}
-                            <span className="text-[11px] font-medium uppercase text-blue-600">
+                            <span className="text-[10px] font-medium uppercase text-blue-600">
                               {getFileTypeLabel(file.file_name || file.filename || rawName, file.file_type)}
                             </span>
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-1 flex-col justify-between p-3">
-                        <div className="line-clamp-2 text-sm font-medium text-gray-900 leading-tight">
+                      <div className="flex flex-1 flex-col justify-between px-2 py-2">
+                        <div className="line-clamp-2 text-[12px] font-medium text-gray-900 leading-tight">
                           {fileName}
                         </div>
                         {uploadedLabel && (
-                          <span className="mt-2 text-xs text-gray-400">{uploadedLabel}</span>
+                          <span className="mt-2 text-[10px] text-gray-400">{uploadedLabel}</span>
                         )}
                       </div>
                     </div>

@@ -2061,30 +2061,31 @@ async function handleCancel() {
         </Link>
       )}
 
-      {job?.id && (
-        <>
-          <Link href={`/jobs/${job.id}/quotations`}>
-            <Button variant="outline">
-              <FileText className="w-4 h-4 mr-2" />
-              Malzeme Listesi
-            </Button>
-          </Link>
-          <Link href={`/jobs/${job.id}/materials`}>
-            <Button variant="outline">
-              <Package className="w-4 h-4 mr-2" />
-              Malzeme Rezervasyonları
-            </Button>
-          </Link>
-          <Link href={`/jobs/${job.id}/material-tracking`}>
-            <Button variant="outline">
-              <TrendingUp className="w-4 h-4 mr-2" />
-              Malzeme Takibi
-            </Button>
-          </Link>
-        </>
-      )}
     </>
   )
+
+  const jobMaterialButtons = job?.id ? (
+    <div className="flex flex-wrap items-center justify-end gap-2 border-b bg-white px-4 py-3">
+      <Link href={`/jobs/${job.id}/quotations`}>
+        <Button variant="outline">
+          <FileText className="w-4 h-4 mr-2" />
+          Malzeme Listesi
+        </Button>
+      </Link>
+      <Link href={`/jobs/${job.id}/materials`}>
+        <Button variant="outline">
+          <Package className="w-4 h-4 mr-2" />
+          Malzeme Rezervasyonları
+        </Button>
+      </Link>
+      <Link href={`/jobs/${job.id}/material-tracking`}>
+        <Button variant="outline">
+          <TrendingUp className="w-4 h-4 mr-2" />
+          Malzeme Takibi
+        </Button>
+      </Link>
+    </div>
+  ) : null
 
   return (
     <div className="space-y-6 overflow-x-hidden">
@@ -2097,6 +2098,8 @@ async function handleCancel() {
             onUploadComplete={loadJob}
             actions={jobActionButtons}
           />
+
+          {jobMaterialButtons}
 
           <div className="flex h-[calc(100vh-300px)] border-t">
             <ProcessListSidebar

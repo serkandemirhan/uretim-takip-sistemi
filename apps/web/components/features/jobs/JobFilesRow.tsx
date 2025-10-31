@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import {
   FileText,
   Download,
@@ -21,6 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils/cn'
 
 export interface JobFile {
   id: string
@@ -40,6 +41,20 @@ interface JobFilesRowProps {
   maxVisible?: number
   showActions?: boolean
 }
+
+const IMAGE_EXTENSIONS = new Set([
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'webp',
+  'svg',
+  'bmp',
+  'tiff',
+  'ico',
+  'heic',
+  'heif',
+])
 
 function getFileIcon(fileName?: string, fileType?: string) {
   if (!fileName) {
@@ -109,6 +124,13 @@ function getFileTypeLabel(fileName?: string, fileType?: string) {
   return map[ext] || ext
 }
 
+function isImageFile(fileName?: string, fileType?: string) {
+  if (fileType?.toLowerCase().includes('image')) return true
+  const ext = fileName?.split('.').pop()?.toLowerCase()
+  if (!ext) return false
+  return IMAGE_EXTENSIONS.has(ext)
+}
+
 export function JobFilesRow({
   files,
   onDelete,
@@ -122,15 +144,6 @@ export function JobFilesRow({
   const hasMoreThanLimit = files.length > maxVisible
   const visibleFiles = expanded ? files : files.slice(0, maxVisible)
   const remainingCount = Math.max(0, files.length - maxVisible)
-
-  const gridColumns = useMemo(() => {
-    const base =
-      'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'
-    if (expanded) {
-      return `${base} 2xl:grid-cols-6`
-    }
-    return base
-  }, [expanded])
 
   const handleDownload = (e: React.MouseEvent, file: JobFile) => {
     e.stopPropagation()
@@ -188,46 +201,78 @@ export function JobFilesRow({
       )}
 
       <TooltipProvider>
-        <div className={`grid gap-3 ${gridColumns}`}>
+        <div className="flex flex-wrap gap-4">
           {visibleFiles.map((file) => {
             const rawName = file.file_name || file.filename || file.file_path?.split('/').pop() || 'Dosya'
             const fileName = rawName
+            const imageFile = isImageFile(file.file_name || file.filename || rawName, file.file_type)
+            const uploadedLabel = file.uploaded_at
+              ? new Date(file.uploaded_at).toLocaleString('tr-TR')
+              : null
+
             return (
               <div
                 key={file.id}
-                className="relative group"
+                className="relative group w-full sm:w-[220px]"
                 onMouseEnter={() => setHoveredFile(file.id)}
                 onMouseLeave={() => setHoveredFile(null)}
+                onFocus={() => setHoveredFile(file.id)}
+                onBlur={() => setHoveredFile((prev) => (prev === file.id ? null : prev))}
                 title={fileName}
               >
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
-                      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                        {getFileIcon(file.file_name || file.filename || rawName, file.file_type)}
+                    <div
+                      className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm outline-none transition-all hover:-translate-y-1 hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                      tabIndex={0}
+                    >
+                      <div
+                        className={cn(
+                          'w-full bg-gray-100',
+                          imageFile
+                            ? 'h-32 overflow-hidden'
+                            : 'flex h-32 items-center justify-center bg-blue-50 text-blue-600',
+                        )}
+                      >
+                        {imageFile ? (
+                          <img
+                            src={file.file_path}
+                            alt={fileName}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            {getFileIcon(file.file_name || file.filename || rawName, file.file_type)}
+                            <span className="text-[11px] font-medium uppercase text-blue-600">
+                              {getFileTypeLabel(file.file_name || file.filename || rawName, file.file_type)}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <div className="min-w-0 flex-1 text-left">
+                      <div className="flex flex-1 flex-col justify-between p-3">
                         <div className="line-clamp-2 text-sm font-medium text-gray-900 leading-tight">
                           {fileName}
                         </div>
+                        {uploadedLabel && (
+                          <span className="mt-2 text-xs text-gray-400">{uploadedLabel}</span>
+                        )}
                       </div>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-xs">
                     <div className="space-y-1">
                       <p className="font-medium break-words">{fileName}</p>
-                      {file.uploaded_at && (
-                        <p className="text-xs text-gray-400">
-                          Yükleme: {new Date(file.uploaded_at).toLocaleString('tr-TR')}
-                        </p>
+                      {uploadedLabel && (
+                        <p className="text-xs text-gray-400">Yükleme: {uploadedLabel}</p>
                       )}
                     </div>
                   </TooltipContent>
                 </Tooltip>
 
                 {showActions && hoveredFile === file.id && (
-                  <div className="absolute inset-0 flex items-center justify-end rounded-lg bg-black/10 pr-2">
-                    <div className="flex gap-1 rounded-full bg-white px-2 py-1 shadow">
+                  <div className="pointer-events-none absolute inset-0 flex items-start justify-end p-2">
+                    <div className="pointer-events-auto flex gap-1 rounded-full bg-white/95 px-2 py-1 shadow">
                       <Button
                         variant="ghost"
                         size="icon"

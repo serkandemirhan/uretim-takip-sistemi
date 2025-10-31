@@ -2005,6 +2005,87 @@ async function handleCancel() {
     )
   }
 
+  const jobActionButtons = (
+    <>
+      {job.status === 'draft' && (
+        <Button
+          onClick={handleActivate}
+          disabled={activating || actionLoading}
+          className="bg-green-600 hover:bg-green-700"
+        >
+          <Play className="w-4 h-4 mr-2" />
+          {activating ? 'Aktif Ediliyor...' : 'İşi Aktif Et'}
+        </Button>
+      )}
+
+      {(job.status === 'active' || job.status === 'in_progress') && (
+        <>
+          <Button
+            variant="outline"
+            onClick={() => setShowHoldDialog(true)}
+            disabled={actionLoading}
+            className="border-orange-300 text-orange-700 hover:bg-orange-50"
+          >
+            <Pause className="w-4 h-4 mr-2" />
+            Dondur
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setShowCancelDialog(true)}
+            disabled={actionLoading}
+            className="border-red-300 text-red-700 hover:bg-red-50"
+          >
+            <XCircle className="w-4 h-4 mr-2" />
+            İptal Et
+          </Button>
+        </>
+      )}
+
+      {job.status === 'on_hold' && (
+        <Button
+          onClick={handleResume}
+          disabled={actionLoading}
+          className="bg-blue-600 hover:bg-blue-700"
+        >
+          <Play className="w-4 h-4 mr-2" />
+          {actionLoading ? 'Devam Ettiriliyor...' : 'Devam Ettir'}
+        </Button>
+      )}
+
+      {(job.status === 'draft' || job.status === 'active' || job.status === 'on_hold') && (
+        <Link href={`/jobs/${job.id}/edit`}>
+          <Button variant="outline">
+            <Edit className="w-4 h-4 mr-2" />
+            Düzenle
+          </Button>
+        </Link>
+      )}
+
+      {job?.id && (
+        <>
+          <Link href={`/jobs/${job.id}/quotations`}>
+            <Button variant="outline">
+              <FileText className="w-4 h-4 mr-2" />
+              Malzeme Listesi
+            </Button>
+          </Link>
+          <Link href={`/jobs/${job.id}/materials`}>
+            <Button variant="outline">
+              <Package className="w-4 h-4 mr-2" />
+              Malzeme Rezervasyonları
+            </Button>
+          </Link>
+          <Link href={`/jobs/${job.id}/material-tracking`}>
+            <Button variant="outline">
+              <TrendingUp className="w-4 h-4 mr-2" />
+              Malzeme Takibi
+            </Button>
+          </Link>
+        </>
+      )}
+    </>
+  )
+
   return (
     <div className="space-y-6 overflow-x-hidden">
       {!isEditing ? (
@@ -2014,86 +2095,8 @@ async function handleCancel() {
             files={jobFiles.job_files || []}
             onDeleteFile={loadJob}
             onUploadComplete={loadJob}
+            actions={jobActionButtons}
           />
-
-          <div className="flex flex-wrap items-center justify-end gap-2 border-b bg-white px-4 py-3">
-            {job.status === 'draft' && (
-              <Button
-                onClick={handleActivate}
-                disabled={activating || actionLoading}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                {activating ? 'Aktif Ediliyor...' : 'İşi Aktif Et'}
-              </Button>
-            )}
-
-            {(job.status === 'active' || job.status === 'in_progress') && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowHoldDialog(true)}
-                  disabled={actionLoading}
-                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
-                >
-                  <Pause className="w-4 h-4 mr-2" />
-                  Dondur
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowCancelDialog(true)}
-                  disabled={actionLoading}
-                  className="border-red-300 text-red-700 hover:bg-red-50"
-                >
-                  <XCircle className="w-4 h-4 mr-2" />
-                  İptal Et
-                </Button>
-              </>
-            )}
-
-            {job.status === 'on_hold' && (
-              <Button
-                onClick={handleResume}
-                disabled={actionLoading}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                {actionLoading ? 'Devam Ettiriliyor...' : 'Devam Ettir'}
-              </Button>
-            )}
-
-            {(job.status === 'draft' || job.status === 'active' || job.status === 'on_hold') && (
-              <Link href={`/jobs/${job.id}/edit`}>
-                <Button variant="outline">
-                  <Edit className="w-4 h-4 mr-2" />
-                  Düzenle
-                </Button>
-              </Link>
-            )}
-
-            {job?.id && (
-              <>
-                <Link href={`/jobs/${job.id}/quotations`}>
-                  <Button variant="outline">
-                    <FileText className="w-4 h-4 mr-2" />
-                    Malzeme Listesi
-                  </Button>
-                </Link>
-                <Link href={`/jobs/${job.id}/materials`}>
-                  <Button variant="outline">
-                    <Package className="w-4 h-4 mr-2" />
-                    Malzeme Rezervasyonları
-                  </Button>
-                </Link>
-                <Link href={`/jobs/${job.id}/material-tracking`}>
-                  <Button variant="outline">
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    Malzeme Takibi
-                  </Button>
-                </Link>
-              </>
-            )}
-          </div>
 
           <div className="flex h-[calc(100vh-300px)] border-t">
             <ProcessListSidebar

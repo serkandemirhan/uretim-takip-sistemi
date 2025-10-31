@@ -25,6 +25,7 @@ interface FileUploadProps {
   disabled?: boolean
   className?: string
   children?: ReactNode
+  variant?: 'default' | 'compact'
 }
 
 export function FileUpload({
@@ -35,10 +36,12 @@ export function FileUpload({
   disabled = false,
   className,
   children,
+  variant = 'default',
 }: FileUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [queue, setQueue] = useState<QueueItem[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  const isCompact = variant === 'compact'
 
   const pickFiles = () => {
     if (disabled || uploading) return
@@ -170,14 +173,24 @@ export function FileUpload({
   }
 
   return (
-    <div className={cn('space-y-3', className)}>
+    <div
+      className={cn(
+        'space-y-3',
+        isCompact && 'md:flex md:items-start md:gap-4 md:space-y-0',
+        className,
+      )}
+    >
       {/* Drop zone */}
       <div
-        className={`w-full rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
+        className={cn(
+          'rounded-lg border-2 border-dashed p-4 text-center transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
           disabled || uploading
             ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
-            : 'cursor-pointer hover:bg-gray-50'
-        }`}
+            : 'cursor-pointer hover:bg-gray-50',
+          isCompact
+            ? 'max-w-[240px] self-start bg-white shadow-sm hover:-translate-y-0.5 hover:shadow-md md:w-[240px]'
+            : 'w-full',
+        )}
         onDragOver={(e) => {
           if (disabled || uploading) return
           e.preventDefault()
@@ -203,17 +216,32 @@ export function FileUpload({
           onChange={onSelect}
           disabled={uploading || disabled}
         />
-        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-start sm:text-left">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-500 sm:mr-3">
+        <div
+          className={cn(
+            'flex flex-col items-center gap-2 sm:flex-row sm:justify-start sm:text-left',
+            isCompact && 'sm:flex-col sm:items-center sm:text-center',
+          )}
+        >
+          <span
+            className={cn(
+              'flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-500 sm:mr-3',
+              isCompact && 'sm:mr-0',
+            )}
+          >
             <Upload className="h-4 w-4" />
           </span>
-          <div className="space-y-1 text-xs text-gray-500 sm:flex-1 sm:space-y-0">
+          <div
+            className={cn(
+              'space-y-1 text-xs text-gray-500 sm:flex-1 sm:space-y-0',
+              isCompact && 'sm:flex-none',
+            )}
+          >
             <p className="font-medium text-gray-700">
               {disabled
                 ? 'Dosya yükleme izniniz yok'
                 : 'Dosyaları buraya sürükleyin veya simgeye tıklayın'}
             </p>
-            <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-gray-400">
+            <div className="flex flex-wrap items-center justify-center gap-x-2 text-[11px] text-gray-400 sm:justify-start">
               {uploading ? (
                 <span className="text-blue-600">Yükleme devam ediyor…</span>
               ) : (
@@ -226,7 +254,10 @@ export function FileUpload({
 
       {children && (
         <div
-          className="w-full"
+          className={cn(
+            'w-full',
+            isCompact && 'md:flex-1',
+          )}
           onClick={(event) => event.stopPropagation()}
         >
           {children}
@@ -288,7 +319,5 @@ export function FileUpload({
         </div>
       )}
     </div>
-
-    
   )
 }

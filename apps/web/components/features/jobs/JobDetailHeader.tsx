@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -39,6 +40,7 @@ interface JobDetailHeaderProps {
   onDeleteFile?: (fileId: string) => void
   onDownloadFile?: (file: JobFile) => void
   onUploadComplete?: () => void
+  actions?: ReactNode
 }
 
 export function JobDetailHeader({
@@ -47,6 +49,7 @@ export function JobDetailHeader({
   onDeleteFile,
   onDownloadFile,
   onUploadComplete,
+  actions,
 }: JobDetailHeaderProps) {
   const customerName = job.customer?.name || job.customer_name || '-'
   const dealerName = job.dealer?.name || '-'
@@ -55,24 +58,31 @@ export function JobDetailHeader({
   return (
     <Card className="border-b rounded-none">
       <CardContent className="p-4 space-y-3">
-        {/* Back Button & Title Row */}
-        <div className="flex items-center gap-4">
-          <Link href="/jobs">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Geri
-            </Button>
-          </Link>
-          <div className="flex-1 flex items-center gap-3">
-            <span className="font-mono text-sm text-gray-600">#{job.job_number}</span>
-            <h1 className="text-xl font-bold text-gray-900">{job.title}</h1>
-            <Badge className={getStatusColor(job.status)}>
-              {getStatusLabel(job.status)}
-            </Badge>
-            <Badge className={getPriorityColor(job.priority || 'normal')}>
-              {getPriorityLabel(job.priority || 'normal')}
-            </Badge>
+        {/* Back Button, Title & Actions */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/jobs">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Geri
+              </Button>
+            </Link>
+            <div className="flex-1 flex items-center gap-3">
+              <span className="font-mono text-sm text-gray-600">#{job.job_number}</span>
+              <h1 className="text-xl font-bold text-gray-900">{job.title}</h1>
+              <Badge className={getStatusColor(job.status)}>
+                {getStatusLabel(job.status)}
+              </Badge>
+              <Badge className={getPriorityColor(job.priority || 'normal')}>
+                {getPriorityLabel(job.priority || 'normal')}
+              </Badge>
+            </div>
           </div>
+          {actions && (
+            <div className="flex flex-wrap items-center gap-2 md:ml-auto md:justify-end">
+              {actions}
+            </div>
+          )}
         </div>
 
         {/* Info Grid - Compact 2 lines */}
@@ -151,7 +161,7 @@ export function JobDetailHeader({
             refType="job"
             refId={job.id}
             onUploadComplete={onUploadComplete}
-            className="space-y-3"
+            variant="compact"
           >
             <JobFilesRow
               files={files}

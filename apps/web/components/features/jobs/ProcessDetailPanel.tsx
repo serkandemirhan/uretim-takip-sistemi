@@ -63,10 +63,14 @@ interface JobStep {
   has_production?: boolean
   notes?: Array<{
     id: string
-    note_text: string
-    created_at: string
+    note_text?: string
+    note?: string
+    created_at?: string
+    author_name?: string
+    user_id?: string | number
     user?: {
-      full_name: string
+      id?: string | number
+      full_name?: string
     }
   }>
 }
@@ -642,7 +646,11 @@ export function ProcessDetailPanel({
                 maxFiles={10}
               >
                 {filesList.length > 0 ? (
-                  <FileList files={filesList} canDelete={canDeleteFiles} />
+                  <FileList
+                    files={filesList}
+                    onDelete={onFileUploadComplete}
+                    allowDelete={canDeleteFiles}
+                  />
                 ) : (
                   <p className="text-sm text-gray-500">Henüz dosya eklenmemiş</p>
                 )}

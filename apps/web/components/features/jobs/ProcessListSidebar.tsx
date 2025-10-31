@@ -16,6 +16,7 @@ interface JobStep {
     description?: string
     group_name?: string
     group_id?: string
+    group_order_index?: number
   }
   assigned_to?: {
     id: string

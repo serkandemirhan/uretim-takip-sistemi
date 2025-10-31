@@ -8,6 +8,7 @@ import { ArrowLeft, Building2, Calendar, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { formatDate, getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabel } from '@/lib/utils/formatters'
 import { JobFilesRow } from './JobFilesRow'
+import type { JobFile } from './JobFilesRow'
 import { FileUpload } from '@/components/features/files/FileUpload'
 
 interface Job {
@@ -30,16 +31,6 @@ interface Job {
     id: string
     name: string
   }
-}
-
-interface JobFile {
-  id: string
-  file_name: string
-  file_path: string
-  file_type?: string
-  file_size?: number
-  uploaded_at?: string
-  uploaded_by?: string
 }
 
 interface JobDetailHeaderProps {

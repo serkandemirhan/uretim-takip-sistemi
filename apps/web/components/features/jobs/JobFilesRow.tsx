@@ -22,7 +22,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
-interface JobFile {
+export interface JobFile {
   id: string
   file_name?: string
   filename?: string
@@ -137,9 +137,14 @@ export function JobFilesRow({
     if (onDownload) {
       onDownload(file)
     } else {
+      const downloadName =
+        file.file_name ||
+        file.filename ||
+        file.file_path.split('/').pop() ||
+        'download'
       const link = document.createElement('a')
       link.href = file.file_path
-      link.download = file.file_name
+      link.download = downloadName
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)

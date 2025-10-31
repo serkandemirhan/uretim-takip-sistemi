@@ -23,6 +23,7 @@ import {
   ClipboardList,
   ShoppingCart,
   ShieldCheck,
+  Receipt,
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -69,6 +70,7 @@ export default function DashboardLayout({
     { name: 'Müşteriler', href: '/customers', icon: Building2, roles: ['yonetici', 'musteri_temsilcisi'] },
     { name: 'Teklifler', href: '/quotations', icon: ClipboardList, roles: ['yonetici', 'musteri_temsilcisi', 'satinalma'] },
     { name: 'Satın Alma', href: '/procurement/requests', icon: ShoppingCart, roles: ['yonetici', 'musteri_temsilcisi', 'satinalma', 'depocu'] },
+    { name: 'Tedarikçi Teklifleri', href: '/procurement/supplier-quotations', icon: Receipt, roles: ['yonetici', 'satinalma'] },
     { name: 'Mal Çıkışı', href: '/warehouse/job-material-issue', icon: Package, roles: ['yonetici', 'depocu'] },
     { name: 'Stoklar', href: '/stocks/inventory', icon: Package, roles: ['yonetici', 'depocu', 'satinalma'] },
     { name: 'Görevlerim', href: '/tasks', icon: CheckSquare, roles: ['operator'] },
@@ -144,6 +146,14 @@ export default function DashboardLayout({
             })}
           </nav>
 
+          {/* Notification - Always visible */}
+          <div className={cn(
+            'border-t border-gray-200',
+            collapsed ? 'px-2 py-3 flex justify-center' : 'px-4 py-3'
+          )}>
+            <NotificationsDropdown />
+          </div>
+
           {filteredSecondary.length > 0 && (
             <div
               className={cn(
@@ -211,17 +221,7 @@ export default function DashboardLayout({
       </aside>
 
       <div className={cn('min-h-screen flex flex-col transition-all duration-200', collapsed ? 'ml-16' : 'ml-64')}>
-        <header className="sticky top-0 z-20 bg-white border-b">
-          <div className="flex h-16 items-center justify-between px-6">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              Hoş geldiniz,
-              <span className="font-medium text-gray-900">{user?.full_name}</span>
-            </div>
-            <NotificationsDropdown />
-          </div>
-        </header>
-
-        <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">{children}</main>
+        <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4">{children}</main>
       </div>
     </div>
   )

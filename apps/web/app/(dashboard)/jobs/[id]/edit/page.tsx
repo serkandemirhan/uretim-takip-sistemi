@@ -15,10 +15,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Save, Plus, Trash2, GripVertical, Search, X, Workflow } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, GripVertical, Search, X, Workflow, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { handleApiError } from '@/lib/utils/error-handler'
+import { cn } from '@/lib/utils/cn'
 
 type EditableStep = {
   id: string
@@ -631,19 +632,19 @@ export default function EditJobPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {steps.length > 0 ? (
-              <div className="space-y-2">
-                <div className="hidden xl:grid grid-cols-[48px_minmax(200px,1fr)_minmax(160px,220px)_minmax(160px,220px)_auto] items-center gap-3 rounded-md bg-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                  <span>Sıra</span>
-                  <span>Süreç</span>
-                  <span>Sorumlu</span>
-                  <span>Makine</span>
-                  <span className="text-right">İşlem</span>
-                </div>
-                <div
-                  className="space-y-2"
-                  onDragOver={handleStepListDragOver}
-                  onDrop={(event) => event.preventDefault()}
-                >
+              <div className="overflow-x-auto">
+                <div className="space-y-2 min-w-[960px]">
+                  <div className="grid grid-cols-[48px_minmax(220px,1fr)_220px_220px_auto] items-center gap-4 rounded-md bg-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    <span>Sıra</span>
+                    <span>Süreç</span>
+                    <span>Sorumlu</span>
+                    <span>Makine</span>
+                    <span className="text-right">İşlem</span>
+                  </div>
+                  <div
+                    onDragOver={handleStepListDragOver}
+                    onDrop={(event) => event.preventDefault()}
+                  >
                   {steps.map((step, index) => {
                     const disabled = savingStepId === step.id || saving || step.isLocked
                     const canDelete = ['pending', 'ready'].includes(step.status)
@@ -652,7 +653,7 @@ export default function EditJobPage() {
                     return (
                       <div
                         key={step.id}
-                        className={`rounded-lg border bg-white px-3 py-2 shadow-sm transition ${step.isLocked ? 'opacity-80' : ''}`}
+                        className={`grid grid-cols-[48px_minmax(220px,1fr)_220px_220px_auto] items-center gap-4 rounded-lg border bg-white px-3 py-2 shadow-sm transition ${step.isLocked ? 'opacity-80' : ''}`}
                         draggable={!step.isLocked}
                         onDragStart={() => handleStepDragStart(step.id)}
                         onDragEnd={handleStepDragEnd}
@@ -662,83 +663,97 @@ export default function EditJobPage() {
                         }}
                         onDrop={(event) => event.preventDefault()}
                       >
-                        <div className="flex flex-wrap items-center gap-4">
-                          <div className={`flex items-center gap-2 flex-shrink-0 ${step.isLocked ? 'cursor-not-allowed text-gray-300' : 'cursor-grab text-gray-400 hover:text-gray-500'}`}>
-                            <GripVertical className="h-4 w-4" />
-                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
-                              {index + 1}
-                            </div>
+                        <div
+                          className={cn(
+                            'flex items-center gap-2',
+                            step.isLocked
+                              ? 'cursor-not-allowed text-gray-300'
+                              : 'cursor-grab text-gray-400 hover:text-gray-500',
+                          )}
+                          aria-hidden
+                        >
+                          <GripVertical className="h-4 w-4" />
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
+                            {index + 1}
                           </div>
-                          <div className="min-w-[200px] flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-semibold text-gray-900">{step.processName}</span>
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase ${getStatusBadge(step.status)}`}>
-                                {step.status.replace('_', ' ')}
-                              </span>
-                            </div>
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900">{step.processName}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase ${getStatusBadge(step.status)}`}>
+                              {step.status.replace('_', ' ')}
+                            </span>
                           </div>
-                          <div className="min-w-[160px] flex-1 sm:flex-none">
+                        </div>
+                        <div>
+                          <select
+                            value={step.assignedTo}
+                            onChange={(e) => handleStepFieldChange(step.id, 'assignedTo', e.target.value)}
+                            className="h-9 w-full rounded border border-gray-300 px-2 text-sm"
+                            disabled={disabled}
+                          >
+                            <option value="">Seçilmedi</option>
+                            {users.map((user) => (
+                              <option key={user.id} value={user.id}>
+                                {user.full_name || user.username}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          {step.isMachineBased ? (
                             <select
-                              value={step.assignedTo}
-                              onChange={(e) => handleStepFieldChange(step.id, 'assignedTo', e.target.value)}
+                              value={step.machineId}
+                              onChange={(e) => handleStepFieldChange(step.id, 'machineId', e.target.value)}
                               className="h-9 w-full rounded border border-gray-300 px-2 text-sm"
-                              disabled={disabled}
+                              disabled={machineFieldDisabled}
                             >
                               <option value="">Seçilmedi</option>
-                              {users.map((user) => (
-                                <option key={user.id} value={user.id}>
-                                  {user.full_name || user.username}
+                              {machines.map((machine) => (
+                                <option key={machine.id} value={machine.id}>
+                                  {machine.name}
                                 </option>
                               ))}
                             </select>
-                          </div>
-                          <div className="min-w-[160px] flex-1 sm:flex-none">
-                            {step.isMachineBased ? (
-                              <select
-                                value={step.machineId}
-                                onChange={(e) => handleStepFieldChange(step.id, 'machineId', e.target.value)}
-                                className="h-9 w-full rounded border border-gray-300 px-2 text-sm"
-                                disabled={machineFieldDisabled}
-                              >
-                                <option value="">Seçilmedi</option>
-                                {machines.map((machine) => (
-                                  <option key={machine.id} value={machine.id}>
-                                    {machine.name}
-                                  </option>
-                                ))}
-                              </select>
+                          ) : (
+                            <div className="flex h-9 w-full items-center text-xs italic text-gray-400">
+                              Makine gerekmez
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-start gap-2 lg:justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleStepSave(step.id)}
+                            disabled={disabled}
+                            className="h-9 w-9"
+                          >
+                            {savingStepId === step.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              <span className="text-xs text-gray-400 italic">Makine gerekmez</span>
+                              <Save className="h-4 w-4" />
                             )}
-                          </div>
-                          <div className="flex items-center gap-2">
+                            <span className="sr-only">Kaydet</span>
+                          </Button>
+                          {canDelete && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => handleStepSave(step.id)}
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => handleDeleteStep(step.id, step.processName)}
                               disabled={disabled}
-                              className="whitespace-nowrap"
                             >
-                              {savingStepId === step.id ? 'Kaydediliyor...' : 'Kaydet'}
+                              <Trash2 className="h-4 w-4" />
                             </Button>
-                            {canDelete && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700"
-                                onClick={() => handleDeleteStep(step.id, step.processName)}
-                                disabled={disabled}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
                     )
                   })}
+                  </div>
                 </div>
               </div>
             ) : (

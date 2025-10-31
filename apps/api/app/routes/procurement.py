@@ -914,7 +914,7 @@ def update_quotation_status(quotation_id):
         data = request.get_json()
         new_status = data.get('status')
 
-        if new_status not in ['pending', 'accepted', 'rejected', 'expired']:
+        if new_status not in ['pending', 'submitted', 'selected', 'rejected', 'expired']:
             return jsonify({'error': 'Geçersiz durum'}), 400
 
         update_query = """
@@ -1057,6 +1057,141 @@ def compare_quotations(rfq_id):
 
     except Exception as e:
         print(f"Error comparing quotations: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
+@procurement_bp.route('/supplier-quotations', methods=['GET'])
+@token_required
+def get_all_supplier_quotations():
+    """
+    Get all supplier quotations with filters
+    Supports filtering by:
+    - status: pending, submitted, selected, rejected, expired
+    - supplier_id: specific supplier
+    - rfq_id: specific RFQ
+    - date_from/date_to: date range
+    - search: search in quotation number, supplier name, RFQ title
+    """
+    try:
+        # Get filter parameters
+        status = request.args.get('status', '')
+        supplier_id = request.args.get('supplier_id', '')
+        rfq_id = request.args.get('rfq_id', '')
+        date_from = request.args.get('date_from', '')
+        date_to = request.args.get('date_to', '')
+        search = request.args.get('search', '')
+
+        # Base query
+        query = """
+            SELECT
+                sq.id,
+                sq.quotation_number,
+                sq.quotation_date,
+                sq.valid_until,
+                sq.status,
+                sq.currency,
+                sq.payment_terms,
+                sq.delivery_terms,
+                sq.notes,
+                sq.created_at,
+                s.id as supplier_id,
+                s.name as supplier_name,
+                s.contact_person as supplier_contact,
+                s.email as supplier_email,
+                s.phone as supplier_phone,
+                r.id as rfq_id,
+                r.rfq_number,
+                r.title as rfq_title,
+                r.due_date as rfq_due_date,
+                -- Calculate total amount in original currency
+                COALESCE(SUM(sqi.quantity * sqi.unit_price), 0) as total_amount,
+                -- Count items
+                COUNT(DISTINCT sqi.id) as item_count
+            FROM supplier_quotations sq
+            JOIN suppliers s ON sq.supplier_id = s.id
+            JOIN rfqs r ON sq.rfq_id = r.id
+            LEFT JOIN supplier_quotation_items sqi ON sq.id = sqi.quotation_id
+            WHERE 1=1
+        """
+
+        params = []
+
+        # Apply filters
+        if status:
+            query += " AND sq.status = %s"
+            params.append(status)
+
+        if supplier_id:
+            query += " AND sq.supplier_id = %s"
+            params.append(supplier_id)
+
+        if rfq_id:
+            query += " AND sq.rfq_id = %s"
+            params.append(rfq_id)
+
+        if date_from:
+            query += " AND sq.quotation_date >= %s"
+            params.append(date_from)
+
+        if date_to:
+            query += " AND sq.quotation_date <= %s"
+            params.append(date_to)
+
+        if search:
+            query += """ AND (
+                sq.quotation_number ILIKE %s OR
+                s.name ILIKE %s OR
+                r.rfq_number ILIKE %s OR
+                r.title ILIKE %s
+            )"""
+            search_param = f"%{search}%"
+            params.extend([search_param, search_param, search_param, search_param])
+
+        query += """
+            GROUP BY sq.id, sq.quotation_number, sq.quotation_date, sq.valid_until,
+                     sq.status, sq.currency, sq.payment_terms, sq.delivery_terms,
+                     sq.notes, sq.created_at, s.id, s.name, s.contact_person,
+                     s.email, s.phone, r.id, r.rfq_number, r.title, r.due_date
+            ORDER BY sq.quotation_date DESC, sq.created_at DESC
+        """
+
+        quotations = execute_query(query, tuple(params))
+
+        # Get summary stats
+        stats_query = """
+            SELECT
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status = 'pending') as pending,
+                COUNT(*) FILTER (WHERE status = 'submitted') as submitted,
+                COUNT(*) FILTER (WHERE status = 'selected') as selected,
+                COUNT(*) FILTER (WHERE status = 'rejected') as rejected,
+                COUNT(*) FILTER (WHERE status = 'expired') as expired
+            FROM supplier_quotations
+        """
+
+        stats = execute_query_one(stats_query)
+
+        # Get unique suppliers for filter dropdown
+        suppliers_query = """
+            SELECT DISTINCT s.id, s.name
+            FROM suppliers s
+            JOIN supplier_quotations sq ON s.id = sq.supplier_id
+            ORDER BY s.name
+        """
+        suppliers = execute_query(suppliers_query)
+
+        return jsonify({
+            'data': {
+                'quotations': quotations or [],
+                'stats': stats or {},
+                'suppliers': suppliers or []
+            }
+        }), 200
+
+    except Exception as e:
+        print(f"Error fetching supplier quotations: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500

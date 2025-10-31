@@ -122,11 +122,14 @@ def get_jobs():
                     p.name as process_name,
                     p.code as process_code,
                     p.description as process_description,
+                    p.group_id as process_group_id,
+                    pg.name as process_group_name,
                     u.full_name as assigned_to_name
                 FROM job_steps js
                 LEFT JOIN processes p ON js.process_id = p.id
+                LEFT JOIN process_groups pg ON p.group_id = pg.id
                 LEFT JOIN users u ON js.assigned_to = u.id
-                WHERE js.job_id = ANY(%s)
+                WHERE js.job_id = ANY(%s::uuid[])
                 ORDER BY js.job_id, COALESCE(js.order_index, 0)
             """
             try:
@@ -177,6 +180,8 @@ def get_jobs():
                     'process_name': step.get('process_name'),
                     'process_code': step.get('process_code'),
                     'process_description': step.get('process_description'),
+                    'process_group_id': str(step['process_group_id']) if step.get('process_group_id') else None,
+                    'process_group_name': step.get('process_group_name'),
                     'assigned_to': {
                         'id': str(step['assigned_to']) if step.get('assigned_to') else None,
                         'name': step.get('assigned_to_name')
@@ -248,7 +253,7 @@ def get_job(job_id):
         notes_by_step = {}
         if step_ids:
             notes_query = """
-                SELECT n.id, n.job_step_id, n.note, n.created_at, u.full_name AS author_name
+                SELECT n.id, n.job_step_id, n.user_id, n.note, n.created_at, u.full_name AS author_name
                 FROM job_step_notes n
                 LEFT JOIN users u ON n.user_id = u.id
                 WHERE n.job_step_id = ANY(%s::uuid[])
@@ -260,6 +265,7 @@ def get_job(job_id):
                 notes_by_step.setdefault(key, []).append({
                     'id': str(note['id']),
                     'note': note['note'],
+                    'user_id': str(note['user_id']) if note.get('user_id') else None,
                     'created_at': note['created_at'].isoformat() if note.get('created_at') else None,
                     'author_name': note.get('author_name')
                 })
@@ -309,6 +315,7 @@ def get_job(job_id):
                     } if step['machine_id'] else None,
                     'due_date': step['due_date'].isoformat() if step.get('due_date') else None,
                     'due_time': step['due_time'].isoformat() if step.get('due_time') else None,
+                    'estimated_duration': int(step['estimated_duration']) if step.get('estimated_duration') is not None else None,
                     'started_at': step['started_at'].isoformat() if step['started_at'] else None,
                     'completed_at': step['completed_at'].isoformat() if step['completed_at'] else None,
                     'production_quantity': float(step['production_quantity']) if step['production_quantity'] else None,

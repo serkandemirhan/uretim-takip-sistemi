@@ -20,6 +20,13 @@ import { cn } from '@/lib/utils/cn'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
+// Exchange rates (can be updated or fetched from API)
+const EXCHANGE_RATES: Record<string, number> = {
+  TRY: 1,
+  USD: 34.5,
+  EUR: 37.2,
+}
+
 interface RFQItem {
   id: string
   product_code: string
@@ -103,6 +110,11 @@ export default function QuotationComparisonPage() {
     }
   }
 
+  const convertToTRY = (amount: number, currency: string): number => {
+    const rate = EXCHANGE_RATES[currency] || 1
+    return amount * rate
+  }
+
   const handleStatusChange = async (quotationId: string, newStatus: string) => {
     try {
       const token = localStorage.getItem('token')
@@ -116,11 +128,16 @@ export default function QuotationComparisonPage() {
         body: JSON.stringify({ status: newStatus }),
       })
 
-      if (!res.ok) throw new Error('Durum güncellenemedi')
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Durum güncellenemedi' }))
+        console.error('Status change error:', errorData)
+        throw new Error(errorData.error || 'Durum güncellenemedi')
+      }
 
       toast.success('Teklif durumu güncellendi')
       loadComparisonData()
     } catch (error: any) {
+      console.error('Status change exception:', error)
       toast.error(error.message || 'Durum güncellenirken hata oluştu')
     }
   }
@@ -132,7 +149,9 @@ export default function QuotationComparisonPage() {
       .filter((q) => q.status !== 'rejected')
       .map((q) => {
         const item = q.items.find((i) => i.rfq_item_id === rfqItemId)
-        return item?.unit_price || null
+        if (!item?.unit_price) return null
+        // Convert to TRY for fair comparison
+        return convertToTRY(item.unit_price, item.currency)
       })
       .filter((p) => p !== null) as number[]
 
@@ -140,15 +159,34 @@ export default function QuotationComparisonPage() {
     return Math.min(...prices)
   }
 
+  const getTotalInTRY = (quotation: Quotation): number => {
+    return quotation.items.reduce((sum, item) => {
+      return sum + convertToTRY(item.total_price, item.currency)
+    }, 0)
+  }
+
   const getBestTotalPrice = (): number | null => {
     if (!data) return null
 
     const totals = data.quotations
       .filter((q) => q.status !== 'rejected')
-      .map((q) => q.total_amount)
+      .map((q) => getTotalInTRY(q))
 
     if (totals.length === 0) return null
     return Math.min(...totals)
+  }
+
+  const areAllQuantitiesSame = (rfqItem: RFQItem): boolean => {
+    if (!data) return true
+
+    const quantities = data.quotations
+      .map((q) => {
+        const item = q.items.find((i) => i.rfq_item_id === rfqItem.id)
+        return item?.quantity
+      })
+      .filter((q) => q !== undefined)
+
+    return quantities.every((q) => q === quantities[0])
   }
 
   const getStatusBadge = (status: string) => {
@@ -160,7 +198,7 @@ export default function QuotationComparisonPage() {
             Beklemede
           </Badge>
         )
-      case 'accepted':
+      case 'selected':
         return (
           <Badge className="bg-green-100 text-green-700 border-green-200">
             <CheckCircle className="w-3 h-3 mr-1" />
@@ -258,7 +296,7 @@ export default function QuotationComparisonPage() {
               <div>
                 <p className="text-sm text-gray-600">Kabul Edildi</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {data.quotations.filter((q) => q.status === 'accepted').length}
+                  {data.quotations.filter((q) => q.status === 'selected').length}
                 </p>
               </div>
               <CheckCircle className="h-8 w-8 text-green-600 opacity-50" />
@@ -308,7 +346,7 @@ export default function QuotationComparisonPage() {
                               size="sm"
                               variant="outline"
                               className="text-xs h-7 text-green-600 hover:bg-green-50"
-                              onClick={() => handleStatusChange(quotation.id, 'accepted')}
+                              onClick={() => handleStatusChange(quotation.id, 'selected')}
                             >
                               <CheckCircle className="w-3 h-3 mr-1" />
                               Kabul
@@ -332,6 +370,7 @@ export default function QuotationComparisonPage() {
               <tbody>
                 {data.rfq_items.map((rfqItem) => {
                   const bestPrice = getBestPrice(rfqItem.id)
+                  const showQuantity = !areAllQuantitiesSame(rfqItem)
 
                   return (
                     <tr key={rfqItem.id} className="border-b hover:bg-gray-50">
@@ -343,7 +382,11 @@ export default function QuotationComparisonPage() {
                       </td>
                       {data.quotations.map((quotation) => {
                         const item = quotation.items.find((i) => i.rfq_item_id === rfqItem.id)
-                        const isBestPrice = item?.unit_price === bestPrice && bestPrice !== null
+                        const itemPriceInTRY = item?.unit_price
+                          ? convertToTRY(item.unit_price, item.currency)
+                          : null
+                        const isBestPrice =
+                          itemPriceInTRY === bestPrice && bestPrice !== null
                         const isRejected = quotation.status === 'rejected'
 
                         return (
@@ -371,9 +414,11 @@ export default function QuotationComparisonPage() {
                                   }) || '-'}{' '}
                                   {item.currency}
                                 </div>
-                                <div className="text-xs text-gray-600">
-                                  Miktar: {item.quantity} {rfqItem.unit}
-                                </div>
+                                {showQuantity && (
+                                  <div className="text-xs text-gray-600">
+                                    Miktar: {item.quantity} {rfqItem.unit}
+                                  </div>
+                                )}
                                 {item.lead_time_days && (
                                   <div className="text-xs text-gray-500">
                                     <Clock className="w-3 h-3 inline mr-1" />
@@ -381,7 +426,11 @@ export default function QuotationComparisonPage() {
                                   </div>
                                 )}
                                 <div className="text-xs font-semibold text-gray-700 pt-1 border-t">
-                                  Toplam: {item.total_price.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                  Toplam:{' '}
+                                  {convertToTRY(item.total_price, item.currency).toLocaleString(
+                                    'tr-TR',
+                                    { minimumFractionDigits: 2 }
+                                  )}
                                 </div>
                               </div>
                             ) : (
@@ -400,7 +449,8 @@ export default function QuotationComparisonPage() {
                     <div className="text-lg">TOPLAM TUTAR</div>
                   </td>
                   {data.quotations.map((quotation) => {
-                    const isBest = quotation.total_amount === bestTotal
+                    const totalInTRY = getTotalInTRY(quotation)
+                    const isBest = Math.abs(totalInTRY - (bestTotal || 0)) < 0.01
                     const isRejected = quotation.status === 'rejected'
 
                     return (
@@ -419,7 +469,7 @@ export default function QuotationComparisonPage() {
                           )}
                         >
                           {isBest && !isRejected && <Award className="w-5 h-5 text-green-600" />}
-                          {quotation.total_amount.toLocaleString('tr-TR', {
+                          {totalInTRY.toLocaleString('tr-TR', {
                             minimumFractionDigits: 2,
                           })}{' '}
                           TRY
@@ -449,7 +499,9 @@ export default function QuotationComparisonPage() {
                 </tr>
 
                 <tr className="border-b bg-gray-50">
-                  <td className="py-3 px-2 font-medium sticky left-0 bg-gray-50">Ödeme Koşulları</td>
+                  <td className="py-3 px-2 font-medium sticky left-0 bg-gray-50">
+                    Ödeme Koşulları
+                  </td>
                   {data.quotations.map((quotation) => (
                     <td key={quotation.id} className="py-3 px-4 text-center text-sm">
                       {quotation.payment_terms || '-'}
@@ -458,7 +510,9 @@ export default function QuotationComparisonPage() {
                 </tr>
 
                 <tr className="border-b bg-gray-50">
-                  <td className="py-3 px-2 font-medium sticky left-0 bg-gray-50">Teslimat Koşulları</td>
+                  <td className="py-3 px-2 font-medium sticky left-0 bg-gray-50">
+                    Teslimat Koşulları
+                  </td>
                   {data.quotations.map((quotation) => (
                     <td key={quotation.id} className="py-3 px-4 text-center text-sm">
                       {quotation.delivery_terms || '-'}
@@ -487,9 +541,12 @@ export default function QuotationComparisonPage() {
                     <Award className="w-3 h-3 inline" />
                     ):</strong> En iyi fiyat işareti
                 </li>
+                <li>
+                  <strong>Toplam:</strong> Tüm para birimleri TL'ye çevrilerek karşılaştırılır
+                  (USD: {EXCHANGE_RATES.USD} TRY, EUR: {EXCHANGE_RATES.EUR} TRY)
+                </li>
                 <li>Reddedilen teklifler bulanık görünür ve karşılaştırmaya dahil edilmez</li>
                 <li>Teklifleri doğrudan bu ekrandan kabul veya reddedebilirsiniz</li>
-                <li>Toplam tutar karşılaştırması sayfa altındadır</li>
               </ul>
             </div>
           </div>

@@ -22,7 +22,6 @@ import {
   User,
   Building2,
   Store,
-  ArrowLeft,
   Play,
   CheckCircle,
   Clock,
@@ -56,6 +55,9 @@ import { handleApiError, debugLog } from '@/lib/utils/error-handler'
 
 import { FileUpload } from '@/components/features/files/FileUpload'
 import { FileList } from '@/components/features/files/FileList'
+import { JobDetailHeader } from '@/components/features/jobs/JobDetailHeader'
+import { ProcessListSidebar } from '@/components/features/jobs/ProcessListSidebar'
+import { ProcessDetailPanel } from '@/components/features/jobs/ProcessDetailPanel'
 
 const MINUTES_PER_HOUR = 60
 const HOURS_PER_DAY = 24
@@ -130,6 +132,13 @@ const [newStep, setNewStep] = useState({
   const [customers, setCustomers] = useState<any[]>([])
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({})
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
+
+  // Get selected step
+  const selectedStep = useMemo(() => {
+    if (!selectedStepId || !job?.steps) return null
+    return job.steps.find((s: any) => s.id === selectedStepId) || null
+  }, [selectedStepId, job?.steps])
 
   // Group steps by process group with order
   const groupedSteps = useMemo(() => {
@@ -155,6 +164,13 @@ const [newStep, setNewStep] = useState({
       loadJob()
     }
   }, [params.id])
+
+  // Auto-select first step when job loads
+  useEffect(() => {
+    if (job?.steps && job.steps.length > 0 && !selectedStepId) {
+      setSelectedStepId(job.steps[0].id)
+    }
+  }, [job?.steps, selectedStepId])
 
   useEffect(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem('user') : null
@@ -548,32 +564,93 @@ function handleCompletionFieldChange(stepId: string, field: string, value: strin
   })
 }
 
-async function handleStepSave(stepId: string) {
-  const form = stepForms.find((step) => step.id === stepId)
-  if (!form) return
+type StepSaveOverride = {
+  assigned_to?: string | null
+  machine_id?: string | null
+  due_date?: string | null
+  due_time?: string | null
+  estimated_duration?: number | null
+}
 
-  const dueDate = normalizeDate(form.due_date)
-  const dueTime = normalizeTime(form.due_time)
+async function handleStepSave(stepId: string, override?: StepSaveOverride) {
+  const form = stepForms.find((step) => step.id === stepId)
+
+  if (!form && !override) {
+    return
+  }
+
+  const hasOverride = (field: keyof StepSaveOverride) =>
+    override !== undefined && Object.prototype.hasOwnProperty.call(override, field)
+
+  const assignedRaw = hasOverride('assigned_to')
+    ? override?.assigned_to
+    : form?.assigned_to
+  const machineRaw = hasOverride('machine_id')
+    ? override?.machine_id
+    : form?.machine_id
+  const dueDateRaw = hasOverride('due_date')
+    ? override?.due_date ?? ''
+    : form?.due_date ?? ''
+  const dueTimeRaw = hasOverride('due_time')
+    ? override?.due_time ?? ''
+    : form?.due_time ?? ''
+  const estimatedRaw = hasOverride('estimated_duration')
+    ? override?.estimated_duration ?? null
+    : combineDurationMinutes(
+        form?.estimated_duration_days ?? 0,
+        form?.estimated_duration_hours ?? 0,
+      )
+
+  const dueDate = normalizeDate(dueDateRaw)
+  const dueTime = normalizeTime(dueTimeRaw)
+
+  const normalizeEstimated = (value: number | null | undefined) => {
+    if (value === null || value === undefined) return null
+    const numeric = Number(value)
+    if (Number.isNaN(numeric)) return null
+    return Math.max(0, Math.floor(numeric))
+  }
+
+  const normalizedEstimated = normalizeEstimated(estimatedRaw)
+
+  if (override) {
+    setStepForms((prev) =>
+      prev.map((item) => {
+        if (item.id !== stepId) return item
+        const nextDuration = normalizedEstimated ?? item.estimated_duration_minutes ?? 0
+        const durationSplit = splitDurationMinutes(nextDuration)
+        return {
+          ...item,
+          assigned_to:
+            hasOverride('assigned_to') ? (assignedRaw ? String(assignedRaw) : '') : item.assigned_to,
+          machine_id:
+            hasOverride('machine_id') ? (machineRaw ? String(machineRaw) : '') : item.machine_id,
+          due_date: dueDate,
+          due_time: dueTime,
+          estimated_duration_minutes: nextDuration,
+          estimated_duration_days: durationSplit.days,
+          estimated_duration_hours: durationSplit.hours,
+        }
+      }),
+    )
+  }
 
   if (!dueDate || !dueTime) {
     toast.error('Her süreç için termin tarihi ve saati zorunludur')
     return
   }
 
-  const payload: any = {
-    assigned_to: form.assigned_to || null,
-    machine_id: form.machine_id || null,
-    is_parallel: form.is_parallel,
-    estimated_duration: combineDurationMinutes(
-      form.estimated_duration_days,
-      form.estimated_duration_hours,
-    ),
+  const payload: Record<string, any> = {
+    assigned_to: assignedRaw ? String(assignedRaw) : null,
+    machine_id: machineRaw ? String(machineRaw) : null,
+    is_parallel: form?.is_parallel ?? false,
+    estimated_duration: normalizedEstimated,
     due_date: dueDate,
     due_time: dueTime,
-    requirements: form.requirements || null,
+    requirements: form?.requirements || null,
   }
 
-  if (form.process_id) {
+  if (form?.process_id) {
     payload.process_id = form.process_id
   }
 
@@ -1502,7 +1579,7 @@ async function handleCancel() {
                   <div>
                     <p className="text-xs uppercase text-gray-500">Tahmini Süre</p>
                     <p className="font-medium text-gray-900">
-                      {formatDurationLabel(currentDurationMinutes)}
+                    {formatDurationLabel(currentDurationMinutes)}
                     </p>
                   </div>
                   <div>
@@ -1930,69 +2007,16 @@ async function handleCancel() {
 
   return (
     <div className="space-y-6 overflow-x-hidden">
-      {/* Back Button */}
-      <Link href="/jobs">
-        <Button variant="ghost" size="sm">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          İşlere Dön
-        </Button>
-      </Link>
+      {!isEditing ? (
+        <div className="space-y-0">
+          <JobDetailHeader
+            job={job}
+            files={jobFiles.job_files || []}
+            onDeleteFile={loadJob}
+            onUploadComplete={loadJob}
+          />
 
-
-    {/* Header */}
-    <div className="flex items-start justify-between">
-      <div>
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl font-bold text-gray-900">
-            {isEditing ? jobForm.title || job.title : job.title}
-          </h1>
-          <Badge className={getStatusColor(job.status)}>
-            {getStatusLabel(job.status)}
-          </Badge>
-          <Badge
-            variant="outline"
-            className={getPriorityColor(isEditing ? jobForm.priority : job.priority)}
-          >
-            {getPriorityLabel(isEditing ? jobForm.priority : job.priority)}
-          </Badge>
-        </div>
-        <p className="text-gray-600 flex items-center gap-2">
-          <span>{job.job_number}</span>
-          <span>•</span>
-          <span>Rev.{job.revision_no}</span>
-          {job.id && (
-            <>
-              <span>•</span>
-              <Link
-                href={`/jobs/${job.id}/revisions`}
-                className="text-sm font-medium text-blue-600 hover:underline"
-              >
-                Geçmiş
-              </Link>
-            </>
-          )}
-        </p>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-2 justify-end">
-        {isEditing ? (
-          <>
-            <Button
-              variant="outline"
-              onClick={cancelEditing}
-              disabled={savingJob || savingStepId !== null || addingStep}
-            >
-              <X className="w-4 h-4 mr-2" />
-              İptal
-            </Button>
-            <Button onClick={handleSaveJob} disabled={savingJob}>
-              <Save className="w-4 h-4 mr-2" />
-              {savingJob ? 'Kaydediliyor...' : 'Kaydet'}
-            </Button>
-          </>
-        ) : (
-          <>
+          <div className="flex flex-wrap items-center justify-end gap-2 border-b bg-white px-4 py-3">
             {job.status === 'draft' && (
               <Button
                 onClick={handleActivate}
@@ -2046,106 +2070,69 @@ async function handleCancel() {
                 </Button>
               </Link>
             )}
-          </>
-        )}
-        {job?.id && (
-          <>
-            <Link href={`/jobs/${job.id}/quotations`}>
-              <Button variant="outline">
-                <FileText className="w-4 h-4 mr-2" />
-                Tekliflere Git
-              </Button>
-            </Link>
-            <Link href={`/jobs/${job.id}/materials`}>
-              <Button variant="outline">
-                <Package className="w-4 h-4 mr-2" />
-                Malzeme Rezervasyonları
-              </Button>
-            </Link>
-            <Link href={`/jobs/${job.id}/material-tracking`}>
-              <Button variant="outline">
-                <TrendingUp className="w-4 h-4 mr-2" />
-                Malzeme Takibi
-              </Button>
-            </Link>
-          </>
-        )}
-      </div>
-    </div>
 
-      {/* Draft Warning */}
-      {job.status === 'draft' && (
-        <Card className="bg-yellow-50 border-yellow-200">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-              <div>
-                <h3 className="font-medium text-yellow-900 mb-1">Taslak Durumda</h3>
-                <p className="text-sm text-yellow-700">
-                  Bu iş henüz taslak durumunda. İşi aktif ettiğinizde ilk süreç başlatılabilir hale gelecektir.
-                  {(!job.steps || job.steps.length === 0) && (
-                    <span className="block mt-1 font-medium">
-                      ⚠️ Bu işe henüz süreç eklenmemiş!
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            {job?.id && (
+              <>
+                <Link href={`/jobs/${job.id}/quotations`}>
+                  <Button variant="outline">
+                    <FileText className="w-4 h-4 mr-2" />
+                    Malzeme Listesi
+                  </Button>
+                </Link>
+                <Link href={`/jobs/${job.id}/materials`}>
+                  <Button variant="outline">
+                    <Package className="w-4 h-4 mr-2" />
+                    Malzeme Rezervasyonları
+                  </Button>
+                </Link>
+                <Link href={`/jobs/${job.id}/material-tracking`}>
+                  <Button variant="outline">
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    Malzeme Takibi
+                  </Button>
+                </Link>
+              </>
+            )}
+          </div>
 
-      {/* On Hold Warning */}
-      {job.status === 'on_hold' && (
-        <Card className="bg-orange-50 border-orange-200">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <Pause className="w-5 h-5 text-orange-600 mt-0.5" />
-              <div>
-                <h3 className="font-medium text-orange-900 mb-1">İş Donduruldu</h3>
-                <p className="text-sm text-orange-700">
-                  Bu iş dondurulmuş durumda. Tüm süreçler beklemede. Devam ettirmek için yukarıdaki butona tıklayın.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Canceled Warning */}
-      {job.status === 'canceled' && (
-        <Card className="bg-red-50 border-red-200">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <XCircle className="w-5 h-5 text-red-600 mt-0.5" />
-              <div>
-                <h3 className="font-medium text-red-900 mb-1">İş İptal Edildi</h3>
-                <p className="text-sm text-red-700">
-                  Bu iş iptal edilmiştir. Tüm süreçler durduruldu.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Completed Info */}
-      {job.status === 'completed' && (
-        <Card className="bg-green-50 border-green-200">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-              <div>
-                <h3 className="font-medium text-green-900 mb-1">İş Tamamlandı</h3>
-                <p className="text-sm text-green-700">
-                  Bu iş başarıyla tamamlanmıştır. Tüm süreçler bitmiştir.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
+          <div className="flex h-[calc(100vh-300px)] border-t">
+            <ProcessListSidebar
+              steps={job.steps || []}
+              selectedStepId={selectedStepId}
+              onSelectStep={setSelectedStepId}
+            />
+            <ProcessDetailPanel
+              step={selectedStep}
+              files={selectedStep ? jobFiles.process_files?.find(
+                (pf: any) => pf.process_id === selectedStep.process?.id
+              ) : null}
+              users={users}
+              machines={machines}
+              currentUser={currentUser}
+              canUploadFiles={
+                currentUser?.role === 'yonetici' ||
+                currentUser?.role === 'admin' ||
+                (selectedStep?.assigned_to?.id &&
+                  currentUser?.id &&
+                  String(selectedStep.assigned_to.id) === String(currentUser.id))
+              }
+              canDeleteFiles={
+                currentUser?.role === 'yonetici' || currentUser?.role === 'admin'
+              }
+              onStartStep={handleStartStep}
+              onCompleteStep={handleCompleteStep}
+              onPauseStep={handlePauseStep}
+              onResumeStep={handleResumeStep}
+              onAddNote={handleAddStepNote}
+              onSave={handleStepSave}
+              onFileUploadComplete={loadJob}
+              actionLoading={selectedStep ? stepActionLoading[selectedStep.id] || false : false}
+            />
+          </div>
+        </div>
+      ) : (
+        /* OLD LAYOUT - When editing */
+        <>
       <div className="grid gap-6 lg:grid-cols-[360px_1fr] min-w-0">
         <div className="space-y-6 min-w-0">
           <Card>
@@ -2563,6 +2550,8 @@ async function handleCancel() {
 
         </div>
       </div>
+        </>
+      )}
 
       {/* Hold Dialog */}
       {showHoldDialog && (

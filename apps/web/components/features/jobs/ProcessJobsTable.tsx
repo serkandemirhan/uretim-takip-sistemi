@@ -1,10 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { MoreVertical } from 'lucide-react'
+import { Settings2, Eye, EyeOff } from 'lucide-react'
 import { processesAPI } from '@/lib/api/client'
+import { useAuth } from '@/lib/hooks/useAuth'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 
 interface Job {
   id: string
@@ -21,6 +31,8 @@ interface Job {
     order_index: number
     process_name?: string
     process_code?: string
+    process_group_id?: string | null
+    process_group_name?: string | null
     notes?: string | null
     completed_at?: string | null
     completed_by?: string | null
@@ -45,6 +57,8 @@ interface Job {
 
 interface ProcessJobsTableProps {
   jobs: Job[]
+  showColumnSettings: boolean
+  setShowColumnSettings: (show: boolean) => void
 }
 
 type ProcessGroup = {
@@ -73,56 +87,87 @@ function getStepStatusColor(status: string): string {
   return colorMap[status] || colorMap.not_started
 }
 
-const STORAGE_KEY_WIDTHS = 'processJobsTable_columnWidths_v2'
-const STORAGE_KEY_ORDER = 'processJobsTable_columnOrder'
-
-export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
+export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettings }: ProcessJobsTableProps) {
+  const { user } = useAuth()
   const [processGroups, setProcessGroups] = useState<ProcessGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [columnOrder, setColumnOrder] = useState<string[]>([])
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+
+  // User-specific storage keys - memoized to prevent unnecessary re-creation
+  const STORAGE_KEY_WIDTHS = useMemo(() => `processJobsTable_columnWidths_v2_${user?.id || 'guest'}`, [user?.id])
+  const STORAGE_KEY_ORDER = useMemo(() => `processJobsTable_columnOrder_${user?.id || 'guest'}`, [user?.id])
+  const STORAGE_KEY_VISIBILITY = useMemo(() => `processJobsTable_columnVisibility_${user?.id || 'guest'}`, [user?.id])
+  // Default widths and visibility for base columns
+  const defaultWidths: Record<string, number> = {
     no: 110,
     title: 240,
     customer: 150,
     dealer: 140,
     delivery: 130,
     progress: 120,
-  })
+  }
+  const defaultVisibility: Record<string, boolean> = {
+    no: true,
+    title: true,
+    customer: true,
+    dealer: true,
+    delivery: true,
+    progress: true,
+  }
+
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(defaultWidths)
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(defaultVisibility)
   const [resizingColumn, setResizingColumn] = useState<string | null>(null)
   const [draggingColumn, setDraggingColumn] = useState<string | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
 
   useEffect(() => {
-    loadProcessGroups()
-  }, [])
-
-  // Load saved settings from localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
+    // Load base column settings from localStorage first
+    if (typeof window !== 'undefined' && user?.id) {
       const savedWidths = localStorage.getItem(STORAGE_KEY_WIDTHS)
       if (savedWidths) {
         try {
-          setColumnWidths(prev => ({ ...prev, ...JSON.parse(savedWidths) }))
+          const parsedWidths = JSON.parse(savedWidths)
+          setColumnWidths(prev => ({ ...prev, ...parsedWidths }))
         } catch (e) {
           console.error('Failed to parse saved column widths:', e)
         }
       }
+
+      const savedVisibility = localStorage.getItem(STORAGE_KEY_VISIBILITY)
+      if (savedVisibility) {
+        try {
+          const parsedVisibility = JSON.parse(savedVisibility)
+          setColumnVisibility(prev => ({ ...prev, ...parsedVisibility }))
+        } catch (e) {
+          console.error('Failed to parse saved column visibility:', e)
+        }
+      }
     }
-  }, [])
+
+    loadProcessGroups()
+  }, [user?.id, STORAGE_KEY_WIDTHS, STORAGE_KEY_VISIBILITY])
 
   // Save column widths when they change
   useEffect(() => {
-    if (typeof window !== 'undefined' && Object.keys(columnWidths).length > 5) {
+    if (typeof window !== 'undefined' && Object.keys(columnWidths).length > 0 && user?.id) {
       localStorage.setItem(STORAGE_KEY_WIDTHS, JSON.stringify(columnWidths))
     }
-  }, [columnWidths])
+  }, [columnWidths, STORAGE_KEY_WIDTHS, user?.id])
 
   // Save column order when it changes
   useEffect(() => {
-    if (typeof window !== 'undefined' && columnOrder.length > 0) {
+    if (typeof window !== 'undefined' && columnOrder.length > 0 && user?.id) {
       localStorage.setItem(STORAGE_KEY_ORDER, JSON.stringify(columnOrder))
     }
-  }, [columnOrder])
+  }, [columnOrder, STORAGE_KEY_ORDER, user?.id])
+
+  // Save column visibility when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && Object.keys(columnVisibility).length > 0 && user?.id) {
+      localStorage.setItem(STORAGE_KEY_VISIBILITY, JSON.stringify(columnVisibility))
+    }
+  }, [columnVisibility, STORAGE_KEY_VISIBILITY, user?.id])
 
   async function loadProcessGroups() {
     try {
@@ -145,12 +190,48 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
 
       setProcessGroups(groups)
 
-      // Initialize widths for process group columns
+      // Initialize widths and visibility for process group columns
       const processWidths: Record<string, number> = {}
+      const processVisibility: Record<string, boolean> = {}
       groups.forEach(g => {
         processWidths[g.id] = 120
+        processVisibility[g.id] = true
       })
+
+      // Load saved settings from localStorage
+      if (typeof window !== 'undefined') {
+        // Load saved widths
+        const savedWidths = localStorage.getItem(STORAGE_KEY_WIDTHS)
+        if (savedWidths) {
+          try {
+            const parsedWidths = JSON.parse(savedWidths)
+            // Merge with defaults
+            Object.keys(parsedWidths).forEach(key => {
+              processWidths[key] = parsedWidths[key]
+            })
+          } catch (e) {
+            console.error('Failed to parse saved column widths:', e)
+          }
+        }
+
+        // Load saved visibility
+        const savedVisibility = localStorage.getItem(STORAGE_KEY_VISIBILITY)
+        if (savedVisibility) {
+          try {
+            const parsedVisibility = JSON.parse(savedVisibility)
+            // Merge with defaults
+            Object.keys(parsedVisibility).forEach(key => {
+              processVisibility[key] = parsedVisibility[key]
+            })
+          } catch (e) {
+            console.error('Failed to parse saved column visibility:', e)
+          }
+        }
+      }
+
+      // Set widths and visibility
       setColumnWidths(prev => ({ ...prev, ...processWidths }))
+      setColumnVisibility(prev => ({ ...prev, ...processVisibility }))
 
       // Initialize column order - check localStorage first
       const defaultOrder = ['no', 'title', 'customer', 'dealer', 'delivery', ...groups.map(g => g.id), 'progress']
@@ -246,6 +327,62 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
     setDragOverColumn(null)
   }
 
+  // Auto-fit column width on double-click - optimized version
+  const handleAutoFitColumn = (colId: string) => {
+    // Use a simplified approach - check actual DOM elements instead of measuring text
+    let maxWidth = 60 // Minimum width
+
+    // Measure header
+    const headerLabel = getColumnLabel(colId)
+    maxWidth = Math.max(maxWidth, headerLabel.length * 8 + 40) // Approximate 8px per character
+
+    // For text columns, use a simple heuristic
+    let longestText = ''
+
+    jobs.forEach(job => {
+      let cellText = ''
+
+      if (colId === 'no') {
+        cellText = `#${job.job_number}`
+      } else if (colId === 'title') {
+        cellText = job.title
+      } else if (colId === 'customer') {
+        cellText = job.customer_name || '—'
+      } else if (colId === 'dealer') {
+        cellText = job.dealer_name || '—'
+      } else if (colId === 'delivery') {
+        cellText = job.delivery_date ? new Date(job.delivery_date).toLocaleDateString('tr-TR') : '—'
+      } else if (colId === 'progress') {
+        cellText = '100%' // Fixed width
+      } else {
+        // Process group column - count dots
+        const group = processGroups.find(g => g.id === colId)
+        if (group) {
+          const jobSteps = job.steps || []
+          const groupSteps = jobSteps.filter(step => step.process_group_id === group.id)
+          // Each dot is approximately 22px (4px width + 6px gap)
+          const dotsWidth = groupSteps.length * 22 + 24
+          maxWidth = Math.max(maxWidth, dotsWidth)
+        }
+      }
+
+      if (cellText.length > longestText.length) {
+        longestText = cellText
+      }
+    })
+
+    // Approximate width: 7-8px per character for most fonts
+    if (longestText) {
+      const approximateWidth = longestText.length * 7.5 + 24
+      maxWidth = Math.max(maxWidth, approximateWidth)
+    }
+
+    // Cap maximum width
+    maxWidth = Math.min(maxWidth, 400)
+
+    setColumnWidths(prev => ({ ...prev, [colId]: Math.ceil(maxWidth) }))
+  }
+
   if (loading) {
     return (
       <div className="bg-white rounded-lg border p-8">
@@ -255,34 +392,38 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
       </div>
     )
   }
-  return (
-    <div className="w-full bg-white rounded-lg border overflow-hidden overflow-x-visible">
-      {/* Legend */}
-      <div className="px-4 py-2 bg-gray-50 border-b flex items-center gap-4 text-xs text-gray-600 flex-wrap">
-        <span className="font-semibold">Durum:</span>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-green-500"></div>
-          <span>Tamamlandı</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-          <span>Devam Ediyor</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-          <span>Bekliyor</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-gray-200"></div>
-          <span>Başlamadı</span>
-        </div>
-      </div>
+  // Get column labels for settings dialog
+  const getColumnLabel = (colId: string): string => {
+    const labels: Record<string, string> = {
+      no: 'No',
+      title: 'İş Adı',
+      customer: 'Müşteri',
+      dealer: 'Bayi',
+      delivery: 'Teslim Tarihi',
+      progress: 'İlerleme',
+    }
 
-      <div className="w-full overflow-x-auto no-scrollbar">
-        <table className="w-full text-sm">
+    if (labels[colId]) return labels[colId]
+
+    const group = processGroups.find(g => g.id === colId)
+    return group?.name || colId
+  }
+
+  // Toggle column visibility
+  const toggleColumnVisibility = (colId: string) => {
+    setColumnVisibility(prev => ({
+      ...prev,
+      [colId]: !prev[colId]
+    }))
+  }
+
+  return (
+    <div className="w-full bg-white border-t border-b overflow-hidden">
+      <div className="w-full overflow-x-auto">
+        <table className="w-full text-sm min-w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
-              {columnOrder.map((colId) => {
+              {columnOrder.filter(colId => columnVisibility[colId] !== false).map((colId) => {
                 // Fixed columns
                 if (colId === 'no') {
                   return (
@@ -293,15 +434,21 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                       onDragOver={(e) => handleDragOver(e, 'no')}
                       onDrop={(e) => handleDrop(e, 'no')}
                       onDragEnd={handleDragEnd}
-                      className={`px-3 py-3 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'no' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'no' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.no }}
                     >
                       No
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors group-hover/header:bg-gray-300"
                         onMouseDown={(e) => handleMouseDown(e, 'no')}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleAutoFitColumn('no')
+                        }}
+                        title="Çift tıklayarak otomatik genişlet"
                       />
                     </th>
                   )
@@ -315,15 +462,21 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                       onDragOver={(e) => handleDragOver(e, 'title')}
                       onDrop={(e) => handleDrop(e, 'title')}
                       onDragEnd={handleDragEnd}
-                      className={`px-3 py-3 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'title' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'title' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.title }}
                     >
                       İş Adı
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
                         onMouseDown={(e) => handleMouseDown(e, 'title')}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleAutoFitColumn('title')
+                        }}
+                        title="Çift tıklayarak otomatik genişlet"
                       />
                     </th>
                   )
@@ -337,15 +490,21 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                       onDragOver={(e) => handleDragOver(e, 'customer')}
                       onDrop={(e) => handleDrop(e, 'customer')}
                       onDragEnd={handleDragEnd}
-                      className={`px-3 py-3 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'customer' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'customer' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.customer }}
                     >
                       Müşteri
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
                         onMouseDown={(e) => handleMouseDown(e, 'customer')}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleAutoFitColumn('customer')
+                        }}
+                        title="Çift tıklayarak otomatik genişlet"
                       />
                     </th>
                   )
@@ -359,15 +518,21 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                       onDragOver={(e) => handleDragOver(e, 'dealer')}
                       onDrop={(e) => handleDrop(e, 'dealer')}
                       onDragEnd={handleDragEnd}
-                      className={`px-3 py-3 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'dealer' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'dealer' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.dealer }}
                     >
                       Bayi
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
                         onMouseDown={(e) => handleMouseDown(e, 'dealer')}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleAutoFitColumn('dealer')
+                        }}
+                        title="Çift tıklayarak otomatik genişlet"
                       />
                     </th>
                   )
@@ -381,15 +546,21 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                       onDragOver={(e) => handleDragOver(e, 'delivery')}
                       onDrop={(e) => handleDrop(e, 'delivery')}
                       onDragEnd={handleDragEnd}
-                      className={`px-3 py-3 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'delivery' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'delivery' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.delivery }}
                     >
                       Teslim Tarihi
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
                         onMouseDown={(e) => handleMouseDown(e, 'delivery')}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleAutoFitColumn('delivery')
+                        }}
+                        title="Çift tıklayarak otomatik genişlet"
                       />
                     </th>
                   )
@@ -403,15 +574,21 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                       onDragOver={(e) => handleDragOver(e, 'progress')}
                       onDrop={(e) => handleDrop(e, 'progress')}
                       onDragEnd={handleDragEnd}
-                      className={`px-3 py-3 text-center font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`px-2 py-2 text-center font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'progress' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'progress' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.progress }}
                     >
                       İlerleme
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
                         onMouseDown={(e) => handleMouseDown(e, 'progress')}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleAutoFitColumn('progress')
+                        }}
+                        title="Çift tıklayarak otomatik genişlet"
                       />
                     </th>
                   )
@@ -428,18 +605,21 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                       onDragOver={(e) => handleDragOver(e, group.id)}
                       onDrop={(e) => handleDrop(e, group.id)}
                       onDragEnd={handleDragEnd}
-                      className={`px-3 py-3 text-center font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`px-2 py-2 text-center font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === group.id ? 'opacity-50' : ''
                       } ${dragOverColumn === group.id ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths[group.id] }}
                     >
                       <div>{group.name}</div>
-                      <div className="text-[10px] font-normal text-gray-500 mt-0.5">
-                        {group.processes.length} süreç
-                      </div>
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
                         onMouseDown={(e) => handleMouseDown(e, group.id)}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleAutoFitColumn(group.id)
+                        }}
+                        title="Çift tıklayarak otomatik genişlet"
                       />
                     </th>
                   )
@@ -447,7 +627,6 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
 
                 return null
               })}
-              <th className="px-3 py-3 text-center font-medium text-gray-700 w-16"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -457,7 +636,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
               const renderCell = (colId: string) => {
                 if (colId === 'no') {
                   return (
-                    <td key="no" className="px-3 py-3">
+                    <td key="no" className="px-2 py-1.5">
                       <div className="font-mono text-xs text-gray-600">
                         #{job.job_number}
                       </div>
@@ -466,7 +645,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                 }
                 if (colId === 'title') {
                   return (
-                    <td key="title" className="px-3 py-3">
+                    <td key="title" className="px-2 py-1.5">
                       <Link href={`/jobs/${job.id}`} className="block">
                         <div className="font-medium text-gray-900 hover:text-blue-600">
                           {job.title}
@@ -477,7 +656,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                 }
                 if (colId === 'customer') {
                   return (
-                    <td key="customer" className="px-3 py-3">
+                    <td key="customer" className="px-2 py-1.5">
                       <div className="text-sm text-gray-700">
                         {job.customer_name || '—'}
                       </div>
@@ -486,7 +665,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                 }
                 if (colId === 'dealer') {
                   return (
-                    <td key="dealer" className="px-3 py-3">
+                    <td key="dealer" className="px-2 py-1.5">
                       <div className="text-sm text-gray-700">
                         {job.dealer_name || '—'}
                       </div>
@@ -495,7 +674,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                 }
                 if (colId === 'delivery') {
                   return (
-                    <td key="delivery" className="px-3 py-3">
+                    <td key="delivery" className="px-2 py-1.5">
                       <div className="text-sm text-gray-700">
                         {job.delivery_date
                           ? new Date(job.delivery_date).toLocaleDateString('tr-TR')
@@ -506,7 +685,7 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                 }
                 if (colId === 'progress') {
                   return (
-                    <td key="progress" className="px-3 py-3">
+                    <td key="progress" className="px-2 py-1.5">
                       <div className="flex flex-col items-center gap-1">
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
@@ -531,12 +710,13 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                 // Process group column
                 const group = processGroups.find(g => g.id === colId)
                 if (group) {
+                  // Match steps by process_group_id (more reliable than matching process IDs)
                   const groupSteps = jobSteps.filter(step =>
-                    group.processes.some(p => p.id === step.process_id)
+                    step.process_group_id === group.id
                   )
 
                   return (
-                    <td key={group.id} className="px-3 py-3">
+                    <td key={group.id} className="px-2 py-1.5">
                       <div className="flex flex-wrap items-center justify-center gap-1.5">
                         {groupSteps.length > 0 ? (
                           groupSteps.map(step => {
@@ -553,14 +733,6 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
                               not_started: 'Başlamadı'
                             }
                             const statusLabel = statusLabels[status] || status
-
-                            // Debug log
-                            console.log('Step data:', {
-                              process: process?.name,
-                              assigned_to: step.assigned_to,
-                              production_notes: step.production_notes,
-                              notes: step.notes
-                            })
 
                             return (
                               <div
@@ -672,21 +844,44 @@ export function ProcessJobsTable({ jobs }: ProcessJobsTableProps) {
 
               return (
                 <tr key={job.id} className="hover:bg-gray-50 transition-colors">
-                  {columnOrder.map((colId) => renderCell(colId))}
-                  {/* Actions - always last */}
-                  <td className="px-3 py-3">
-                    <Link href={`/jobs/${job.id}`}>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </Link>
-                  </td>
+                  {columnOrder.filter(colId => columnVisibility[colId] !== false).map((colId) => renderCell(colId))}
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
+
+      {/* Column Settings Dialog */}
+      <Dialog open={showColumnSettings} onOpenChange={setShowColumnSettings}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Kolon Ayarları</DialogTitle>
+            <DialogDescription>
+              Tabloda görmek istediğiniz kolonları seçin
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+            {columnOrder.map((colId) => (
+              <div key={colId} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50">
+                <Label htmlFor={`col-${colId}`} className="flex items-center gap-2 cursor-pointer flex-1">
+                  {columnVisibility[colId] ? (
+                    <Eye className="w-4 h-4 text-blue-600" />
+                  ) : (
+                    <EyeOff className="w-4 h-4 text-gray-400" />
+                  )}
+                  <span className="text-sm font-medium">{getColumnLabel(colId)}</span>
+                </Label>
+                <Switch
+                  id={`col-${colId}`}
+                  checked={columnVisibility[colId] !== false}
+                  onCheckedChange={() => toggleColumnVisibility(colId)}
+                />
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

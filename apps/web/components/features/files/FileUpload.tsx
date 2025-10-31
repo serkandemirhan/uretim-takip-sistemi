@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, type ReactNode } from 'react'
 import axios from 'axios'
 import { filesAPI } from '@/lib/api/client'
 import { Card, CardContent } from '@/components/ui/card'
@@ -24,6 +24,7 @@ interface FileUploadProps {
   maxFiles?: number
   disabled?: boolean
   className?: string
+  children?: ReactNode
 }
 
 export function FileUpload({
@@ -33,6 +34,7 @@ export function FileUpload({
   maxFiles = 10,
   disabled = false,
   className,
+  children,
 }: FileUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [queue, setQueue] = useState<QueueItem[]>([])
@@ -168,7 +170,7 @@ export function FileUpload({
   }
 
   return (
-    <div className={cn('space-y-4', className)}>
+    <div className={cn('space-y-3', className)}>
       {/* Drop zone */}
       <div
         className={`w-full rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
@@ -221,6 +223,15 @@ export function FileUpload({
           </div>
         </div>
       </div>
+
+      {children && (
+        <div
+          className="w-full"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {children}
+        </div>
+      )}
 
       {/* Kuyruk */}
       {queue.length > 0 && (
@@ -277,5 +288,7 @@ export function FileUpload({
         </div>
       )}
     </div>
+
+    
   )
 }

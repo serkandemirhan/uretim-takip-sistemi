@@ -31,7 +31,11 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(PGPASSWORD=reklam_pass_123 pg_dump:*)",
+      "Bash(tail:*)",
+      "Bash(xargs:*)",
+      "Bash(npx shadcn@latest add:*)"
     ],
     "deny": [],
     "ask": []

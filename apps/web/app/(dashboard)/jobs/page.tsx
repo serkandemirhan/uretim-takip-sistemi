@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Search, Filter, ChevronLeft, ChevronRight, Settings2 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { JobsStatsCards } from '@/components/features/jobs/JobsStatsCards'
@@ -20,6 +20,7 @@ export default function JobsPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
+  const [showColumnSettings, setShowColumnSettings] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('process')
 
   const [filters, setFilters] = useState({
@@ -173,20 +174,20 @@ export default function JobsPage() {
   }
 
   return (
-    <div className="w-full max-w-full space-y-6">
+    <div className="w-full max-w-full space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-900">
             İşler
-            <span className="text-gray-500 font-normal ml-3">
+            <span className="text-gray-500 font-normal text-base ml-3">
               Toplam {pagination.total} iş
             </span>
           </h1>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/jobs/new">
-            <Button>
+            <Button size="sm">
               <Plus className="w-4 h-4 mr-2" />
               Yeni İş
             </Button>
@@ -199,7 +200,7 @@ export default function JobsPage() {
 
       {/* Search & Filter Bar */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-4 pb-4">
           <div className="space-y-4">
             {/* Search & Filter Toggle & View Mode */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -225,6 +226,15 @@ export default function JobsPage() {
                   </Badge>
                 )}
               </Button>
+              {viewMode === 'process' && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowColumnSettings(true)}
+                >
+                  <Settings2 className="w-4 h-4 mr-2" />
+                  Kolonlar
+                </Button>
+              )}
               <ViewModeToggle mode={viewMode} onChange={setViewMode} />
             </div>
 
@@ -343,7 +353,15 @@ export default function JobsPage() {
         <>
           {/* Render appropriate view based on viewMode */}
           {viewMode === 'compact' && <CompactJobsTable jobs={jobs} />}
-          {viewMode === 'process' && <ProcessJobsTable jobs={jobs} />}
+          {viewMode === 'process' && (
+            <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+              <ProcessJobsTable
+                jobs={jobs}
+                showColumnSettings={showColumnSettings}
+                setShowColumnSettings={setShowColumnSettings}
+              />
+            </div>
+          )}
           {viewMode === 'detailed' && <DetailedJobsTable jobs={jobs} />}
 
           {/* Pagination */}

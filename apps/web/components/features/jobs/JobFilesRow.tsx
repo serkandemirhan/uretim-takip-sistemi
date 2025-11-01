@@ -12,6 +12,7 @@ import {
   FileCode,
   ChevronDown,
   ChevronUp,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
@@ -40,21 +41,70 @@ interface JobFilesRowProps {
   onDownload?: (file: JobFile) => void
   maxVisible?: number
   showActions?: boolean
+  expanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
+  showToggle?: boolean
+  deletingId?: string | null
 }
 
-const IMAGE_EXTENSIONS = new Set([
-  'jpg',
-  'jpeg',
-  'png',
-  'gif',
-  'webp',
-  'svg',
-  'bmp',
-  'tiff',
-  'ico',
-  'heic',
-  'heif',
-])
+const FILE_STYLE_PRESETS = [
+  {
+    match: (ext: string, type: string) =>
+      ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext) ||
+      type.startsWith('image/'),
+    chipBg: 'bg-purple-50/80',
+    chipBorder: 'border-purple-100',
+    iconBg: 'bg-purple-100',
+    iconText: 'text-purple-600',
+  },
+  {
+    match: (ext: string, type: string) =>
+      ext === 'pdf' || type.includes('pdf'),
+    chipBg: 'bg-rose-50/80',
+    chipBorder: 'border-rose-100',
+    iconBg: 'bg-rose-100',
+    iconText: 'text-rose-600',
+  },
+  {
+    match: (ext: string, type: string) =>
+      ['doc', 'docx'].includes(ext) || type.includes('word'),
+    chipBg: 'bg-blue-50/80',
+    chipBorder: 'border-blue-100',
+    iconBg: 'bg-blue-100',
+    iconText: 'text-blue-600',
+  },
+  {
+    match: (ext: string, type: string) =>
+      ['xls', 'xlsx', 'csv'].includes(ext) ||
+      type.includes('spreadsheet') ||
+      type.includes('excel'),
+    chipBg: 'bg-emerald-50/80',
+    chipBorder: 'border-emerald-100',
+    iconBg: 'bg-emerald-100',
+    iconText: 'text-emerald-600',
+  },
+  {
+    match: (ext: string, type: string) =>
+      ['zip', 'rar', '7z'].includes(ext) || type.includes('archive'),
+    chipBg: 'bg-amber-50/80',
+    chipBorder: 'border-amber-100',
+    iconBg: 'bg-amber-100',
+    iconText: 'text-amber-600',
+  },
+]
+
+function getFileAccentClasses(fileName?: string, fileType?: string) {
+  const ext = fileName?.split('.').pop()?.toLowerCase() || ''
+  const type = fileType?.toLowerCase() || ''
+  const preset = FILE_STYLE_PRESETS.find((item) => item.match(ext, type))
+  if (preset) return preset
+  return {
+    chipBg: 'bg-gray-50/80',
+    chipBorder: 'border-gray-200',
+    iconBg: 'bg-gray-100',
+    iconText: 'text-gray-600',
+  }
+}
 
 function getFileIcon(fileName?: string, fileType?: string) {
   if (!fileName) {
@@ -125,10 +175,10 @@ function getFileTypeLabel(fileName?: string, fileType?: string) {
 }
 
 function isImageFile(fileName?: string, fileType?: string) {
-  if (fileType?.toLowerCase().includes('image')) return true
+  const type = fileType?.toLowerCase() || ''
+  if (type.includes('image')) return true
   const ext = fileName?.split('.').pop()?.toLowerCase()
-  if (!ext) return false
-  return IMAGE_EXTENSIONS.has(ext)
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'ico'].includes(ext || '')
 }
 
 export function JobFilesRow({
@@ -137,12 +187,25 @@ export function JobFilesRow({
   onDownload,
   maxVisible = 6,
   showActions = true,
+  expanded,
+  onExpandedChange,
+  showToggle = true,
+  deletingId,
 }: JobFilesRowProps) {
   const [hoveredFile, setHoveredFile] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState(false)
+  const [internalExpanded, setInternalExpanded] = useState(false)
+
+  const isControlled = typeof expanded === 'boolean'
+  const isExpanded = isControlled ? expanded : internalExpanded
+  const setExpandedState = (value: boolean) => {
+    if (!isControlled) {
+      setInternalExpanded(value)
+    }
+    onExpandedChange?.(value)
+  }
 
   const hasMoreThanLimit = files.length > maxVisible
-  const visibleFiles = expanded ? files : files.slice(0, maxVisible)
+  const visibleFiles = isExpanded ? files : files.slice(0, maxVisible)
   const remainingCount = Math.max(0, files.length - maxVisible)
 
   const handleDownload = (e: React.MouseEvent, file: JobFile) => {
@@ -176,16 +239,16 @@ export function JobFilesRow({
 
   return (
     <div className="space-y-2">
-      {hasMoreThanLimit && (
+      {showToggle && hasMoreThanLimit && (
         <div className="flex justify-end">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="text-xs text-gray-600 hover:text-gray-900"
-            onClick={() => setExpanded((prev) => !prev)}
+            onClick={() => setExpandedState(!isExpanded)}
           >
-            {expanded ? (
+            {isExpanded ? (
               <>
                 <ChevronUp className="mr-1 h-4 w-4" />
                 Daralt
@@ -201,19 +264,21 @@ export function JobFilesRow({
       )}
 
       <TooltipProvider>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {visibleFiles.map((file) => {
             const rawName = file.file_name || file.filename || file.file_path?.split('/').pop() || 'Dosya'
             const fileName = rawName
-            const imageFile = isImageFile(file.file_name || file.filename || rawName, file.file_type)
+            const isImage = isImageFile(file.file_name || file.filename || rawName, file.file_type)
             const uploadedLabel = file.uploaded_at
               ? new Date(file.uploaded_at).toLocaleString('tr-TR')
               : null
+            const extensionLabel = getFileTypeLabel(file.file_name || file.filename || rawName, file.file_type)
+            const accent = getFileAccentClasses(file.file_name || file.filename || rawName, file.file_type)
 
             return (
               <div
                 key={file.id}
-                className="relative group w-full max-w-[140px] sm:w-[140px]"
+                className="relative group w-full max-w-[200px] sm:w-[200px]"
                 onMouseEnter={() => setHoveredFile(file.id)}
                 onMouseLeave={() => setHoveredFile(null)}
                 onFocus={() => setHoveredFile(file.id)}
@@ -223,46 +288,35 @@ export function JobFilesRow({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div
-                      className="flex h-full min-h-[160px] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm outline-none transition-all hover:-translate-y-1 hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                      className={cn(
+                        'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs shadow-sm outline-none transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2',
+                        accent.chipBg,
+                        accent.chipBorder,
+                        'border',
+                      )}
                       tabIndex={0}
                     >
                       <div
                         className={cn(
-                          'w-full bg-gray-100',
-                          imageFile
-                            ? 'h-20 overflow-hidden'
-                            : 'flex h-20 items-center justify-center bg-blue-50 text-blue-600',
+                          'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-colors',
+                          accent.iconBg,
+                          accent.iconText,
+                          isImage && 'ring-1 ring-purple-200',
                         )}
                       >
-                        {imageFile ? (
-                          <img
-                            src={file.file_path}
-                            alt={fileName}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center justify-center gap-1 text-center px-1">
-                            {getFileIcon(file.file_name || file.filename || rawName, file.file_type)}
-                            <span className="text-[10px] font-medium uppercase text-blue-600">
-                              {getFileTypeLabel(file.file_name || file.filename || rawName, file.file_type)}
-                            </span>
-                          </div>
-                        )}
+                        {getFileIcon(file.file_name || file.filename || rawName, file.file_type)}
                       </div>
-                      <div className="flex flex-1 flex-col justify-between px-2 py-2">
-                        <div className="line-clamp-2 text-[12px] font-medium text-gray-900 leading-tight">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-medium text-gray-900 leading-tight">
                           {fileName}
-                        </div>
-                        {uploadedLabel && (
-                          <span className="mt-2 text-[10px] text-gray-400">{uploadedLabel}</span>
-                        )}
+                        </p>
                       </div>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-xs">
                     <div className="space-y-1">
                       <p className="font-medium break-words">{fileName}</p>
+                      <p className="text-xs text-gray-400">{extensionLabel}</p>
                       {uploadedLabel && (
                         <p className="text-xs text-gray-400">Yükleme: {uploadedLabel}</p>
                       )}
@@ -289,8 +343,13 @@ export function JobFilesRow({
                           className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
                           onClick={(e) => handleDelete(e, file.id)}
                           title="Sil"
+                          disabled={deletingId === file.id}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          {deletingId === file.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
                         </Button>
                       )}
                     </div>

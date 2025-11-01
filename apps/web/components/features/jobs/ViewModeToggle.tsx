@@ -1,9 +1,9 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { List, Workflow, LayoutList } from 'lucide-react'
+import { List, Workflow } from 'lucide-react'
 
-export type ViewMode = 'compact' | 'process' | 'detailed'
+export type ViewMode = 'compact' | 'process'
 
 interface ViewModeToggleProps {
   mode: ViewMode
@@ -30,15 +30,6 @@ export function ViewModeToggle({ mode, onChange }: ViewModeToggleProps) {
       >
         <Workflow className="w-4 h-4 mr-2" />
         Süreç
-      </Button>
-      <Button
-        variant={mode === 'detailed' ? 'default' : 'ghost'}
-        size="sm"
-        onClick={() => onChange('detailed')}
-        className={mode === 'detailed' ? '' : 'hover:bg-gray-200'}
-      >
-        <LayoutList className="w-4 h-4 mr-2" />
-        Detaylı
       </Button>
     </div>
   )

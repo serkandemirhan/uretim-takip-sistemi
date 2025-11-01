@@ -46,6 +46,13 @@ const createEmptyManualItem = () => ({
 
 export default function QuotationDetailPage() {
   const params = useParams()
+  const quotationId = useMemo(() => {
+    const raw = (params as Record<string, string | string[] | undefined>)?.quotationId ?? (params as Record<string, string | string[] | undefined>)?.id
+    if (Array.isArray(raw)) {
+      return raw[0] ?? ''
+    }
+    return (raw as string) || ''
+  }, [params])
 
   const [quotation, setQuotation] = useState<any>(null)
   const [stocks, setStocks] = useState<any[]>([])
@@ -75,13 +82,13 @@ export default function QuotationDetailPage() {
   const [reservationDates, setReservationDates] = useState<{[key: string]: string}>({})
 
   useEffect(() => {
-    if (params.id) {
+    if (quotationId) {
       loadQuotation()
       loadStocks()
       loadCustomers()
       loadUnitOptions()
     }
-  }, [params.id])
+  }, [quotationId])
 
   async function loadUnitOptions() {
     try {
@@ -119,7 +126,7 @@ export default function QuotationDetailPage() {
   async function loadQuotation() {
     try {
       setLoading(true)
-      const response = await quotationsAPI.getById(params.id as string)
+      const response = await quotationsAPI.getById(quotationId)
       const data = response.data
       setQuotation(data)
       setFormData({
@@ -156,7 +163,7 @@ export default function QuotationDetailPage() {
   async function handleSave() {
     try {
       setSaving(true)
-      await quotationsAPI.update(params.id as string, formData)
+      await quotationsAPI.update(quotationId, formData)
       toast.success('Teklif güncellendi')
       setIsEditing(false)
       await loadQuotation()
@@ -241,7 +248,7 @@ export default function QuotationDetailPage() {
         quantity: 1,
       }))
 
-      await quotationsAPI.addItems(params.id as string, items)
+      await quotationsAPI.addItems(quotationId, items)
       toast.success(`${items.length} ürün eklendi`)
       setSelectedStockIds(new Set())
       await loadQuotation()
@@ -388,7 +395,7 @@ export default function QuotationDetailPage() {
 
     try {
       setAddingManualItem(true)
-      await quotationsAPI.addItems(params.id as string, [
+      await quotationsAPI.addItems(quotationId, [
         {
           product_name: productName,
           product_code: manualItem.product_code.trim() || undefined,
@@ -420,7 +427,7 @@ export default function QuotationDetailPage() {
             : null
           : value
 
-      await quotationsAPI.updateItem(params.id as string, itemId, updateData)
+      await quotationsAPI.updateItem(quotationId, itemId, updateData)
       await loadQuotation()
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Kalem güncellenemedi')
@@ -433,7 +440,7 @@ export default function QuotationDetailPage() {
     }
 
     try {
-      await quotationsAPI.deleteItem(params.id as string, itemId)
+      await quotationsAPI.deleteItem(quotationId, itemId)
       toast.success('Ürün kaldırıldı')
       await loadQuotation()
     } catch (error: any) {

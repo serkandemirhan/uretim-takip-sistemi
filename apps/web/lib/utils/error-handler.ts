@@ -4,6 +4,7 @@
  */
 
 import { toast } from 'sonner'
+import axios from 'axios'
 
 interface ErrorOptions {
   title?: string
@@ -56,6 +57,10 @@ export function handleError(
  * Extract error message from various error types
  */
 function getErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error) && error.response?.data?.error) {
+    return error.response.data.error
+  }
+
   if (error instanceof Error) {
     return error.message
   }

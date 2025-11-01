@@ -879,83 +879,51 @@ export default function StocksInventoryPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Döviz Kurları</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm">
-                <div>USD: {summary.currency_rates?.USD_to_TRY?.toFixed(2)} ₺</div>
-                <div>EUR: {summary.currency_rates?.EUR_to_TRY?.toFixed(2)} ₺</div>
-              </div>
-            </CardContent>
-          </Card>
+          <Link href="/stocks/settings">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow border-2 border-transparent hover:border-blue-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Döviz Kurları</CardTitle>
+                <Settings className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm">
+                  <div>USD: {summary.currency_rates?.USD_to_TRY?.toFixed(2)} ₺</div>
+                  <div>EUR: {summary.currency_rates?.EUR_to_TRY?.toFixed(2)} ₺</div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="grid gap-4 md:grid-cols-3 px-4 sm:px-6 lg:px-8">
-        <Link href="/stocks/movements">
-          <Card className="cursor-pointer hover:shadow-md transition-shadow border-2 border-transparent hover:border-blue-200">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <ArrowUpDown className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold">Stok Hareketleri</h3>
-                  <p className="text-sm text-muted-foreground">Giriş ve çıkış hareketlerini görüntüle</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/stocks/purchase-orders">
-          <Card className="cursor-pointer hover:shadow-md transition-shadow border-2 border-transparent hover:border-blue-200">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-green-100 rounded-lg">
-                  <ShoppingCart className="w-6 h-6 text-green-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold">Satın Alma Emirleri</h3>
-                  <p className="text-sm text-muted-foreground">Sipariş takibi ve teslim alma</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/stocks/settings">
-          <Card className="cursor-pointer hover:shadow-md transition-shadow border-2 border-transparent hover:border-blue-200">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-purple-100 rounded-lg">
-                  <Settings className="w-6 h-6 text-purple-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold">Döviz Kuru Ayarları</h3>
-                  <p className="text-sm text-muted-foreground">USD ve EUR kurlarını güncelle</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
-      {/* Filters */}
+      {/* Quick Actions & Filters */}
       <div className="px-4 sm:px-6 lg:px-8">
-        <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4 items-center">
+        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-4">
+          {/* Quick Actions */}
+          <div className="flex flex-wrap gap-3">
+            <Link href="/stocks/movements">
+              <Button variant="outline" className="gap-2">
+                <ArrowUpDown className="w-4 h-4" />
+                Stok Hareketleri
+              </Button>
+            </Link>
+            <Link href="/stocks/purchase-orders">
+              <Button variant="outline" className="gap-2">
+                <ShoppingCart className="w-4 h-4" />
+                Satın Alma Emirleri
+              </Button>
+            </Link>
+          </div>
+
+          {/* Filters */}
+          <div className="flex gap-3 items-center w-full lg:w-auto">
             <Input
               placeholder="Ara (ürün adı, kodu, kategori)..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
               className="max-w-md"
             />
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
               <input
                 type="checkbox"
                 checked={showCriticalOnly}
@@ -965,8 +933,7 @@ export default function StocksInventoryPage() {
               <span className="text-sm">Sadece Kritik Stoklar</span>
             </label>
           </div>
-        </CardContent>
-      </Card>
+        </div>
       </div>
 
       {/* Stock List */}

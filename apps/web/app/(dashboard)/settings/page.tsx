@@ -3,9 +3,39 @@
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Layers, Settings2, SlidersHorizontal, ShieldCheck } from 'lucide-react'
+import { Layers, Settings2, SlidersHorizontal, ShieldCheck, Users, Shield, Workflow, Cpu } from 'lucide-react'
 
 const sections = [
+  {
+    title: 'Genel Ayarlar',
+    description: 'Sistem genelindeki kullanıcı, rol ve süreç ayarları.',
+    items: [
+      {
+        title: 'Kullanıcılar',
+        description: 'Kullanıcıları yönetin, yeni kullanıcılar ekleyin ve mevcutları düzenleyin.',
+        href: '/users',
+        icon: Users,
+      },
+      {
+        title: 'Roller',
+        description: 'Kullanıcı rollerini ve izinlerini tanımlayın.',
+        href: '/roles',
+        icon: Shield,
+      },
+      {
+        title: 'Süreçler',
+        description: 'İş akış süreçlerini ve adımlarını yönetin.',
+        href: '/processes',
+        icon: Workflow,
+      },
+      {
+        title: 'Makineler',
+        description: 'Üretim makinelerini ve durumlarını yönetin.',
+        href: '/machines',
+        icon: Cpu,
+      },
+    ],
+  },
   {
     title: 'Stok ve Malzeme',
     description: 'Stok kartları, ölçü birimleri ve üretimle ilgili temel ayarlar.',
@@ -78,9 +108,7 @@ export default function SettingsOverviewPage() {
                       <h3 className="text-sm font-semibold text-gray-900">{item.title}</h3>
                       <p className="text-sm text-gray-600">{item.description}</p>
                     </div>
-                    <Button variant="outline" size="sm" className="shrink-0">
-                      Aç
-                    </Button>
+
                   </div>
                 </Link>
               ))}

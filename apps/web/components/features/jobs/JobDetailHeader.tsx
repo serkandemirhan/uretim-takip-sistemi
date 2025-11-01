@@ -1,11 +1,11 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ArrowLeft, Building2, Calendar, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Building2, Calendar, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react'
 import Link from 'next/link'
 import { formatDate, getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabel } from '@/lib/utils/formatters'
 import { JobFilesRow } from './JobFilesRow'
@@ -54,6 +54,11 @@ export function JobDetailHeader({
   const customerName = job.customer?.name || job.customer_name || '-'
   const dealerName = job.dealer?.name || '-'
   const dueDate = job.due_date || job.delivery_date || job.deadline
+  const DEFAULT_VISIBLE_FILES = 8
+  const [showAllFiles, setShowAllFiles] = useState(false)
+  const hasMoreFiles = files.length > DEFAULT_VISIBLE_FILES
+  const maxVisibleFiles = showAllFiles || !hasMoreFiles ? files.length : DEFAULT_VISIBLE_FILES
+  const remainingFiles = Math.max(0, files.length - DEFAULT_VISIBLE_FILES)
 
   return (
     <Card className="border-b rounded-none">
@@ -146,7 +151,7 @@ export function JobDetailHeader({
         {job.description && (
           <div className="border-t pt-3">
             <div className="text-xs font-medium text-gray-500 mb-1">Açıklama</div>
-            <ScrollArea className="h-16 w-full">
+            <ScrollArea className="h-12 w-full">
               <p className="text-sm text-gray-700 pr-4 whitespace-pre-wrap">
                 {job.description}
               </p>
@@ -156,19 +161,46 @@ export function JobDetailHeader({
 
         {/* Files Row */}
         <div className="border-t pt-3">
-          <div className="text-xs font-medium text-gray-500 mb-2">İş Dosyaları</div>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-xs font-medium text-gray-500">İş Dosyaları</div>
+            {hasMoreFiles && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-xs text-gray-600 hover:text-gray-900"
+                onClick={() => setShowAllFiles((prev) => !prev)}
+              >
+                {showAllFiles ? (
+                  <>
+                    <ChevronUp className="mr-1 h-4 w-4" />
+                    Daralt
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="mr-1 h-4 w-4" />
+                    Tümünü Gör ({remainingFiles} daha)
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
           <FileUpload
             refType="job"
             refId={job.id}
             onUploadComplete={onUploadComplete}
             variant="compact"
+            hasFiles={files.length > 0}
           >
             <JobFilesRow
               files={files}
               onDelete={onDeleteFile}
               onDownload={onDownloadFile}
-              maxVisible={6}
+              maxVisible={maxVisibleFiles}
               showActions={true}
+              expanded={showAllFiles}
+              onExpandedChange={setShowAllFiles}
+              showToggle={false}
             />
           </FileUpload>
         </div>

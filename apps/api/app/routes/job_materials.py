@@ -297,6 +297,8 @@ def consume_materials(job_id):
     Body: [{"material_id": "uuid", "consumed_quantity": 10}]
     """
     try:
+        # Bu fonksiyon artık kendi transaction yönetimini yapacak.
+        # execute_write gibi helper'lar yerine doğrudan cursor kullanacağız.
         data = request.get_json()
         consumptions = data.get('consumptions', [])
 
@@ -307,7 +309,7 @@ def consume_materials(job_id):
             if not material_id or not consumed_qty or consumed_qty <= 0:
                 continue
 
-            # Malzeme bilgisi
+            # Malzeme bilgisini al (henüz transaction içinde değiliz, sadece okuma)
             material = execute_query_one("""
                 SELECT jm.id, jm.product_id, jm.required_quantity, jm.allocated_quantity,
                        jm.consumed_quantity, jm.unit, s.current_quantity, s.reserved_quantity
@@ -329,31 +331,54 @@ def consume_materials(job_id):
                     'available': current_stock
                 }), 400
 
-            # consumed_quantity güncelle
-            execute_write("""
-                UPDATE job_materials
-                SET consumed_quantity = consumed_quantity + %s,
-                    status = CASE
-                        WHEN consumed_quantity + %s >= required_quantity THEN 'consumed'
-                        ELSE 'allocated'
-                    END
-                WHERE id = %s
-            """, (consumed_qty, consumed_qty, material_id))
+            # --- TRANSACTION BAŞLANGICI ---
+            # Tek bir bağlantı alıp tüm işlemleri bu bağlantı üzerinden yapacağız.
+            # CONNECTION_POOL_FIX.md dosyasındaki doğru pattern'i uyguluyoruz.
+            from app.models.database import get_db_connection, release_db_connection
+            conn = None
+            cursor = None
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
 
-            # Stoktan düş (stock_movements ile)
-            execute_write("""
-                INSERT INTO stock_movements
-                (stock_id, movement_type, quantity, job_id, purpose, notes)
-                VALUES (%s, 'OUT', %s, %s, 'İş malzeme tüketimi', 'Job Materials - Otomatik tüketim')
-            """, (material['product_id'], consumed_qty, str(job_id)))
+                # 1. consumed_quantity güncelle
+                cursor.execute("""
+                    UPDATE job_materials
+                    SET consumed_quantity = consumed_quantity + %s,
+                        status = CASE
+                            WHEN consumed_quantity + %s >= required_quantity THEN 'consumed'
+                            ELSE 'allocated'
+                        END
+                    WHERE id = %s
+                """, (consumed_qty, consumed_qty, material_id))
 
-            # Stok güncelle: hem current_quantity hem de reserved_quantity azalt
-            execute_write("""
-                UPDATE stocks
-                SET current_quantity = current_quantity - %s,
-                    reserved_quantity = GREATEST(0, reserved_quantity - %s)
-                WHERE id = %s
-            """, (consumed_qty, consumed_qty, material['product_id']))
+                # 2. Stoktan düş (stock_movements ile)
+                cursor.execute("""
+                    INSERT INTO stock_movements
+                    (stock_id, movement_type, quantity, job_id, purpose, notes)
+                    VALUES (%s, 'OUT', %s, %s, 'İş malzeme tüketimi', 'Job Materials - Otomatik tüketim')
+                """, (material['product_id'], consumed_qty, str(job_id)))
+
+                # 3. Stok güncelle: hem current_quantity hem de reserved_quantity azalt
+                cursor.execute("""
+                    UPDATE stocks
+                    SET current_quantity = current_quantity - %s,
+                        reserved_quantity = GREATEST(0, reserved_quantity - %s)
+                    WHERE id = %s
+                """, (consumed_qty, consumed_qty, material['product_id']))
+
+                conn.commit() # Tüm işlemler başarılı, değişiklikleri onayla.
+
+            except Exception as tx_error:
+                if conn:
+                    conn.rollback() # Hata oluştu, tüm değişiklikleri geri al.
+                raise tx_error # Ana hata yakalama bloğuna hatayı yeniden fırlat.
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    release_db_connection(conn) # Bağlantıyı havuza geri ver.
+            # --- TRANSACTION SONU ---
 
         return jsonify({'message': 'Malzemeler tüketildi ve stok güncellendi'}), 200
     except Exception as e:

@@ -13,7 +13,6 @@ import { JobsStatsCards } from '@/components/features/jobs/JobsStatsCards'
 import { ViewModeToggle, ViewMode } from '@/components/features/jobs/ViewModeToggle'
 import { CompactJobsTable } from '@/components/features/jobs/CompactJobsTable'
 import { ProcessJobsTable } from '@/components/features/jobs/ProcessJobsTable'
-import { DetailedJobsTable } from '@/components/features/jobs/DetailedJobsTable'
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<any[]>([])
@@ -362,7 +361,6 @@ export default function JobsPage() {
               />
             </div>
           )}
-          {viewMode === 'detailed' && <DetailedJobsTable jobs={jobs} />}
 
           {/* Pagination */}
           {pagination.total_pages > 1 && (

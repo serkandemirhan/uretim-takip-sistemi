@@ -44,8 +44,8 @@ export default function CurrencySettingsPage() {
   }
 
   async function handleSave() {
-    const usd = parseFloat(form.usd_to_try)
-    const eur = parseFloat(form.eur_to_try)
+    const usd = parseFloat(form.usd_to_try.toString().replace(',', '.'))
+    const eur = parseFloat(form.eur_to_try.toString().replace(',', '.'))
 
     if (!usd || usd <= 0 || !eur || eur <= 0) {
       toast.error('Geçerli kur değerleri girin')
@@ -256,8 +256,8 @@ export default function CurrencySettingsPage() {
                 function calculate() {
                   const amount = parseFloat(document.getElementById('convert-amount').value) || 0;
                   const type = document.getElementById('convert-from').value;
-                  const usd = ${form.usd_to_try || 1};
-                  const eur = ${form.eur_to_try || 1};
+                  const usd = ${form.usd_to_try.toString().replace(',', '.') || 1};
+                  const eur = ${form.eur_to_try.toString().replace(',', '.') || 1};
                   let result = 0;
 
                   if (type === 'USD') result = amount * usd;

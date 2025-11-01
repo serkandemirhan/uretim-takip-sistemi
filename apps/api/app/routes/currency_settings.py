@@ -20,11 +20,11 @@ def get_currency_settings():
     """Döviz kuru ayarlarını getir"""
     try:
         settings = execute_query_one("""
-            SELECT id, usd_to_try, eur_to_try, updated_at, updated_by,
+            SELECT cs.id, cs.usd_to_try, cs.eur_to_try, cs.updated_at, cs.updated_by,
                    u.full_name as updated_by_name
             FROM currency_settings cs
             LEFT JOIN users u ON cs.updated_by = u.id
-            ORDER BY updated_at DESC
+            ORDER BY cs.updated_at DESC
             LIMIT 1
         """)
 

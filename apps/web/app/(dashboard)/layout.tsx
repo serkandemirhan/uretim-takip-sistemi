@@ -71,7 +71,6 @@ export default function DashboardLayout({
     { name: 'Teklifler', href: '/quotations', icon: ClipboardList, roles: ['yonetici', 'musteri_temsilcisi', 'satinalma'] },
     { name: 'Satın Alma', href: '/procurement/requests', icon: ShoppingCart, roles: ['yonetici', 'musteri_temsilcisi', 'satinalma', 'depocu'] },
     { name: 'Tedarikçi Teklifleri', href: '/procurement/supplier-quotations', icon: Receipt, roles: ['yonetici', 'satinalma'] },
-    { name: 'Mal Çıkışı', href: '/warehouse/job-material-issue', icon: Package, roles: ['yonetici', 'depocu'] },
     { name: 'Stoklar', href: '/stocks/inventory', icon: Package, roles: ['yonetici', 'depocu', 'satinalma'] },
     { name: 'Görevlerim', href: '/tasks', icon: CheckSquare, roles: ['operator'] },
     { name: 'Görevler', href: '/tasks/all', icon: CheckSquare, roles: ['yonetici'] },
@@ -81,9 +80,6 @@ export default function DashboardLayout({
   ]
 
   const secondaryNavigation = [
-    { name: 'Süreçler', href: '/processes', icon: Workflow, roles: ['yonetici'] },
-    { name: 'Kullanıcılar', href: '/users', icon: Users, roles: ['yonetici'] },
-  { name: 'Roller', href: '/roles', icon: Shield, roles: ['yonetici'] },
   { name: 'Ayarlar', href: '/settings', icon: Settings, roles: ['yonetici', 'hr_admin', 'hr_manager', 'hr_specialist'] },
   ]
 

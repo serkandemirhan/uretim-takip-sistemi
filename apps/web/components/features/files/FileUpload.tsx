@@ -26,6 +26,7 @@ interface FileUploadProps {
   className?: string
   children?: ReactNode
   variant?: 'default' | 'compact'
+  hasFiles?: boolean
 }
 
 export function FileUpload({
@@ -37,6 +38,7 @@ export function FileUpload({
   className,
   children,
   variant = 'default',
+  hasFiles = false,
 }: FileUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [queue, setQueue] = useState<QueueItem[]>([])
@@ -176,7 +178,7 @@ export function FileUpload({
     <div
       className={cn(
         'space-y-3',
-        isCompact && 'md:flex md:items-start md:gap-4 md:space-y-0',
+        isCompact && 'md:flex md:items-center md:gap-5 md:space-y-0',
         className,
       )}
     >
@@ -188,7 +190,7 @@ export function FileUpload({
             ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
             : 'cursor-pointer hover:bg-gray-50',
           isCompact
-            ? 'max-w-[240px] self-start bg-white shadow-sm hover:-translate-y-0.5 hover:shadow-md md:w-[240px]'
+            ? 'max-w-[240px] self-center bg-white shadow-sm hover:-translate-y-0.5 hover:shadow-md md:w-[240px] md:min-h-[96px] md:self-stretch md:p-3'
             : 'w-full',
         )}
         onDragOver={(e) => {
@@ -224,7 +226,8 @@ export function FileUpload({
         >
           <span
             className={cn(
-              'flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-500 sm:mr-3',
+              'flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors sm:mr-3',
+              (uploading || disabled) && 'bg-gray-200 text-gray-400',
               isCompact && 'sm:mr-0',
             )}
           >
@@ -232,16 +235,26 @@ export function FileUpload({
           </span>
           <div
             className={cn(
-              'space-y-1 text-xs text-gray-500 sm:flex-1 sm:space-y-0',
+              'space-y-1 text-xs sm:flex-1 sm:space-y-0',
               isCompact && 'sm:flex-none',
             )}
           >
-            <p className="font-medium text-gray-700">
+            <p
+              className={cn(
+                'font-medium transition-colors',
+                hasFiles ? 'text-gray-500' : 'text-gray-700',
+              )}
+            >
               {disabled
                 ? 'Dosya yükleme izniniz yok'
                 : 'Dosyaları buraya sürükleyin veya simgeye tıklayın'}
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-x-2 text-[11px] text-gray-400 sm:justify-start">
+            <div
+              className={cn(
+                'flex flex-wrap items-center justify-center gap-x-2 text-[11px] transition-colors sm:justify-start',
+                hasFiles ? 'text-gray-300' : 'text-gray-400',
+              )}
+            >
               {uploading ? (
                 <span className="text-blue-600">Yükleme devam ediyor…</span>
               ) : (

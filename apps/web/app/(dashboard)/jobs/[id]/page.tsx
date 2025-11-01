@@ -58,6 +58,9 @@ import { FileList } from '@/components/features/files/FileList'
 import { JobDetailHeader } from '@/components/features/jobs/JobDetailHeader'
 import { ProcessListSidebar } from '@/components/features/jobs/ProcessListSidebar'
 import { ProcessDetailPanel } from '@/components/features/jobs/ProcessDetailPanel'
+import { JobQuotationsTab } from '@/components/features/jobs/tabs/JobQuotationsTab'
+import { JobMaterialsTab } from '@/components/features/jobs/tabs/JobMaterialsTab'
+import { JobMaterialTrackingTab } from '@/components/features/jobs/tabs/JobMaterialTrackingTab'
 
 const MINUTES_PER_HOUR = 60
 const HOURS_PER_DAY = 24
@@ -133,6 +136,7 @@ const [newStep, setNewStep] = useState({
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({})
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'processes' | 'quotations' | 'materials' | 'tracking'>('processes')
 
   // Get selected step
   const selectedStep = useMemo(() => {
@@ -2064,28 +2068,12 @@ async function handleCancel() {
     </>
   )
 
-  const jobMaterialButtons = job?.id ? (
-    <div className="flex flex-wrap items-center justify-end gap-2 border-b bg-white px-4 py-3">
-      <Link href={`/jobs/${job.id}/quotations`}>
-        <Button variant="outline">
-          <FileText className="w-4 h-4 mr-2" />
-          Malzeme Listesi
-        </Button>
-      </Link>
-      <Link href={`/jobs/${job.id}/materials`}>
-        <Button variant="outline">
-          <Package className="w-4 h-4 mr-2" />
-          Malzeme Rezervasyonları
-        </Button>
-      </Link>
-      <Link href={`/jobs/${job.id}/material-tracking`}>
-        <Button variant="outline">
-          <TrendingUp className="w-4 h-4 mr-2" />
-          Malzeme Takibi
-        </Button>
-      </Link>
-    </div>
-  ) : null
+  const tabItems: Array<{ value: 'processes' | 'quotations' | 'materials' | 'tracking'; label: string }> = [
+    { value: 'processes', label: 'Adım Süreçler' },
+    { value: 'quotations', label: 'Malzeme Listesi' },
+    { value: 'materials', label: 'Malzeme Rezervasyonları' },
+    { value: 'tracking', label: 'Malzeme Takibi' },
+  ]
 
   return (
     <div className="space-y-6 overflow-x-hidden">
@@ -2099,42 +2087,84 @@ async function handleCancel() {
             actions={jobActionButtons}
           />
 
-          {jobMaterialButtons}
-
-          <div className="flex h-[calc(100vh-300px)] border-t">
-            <ProcessListSidebar
-              steps={job.steps || []}
-              selectedStepId={selectedStepId}
-              onSelectStep={setSelectedStepId}
-            />
-            <ProcessDetailPanel
-              step={selectedStep}
-              files={selectedStep ? jobFiles.process_files?.find(
-                (pf: any) => pf.process_id === selectedStep.process?.id
-              ) : null}
-              users={users}
-              machines={machines}
-              currentUser={currentUser}
-              canUploadFiles={
-                currentUser?.role === 'yonetici' ||
-                currentUser?.role === 'admin' ||
-                (selectedStep?.assigned_to?.id &&
-                  currentUser?.id &&
-                  String(selectedStep.assigned_to.id) === String(currentUser.id))
-              }
-              canDeleteFiles={
-                currentUser?.role === 'yonetici' || currentUser?.role === 'admin'
-              }
-              onStartStep={handleStartStep}
-              onCompleteStep={handleCompleteStep}
-              onPauseStep={handlePauseStep}
-              onResumeStep={handleResumeStep}
-              onAddNote={handleAddStepNote}
-              onSave={handleStepSave}
-              onFileUploadComplete={loadJob}
-              actionLoading={selectedStep ? stepActionLoading[selectedStep.id] || false : false}
-            />
+          <div className="border-b bg-white px-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {tabItems.map((tab) => {
+                const isActive = activeTab === tab.value
+                return (
+                  <Button
+                    key={tab.value}
+                    variant={isActive ? 'default' : 'ghost'}
+                    size="sm"
+                    className={cn(
+                      'rounded-none border-b-2 border-transparent px-4 py-2 text-sm font-medium',
+                      isActive
+                        ? 'border-b-blue-600 bg-white text-blue-600 shadow-none'
+                        : 'text-gray-600 hover:text-blue-600',
+                    )}
+                    onClick={() => setActiveTab(tab.value)}
+                  >
+                    {tab.label}
+                  </Button>
+                )
+              })}
+            </div>
           </div>
+
+          {activeTab === 'processes' && (
+            <div className="flex h-[calc(100vh-300px)] border-t">
+              <ProcessListSidebar
+                steps={job.steps || []}
+                selectedStepId={selectedStepId}
+                onSelectStep={setSelectedStepId}
+              />
+              <ProcessDetailPanel
+                step={selectedStep}
+                files={selectedStep ? jobFiles.process_files?.find(
+                  (pf: any) => pf.process_id === selectedStep.process?.id
+                ) : null}
+                users={users}
+                machines={machines}
+                currentUser={currentUser}
+                canUploadFiles={
+                  currentUser?.role === 'yonetici' ||
+                  currentUser?.role === 'admin' ||
+                  (selectedStep?.assigned_to?.id &&
+                    currentUser?.id &&
+                    String(selectedStep.assigned_to.id) === String(currentUser.id))
+                }
+                canDeleteFiles={
+                  currentUser?.role === 'yonetici' || currentUser?.role === 'admin'
+                }
+                onStartStep={handleStartStep}
+                onCompleteStep={handleCompleteStep}
+                onPauseStep={handlePauseStep}
+                onResumeStep={handleResumeStep}
+                onAddNote={handleAddStepNote}
+                onSave={handleStepSave}
+                onFileUploadComplete={loadJob}
+                actionLoading={selectedStep ? stepActionLoading[selectedStep.id] || false : false}
+              />
+            </div>
+          )}
+
+          {activeTab === 'quotations' && job?.id && (
+            <div className="px-4 py-6">
+              <JobQuotationsTab jobId={job.id} />
+            </div>
+          )}
+
+          {activeTab === 'materials' && job?.id && (
+            <div className="px-4 py-6">
+              <JobMaterialsTab jobId={job.id} />
+            </div>
+          )}
+
+          {activeTab === 'tracking' && job?.id && (
+            <div className="px-4 py-6">
+              <JobMaterialTrackingTab jobId={job.id} />
+            </div>
+          )}
         </div>
       ) : (
         /* OLD LAYOUT - When editing */

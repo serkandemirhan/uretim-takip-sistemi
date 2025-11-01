@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Eye, Edit, AlertTriangle } from 'lucide-react'
+import { Eye, Edit } from 'lucide-react'
 import { formatDate } from '@/lib/utils/formatters'
 
 const STORAGE_KEY_WIDTHS = 'compactJobsTable_columnWidths'
@@ -14,6 +14,7 @@ interface Job {
   job_number: string
   title: string
   customer_name: string
+  dealer_name?: string
   status: string
   due_date: string
   progress: number
@@ -53,10 +54,10 @@ export function CompactJobsTable({ jobs }: CompactJobsTableProps) {
     no: 100,
     title: 250,
     customer: 200,
+    dealer: 150,
     status: 150,
     deadline: 150,
     progress: 150,
-    assigned: 120,
     actions: 120,
   })
   const [resizingColumn, setResizingColumn] = useState<string | null>(null)
@@ -133,6 +134,13 @@ export function CompactJobsTable({ jobs }: CompactJobsTableProps) {
                   onMouseDown={(e) => handleMouseDown(e, 'customer')}
                 />
               </th>
+              <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.dealer }}>
+                Bayi
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
+                  onMouseDown={(e) => handleMouseDown(e, 'dealer')}
+                />
+              </th>
               <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.status }}>
                 Durum
                 <div
@@ -141,7 +149,7 @@ export function CompactJobsTable({ jobs }: CompactJobsTableProps) {
                 />
               </th>
               <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.deadline }}>
-                Deadline
+                Termin Tarihi
                 <div
                   className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
                   onMouseDown={(e) => handleMouseDown(e, 'deadline')}
@@ -154,15 +162,8 @@ export function CompactJobsTable({ jobs }: CompactJobsTableProps) {
                   onMouseDown={(e) => handleMouseDown(e, 'progress')}
                 />
               </th>
-              <th className="px-4 py-3 text-left font-medium text-gray-700 relative" style={{ width: columnWidths.assigned }}>
-                Sorumlu
-                <div
-                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors"
-                  onMouseDown={(e) => handleMouseDown(e, 'assigned')}
-                />
-              </th>
               <th className="px-4 py-3 text-center font-medium text-gray-700" style={{ width: columnWidths.actions }}>
-                Aksiyonlar
+                İşlemler
               </th>
             </tr>
           </thead>
@@ -183,14 +184,16 @@ export function CompactJobsTable({ jobs }: CompactJobsTableProps) {
                   <td className="px-4 py-3 text-gray-700">
                     {job.customer_name || '-'}
                   </td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {job.dealer_name || '-'}
+                  </td>
                   <td className="px-4 py-3">
                     {getStatusBadge(job.status)}
                   </td>
                   <td className="px-4 py-3">
                     {job.due_date ? (
-                      <span className={overdue ? 'text-red-600 font-semibold flex items-center gap-1' : 'text-gray-700'}>
+                      <span className={overdue ? 'text-red-600 font-semibold' : 'text-gray-700'}>
                         {formatDate(job.due_date)}
-                        {overdue && <AlertTriangle className="w-3 h-3" />}
                       </span>
                     ) : (
                       <span className="text-gray-400">-</span>
@@ -210,24 +213,6 @@ export function CompactJobsTable({ jobs }: CompactJobsTableProps) {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex -space-x-2">
-                      {job.assigned_users?.slice(0, 3).map((user, idx) => (
-                        <div
-                          key={idx}
-                          className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-medium border-2 border-white"
-                          title={user.full_name}
-                        >
-                          {user.full_name.charAt(0).toUpperCase()}
-                        </div>
-                      ))}
-                      {(job.assigned_users?.length || 0) > 3 && (
-                        <div className="w-8 h-8 rounded-full bg-gray-400 text-white flex items-center justify-center text-xs font-medium border-2 border-white">
-                          +{(job.assigned_users?.length || 0) - 3}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
                       <Link href={`/jobs/${job.id}`}>
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -239,9 +224,6 @@ export function CompactJobsTable({ jobs }: CompactJobsTableProps) {
                           <Edit className="w-4 h-4" />
                         </Button>
                       </Link>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700">
-                        <AlertTriangle className="w-4 h-4" />
-                      </Button>
                     </div>
                   </td>
                 </tr>

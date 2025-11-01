@@ -23,11 +23,14 @@ import {
   Edit as EditIcon,
   Save,
   X,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { formatDate } from '@/lib/utils/formatters'
 import { toast } from 'sonner'
-import { FileList } from '@/components/features/files/FileList'
 import { FileUpload } from '@/components/features/files/FileUpload'
+import { JobFilesRow } from '@/components/features/jobs/JobFilesRow'
+import { filesAPI } from '@/lib/api/client'
 import { cn } from '@/lib/utils/cn'
 
 interface JobStep {
@@ -162,6 +165,8 @@ export function ProcessDetailPanel({
   const [noteText, setNoteText] = useState('')
   const [showNoteForm, setShowNoteForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [stepFilesExpanded, setStepFilesExpanded] = useState(false)
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -172,6 +177,17 @@ export function ProcessDetailPanel({
     estimated_duration_days: 0,
     estimated_duration_hours: 0,
   })
+
+  const filesList = Array.isArray(files?.files) ? files.files : []
+  const DEFAULT_STEP_VISIBLE_FILES = 8
+  const hasMoreStepFiles = filesList.length > DEFAULT_STEP_VISIBLE_FILES
+  const remainingStepFiles = Math.max(0, filesList.length - DEFAULT_STEP_VISIBLE_FILES)
+
+  useEffect(() => {
+    if (filesList.length <= DEFAULT_STEP_VISIBLE_FILES && stepFilesExpanded) {
+      setStepFilesExpanded(false)
+    }
+  }, [filesList.length, stepFilesExpanded])
 
   // Initialize form when step changes
   useEffect(() => {
@@ -215,7 +231,6 @@ export function ProcessDetailPanel({
   const machineName = step.machine?.name || 'Belirlenmedi'
   const requirements = step.requirements || ''
   const noteList = step.notes || []
-  const filesList = Array.isArray(files?.files) ? files.files : []
   const currentUserId = currentUser?.id ? String(currentUser.id) : null
   const dueDateDisplay = step.due_date ? formatDate(step.due_date) : '-'
   const dueTimeDisplay = step.due_time?.trim() ? step.due_time : ''
@@ -272,6 +287,25 @@ export function ProcessDetailPanel({
       toast.error(error?.response?.data?.error || 'Süreç durdurulamadı')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleStepFileDelete = async (fileId: string) => {
+    if (!canDeleteFiles) return
+    if (deletingFileId) return
+
+    const confirmDelete = window.confirm('Bu dosyayı silmek istediğinizden emin misiniz?')
+    if (!confirmDelete) return
+
+    try {
+      setDeletingFileId(fileId)
+      await filesAPI.delete(fileId)
+      toast.success('Dosya silindi')
+      onFileUploadComplete?.()
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || 'Dosya silinemedi')
+    } finally {
+      setDeletingFileId(null)
     }
   }
 
@@ -631,11 +665,32 @@ export function ProcessDetailPanel({
           {/* Files */}
           <Card>
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <FileText className="w-4 h-4" />
                   Dosyalar ({filesList.length})
                 </div>
+                {hasMoreStepFiles && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-gray-600 hover:text-gray-900"
+                    onClick={() => setStepFilesExpanded((prev) => !prev)}
+                  >
+                    {stepFilesExpanded ? (
+                      <>
+                        <ChevronUp className="mr-1 h-4 w-4" />
+                        Daralt
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="mr-1 h-4 w-4" />
+                        Tümünü Gör ({remainingStepFiles} daha)
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -644,12 +699,19 @@ export function ProcessDetailPanel({
                 refId={step.id}
                 onUploadComplete={onFileUploadComplete}
                 maxFiles={10}
+                variant="compact"
+                hasFiles={filesList.length > 0}
               >
                 {filesList.length > 0 ? (
-                  <FileList
+                  <JobFilesRow
                     files={filesList}
-                    onDelete={onFileUploadComplete}
-                    allowDelete={canDeleteFiles}
+                    onDelete={canDeleteFiles ? handleStepFileDelete : undefined}
+                    maxVisible={DEFAULT_STEP_VISIBLE_FILES}
+                    showActions={true}
+                    expanded={stepFilesExpanded}
+                    onExpandedChange={setStepFilesExpanded}
+                    showToggle={false}
+                    deletingId={deletingFileId}
                   />
                 ) : (
                   <p className="text-sm text-gray-500">Henüz dosya eklenmemiş</p>

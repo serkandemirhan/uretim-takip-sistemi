@@ -373,6 +373,9 @@ def get_job_reservations(job_id):
         for res in reservations:
             result.append({
                 'id': str(res['id']),
+                'job_id': str(res['job_id']) if res.get('job_id') else None,
+                'quotation_id': str(res['quotation_id']) if res.get('quotation_id') else None,
+                'job_material_id': str(res['job_material_id']) if res.get('job_material_id') else None,
                 'stock_id': str(res['stock_id']),
                 'stock_code': res.get('stock_code'),
                 'stock_name': res.get('stock_name'),

@@ -2069,10 +2069,10 @@ async function handleCancel() {
   )
 
   const tabItems: Array<{ value: 'processes' | 'quotations' | 'materials' | 'tracking'; label: string }> = [
-    { value: 'processes', label: 'Adım Süreçler' },
+    { value: 'processes', label: 'Operasyonlar' },
     { value: 'quotations', label: 'Malzeme Listesi' },
     { value: 'materials', label: 'Malzeme Rezervasyonları' },
-    { value: 'tracking', label: 'Malzeme Takibi' },
+    { value: 'tracking', label: 'Malzeme Kullanim Takibi' },
   ]
 
   return (
@@ -2087,14 +2087,14 @@ async function handleCancel() {
             actions={jobActionButtons}
           />
 
-          <div className="border-b bg-white px-4">
+          <div className="border-b bg-white px-5 py-2">
             <div className="flex flex-wrap items-center gap-2">
               {tabItems.map((tab) => {
                 const isActive = activeTab === tab.value
                 return (
                   <Button
                     key={tab.value}
-                    variant={isActive ? 'default' : 'ghost'}
+                    variant="ghost"
                     size="sm"
                     className={cn(
                       'rounded-none border-b-2 border-transparent px-4 py-2 text-sm font-medium',

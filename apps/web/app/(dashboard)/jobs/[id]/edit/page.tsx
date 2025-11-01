@@ -2,20 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import {
-  jobsAPI,
-  customersAPI,
-  processesAPI,
-  usersAPI,
-  machinesAPI,
-} from '@/lib/api/client'
+import { jobsAPI, customersAPI, processesAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Save, Plus, Trash2, GripVertical, Search, X, Workflow, Loader2 } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, GripVertical, Search, X, Workflow } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { handleApiError } from '@/lib/utils/error-handler'
@@ -25,12 +19,9 @@ type EditableStep = {
   id: string
   processId: string
   processName: string
-  assignedTo: string
-  machineId: string
   status: string
   orderIndex: number
   isLocked: boolean
-  isMachineBased: boolean
 }
 
 export default function EditJobPage() {
@@ -42,8 +33,6 @@ export default function EditJobPage() {
   const [processes, setProcesses] = useState<any[]>([])
   const [processGroups, setProcessGroups] = useState<any[]>([])
   const [ungroupedProcesses, setUngroupedProcesses] = useState<any[]>([])
-  const [users, setUsers] = useState<any[]>([])
-  const [machines, setMachines] = useState<any[]>([])
   const [dealers, setDealers] = useState<any[]>([])
   const [loadingDealers, setLoadingDealers] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -59,7 +48,6 @@ export default function EditJobPage() {
   })
 
   const [steps, setSteps] = useState<EditableStep[]>([])
-  const [savingStepId, setSavingStepId] = useState<string | null>(null)
   const [draggingStepId, setDraggingStepId] = useState<string | null>(null)
   const dragStartOrderRef = useRef<Map<string, number>>(new Map())
   const [processPanelOpen, setProcessPanelOpen] = useState(false)
@@ -126,14 +114,11 @@ export default function EditJobPage() {
   async function loadData() {
     try {
       setLoading(true)
-      const [jobRes, customersRes, processesRes, usersRes, machinesRes] =
-        await Promise.all([
-          jobsAPI.getById(params.id as string),
-          customersAPI.getAll(),
-          processesAPI.getAll(),
-          usersAPI.getAll(),
-          machinesAPI.getAll(),
-        ])
+      const [jobRes, customersRes, processesRes] = await Promise.all([
+        jobsAPI.getById(params.id as string),
+        customersAPI.getAll(),
+        processesAPI.getAll(),
+      ])
 
       const jobData = jobRes.data ?? jobRes
       setJob(jobData)
@@ -181,8 +166,6 @@ export default function EditJobPage() {
         }
       })
       setProcesses(processList)
-      setUsers(usersRes.data || usersRes || [])
-      setMachines(machinesRes.data || machinesRes || [])
 
       setFormData({
         title: jobData.title || '',
@@ -200,21 +183,13 @@ export default function EditJobPage() {
         .map((step, index) => {
           const processId = step.process?.id || ''
           const processName = step.process?.name || 'Süreç'
-          const processDetails = processMapById.get(processId)
-          const isMachineBased = Boolean(
-            processDetails?.is_machine_based ?? step.process?.is_machine_based,
-          )
-
           return {
             id: step.id,
             processId,
             processName,
-            assignedTo: step.assigned_to?.id || '',
-            machineId: isMachineBased ? step.machine?.id || '' : '',
             status: step.status,
             orderIndex: step.order_index ?? index,
             isLocked: ['completed', 'canceled'].includes(step.status),
-            isMachineBased,
           }
         })
       setSteps(orderedSteps)
@@ -254,39 +229,6 @@ export default function EditJobPage() {
       loadData()
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Silme başarısız')
-    }
-  }
-
-  function handleStepFieldChange(stepId: string, field: 'assignedTo' | 'machineId', value: string) {
-    setSteps((prev) =>
-      prev.map((step) => {
-        if (step.id !== stepId) {
-          return step
-        }
-        if (field === 'machineId' && !step.isMachineBased) {
-          return step
-        }
-        return { ...step, [field]: value }
-      }),
-    )
-  }
-
-  async function handleStepSave(stepId: string) {
-    const step = steps.find((item) => item.id === stepId)
-    if (!step) return
-
-    try {
-      setSavingStepId(stepId)
-      await jobsAPI.updateStep(stepId, {
-        assigned_to: step.assignedTo || null,
-        machine_id: step.isMachineBased ? step.machineId || null : null,
-      })
-      toast.success('Süreç güncellendi')
-      await loadData()
-    } catch (error: any) {
-      toast.error(error?.response?.data?.error || 'Süreç güncellenemedi')
-    } finally {
-      setSavingStepId(null)
     }
   }
 
@@ -633,12 +575,10 @@ export default function EditJobPage() {
           <CardContent className="space-y-4">
             {steps.length > 0 ? (
               <div className="overflow-x-auto">
-                <div className="space-y-2 min-w-[960px]">
-                  <div className="grid grid-cols-[48px_minmax(220px,1fr)_220px_220px_auto] items-center gap-4 rounded-md bg-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                <div className="space-y-2 min-w-[720px]">
+                  <div className="grid grid-cols-[48px_minmax(220px,1fr)_auto] items-center gap-4 rounded-md bg-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                     <span>Sıra</span>
                     <span>Süreç</span>
-                    <span>Sorumlu</span>
-                    <span>Makine</span>
                     <span className="text-right">İşlem</span>
                   </div>
                   <div
@@ -646,14 +586,13 @@ export default function EditJobPage() {
                     onDrop={(event) => event.preventDefault()}
                   >
                   {steps.map((step, index) => {
-                    const disabled = savingStepId === step.id || saving || step.isLocked
+                    const disabled = saving || step.isLocked
                     const canDelete = ['pending', 'ready'].includes(step.status)
-                    const machineFieldDisabled = disabled || !step.isMachineBased
 
                     return (
                       <div
                         key={step.id}
-                        className={`grid grid-cols-[48px_minmax(220px,1fr)_220px_220px_auto] items-center gap-4 rounded-lg border bg-white px-3 py-2 shadow-sm transition ${step.isLocked ? 'opacity-80' : ''}`}
+                        className={`grid grid-cols-[48px_minmax(220px,1fr)_auto] items-center gap-4 rounded-lg border bg-white px-3 py-2 shadow-sm transition ${step.isLocked ? 'opacity-80' : ''}`}
                         draggable={!step.isLocked}
                         onDragStart={() => handleStepDragStart(step.id)}
                         onDragEnd={handleStepDragEnd}
@@ -685,58 +624,7 @@ export default function EditJobPage() {
                             </span>
                           </div>
                         </div>
-                        <div>
-                          <select
-                            value={step.assignedTo}
-                            onChange={(e) => handleStepFieldChange(step.id, 'assignedTo', e.target.value)}
-                            className="h-9 w-full rounded border border-gray-300 px-2 text-sm"
-                            disabled={disabled}
-                          >
-                            <option value="">Seçilmedi</option>
-                            {users.map((user) => (
-                              <option key={user.id} value={user.id}>
-                                {user.full_name || user.username}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          {step.isMachineBased ? (
-                            <select
-                              value={step.machineId}
-                              onChange={(e) => handleStepFieldChange(step.id, 'machineId', e.target.value)}
-                              className="h-9 w-full rounded border border-gray-300 px-2 text-sm"
-                              disabled={machineFieldDisabled}
-                            >
-                              <option value="">Seçilmedi</option>
-                              {machines.map((machine) => (
-                                <option key={machine.id} value={machine.id}>
-                                  {machine.name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <div className="flex h-9 w-full items-center text-xs italic text-gray-400">
-                              Makine gerekmez
-                            </div>
-                          )}
-                        </div>
                         <div className="flex items-center justify-start gap-2 lg:justify-end">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={() => handleStepSave(step.id)}
-                            disabled={disabled}
-                            className="h-9 w-9"
-                          >
-                            {savingStepId === step.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Save className="h-4 w-4" />
-                            )}
-                            <span className="sr-only">Kaydet</span>
-                          </Button>
                           {canDelete && (
                             <Button
                               type="button"

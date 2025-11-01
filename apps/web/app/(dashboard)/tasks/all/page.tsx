@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import React, { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { dashboardAPI, jobsAPI } from '@/lib/api/client'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Table,
   TableBody,
@@ -15,9 +16,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
-import { ArrowUpDown, CheckCircle, Play, RefreshCcw, X } from 'lucide-react'
+import { ArrowUpDown, CheckCircle, Play, RefreshCcw, X, GripVertical, ChevronDown, ChevronRight, Settings, Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { handleApiError } from '@/lib/utils/error-handler'
+import { TaskDetailPanel } from '@/components/features/tasks/TaskDetailPanel'
 
 type Task = {
   id: string
@@ -83,12 +85,24 @@ const STATUS_OPTIONS = [
   { value: 'canceled', label: STATUS_LABELS.canceled.label },
 ]
 
+const STORAGE_KEY_PREFIX = 'tasks_table_settings_'
+
 export default function AllTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(false)
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(
     null,
   )
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [groupByColumn, setGroupByColumn] = useState<string | null>(null)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set())
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null)
+  const [columnOrder, setColumnOrder] = useState<string[]>([])
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
 
   const columnConfigs = useMemo<ColumnConfig[]>(
     () => [
@@ -279,6 +293,66 @@ export default function AllTasksPage() {
     Object.fromEntries(columnConfigs.map((column) => [column.key, ''])),
   )
 
+  // localStorage key based on user
+  const getUserStorageKey = () => {
+    if (typeof window === 'undefined') return null
+    const user = localStorage.getItem('user')
+    if (!user) return null
+    try {
+      const userData = JSON.parse(user)
+      return `${STORAGE_KEY_PREFIX}${userData.id || 'default'}`
+    } catch {
+      return `${STORAGE_KEY_PREFIX}default`
+    }
+  }
+
+  // Load settings from localStorage
+  useEffect(() => {
+    const storageKey = getUserStorageKey()
+    if (!storageKey) return
+
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        const settings = JSON.parse(saved)
+
+        if (settings.columnWidths) {
+          setColumnWidths(settings.columnWidths)
+        }
+
+        if (settings.visibleColumns) {
+          setVisibleColumns(new Set(settings.visibleColumns))
+        } else {
+          // Default: all columns visible
+          setVisibleColumns(new Set(columnConfigs.map(col => col.key)))
+        }
+      } else {
+        // Default: all columns visible
+        setVisibleColumns(new Set(columnConfigs.map(col => col.key)))
+      }
+    } catch (error) {
+      console.error('Failed to load table settings:', error)
+      setVisibleColumns(new Set(columnConfigs.map(col => col.key)))
+    }
+  }, [columnConfigs])
+
+  // Save settings to localStorage
+  useEffect(() => {
+    const storageKey = getUserStorageKey()
+    if (!storageKey) return
+
+    const settings = {
+      columnWidths,
+      visibleColumns: Array.from(visibleColumns)
+    }
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(settings))
+    } catch (error) {
+      console.error('Failed to save table settings:', error)
+    }
+  }, [columnWidths, visibleColumns])
+
   useEffect(() => {
     void loadTasks()
   }, [])
@@ -419,6 +493,35 @@ export default function AllTasksPage() {
     return sorted
   }, [filteredTasks, sortConfig, columnConfigs])
 
+  const groupedTasks = useMemo(() => {
+    if (!groupByColumn) {
+      return null
+    }
+
+    const column = columnConfigs.find((col) => col.key === groupByColumn)
+    if (!column) {
+      return null
+    }
+
+    const groups = new Map<string, Task[]>()
+
+    sortedTasks.forEach((task) => {
+      const value = column.accessor(task)
+      const groupKey = value == null ? '(Boş)' : String(value)
+
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, [])
+      }
+      groups.get(groupKey)!.push(task)
+    })
+
+    return Array.from(groups.entries()).map(([key, tasks]) => ({
+      groupKey: key,
+      tasks,
+      count: tasks.length
+    }))
+  }, [sortedTasks, groupByColumn, columnConfigs])
+
   function toggleSort(key: string) {
     setSortConfig((prev) => {
       if (!prev || prev.key !== key) {
@@ -438,6 +541,88 @@ export default function AllTasksPage() {
     setSortConfig(null)
   }
 
+  function handleDragStart(e: React.DragEvent, columnKey: string) {
+    setDraggedColumn(columnKey)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    if (draggedColumn) {
+      setGroupByColumn(draggedColumn)
+      setExpandedGroups(new Set())
+      setDraggedColumn(null)
+    }
+  }
+
+  function toggleGroup(groupKey: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupKey)) {
+        next.delete(groupKey)
+      } else {
+        next.add(groupKey)
+      }
+      return next
+    })
+  }
+
+  function clearGrouping() {
+    setGroupByColumn(null)
+    setExpandedGroups(new Set())
+  }
+
+  function handleResizeStart(e: React.MouseEvent, columnKey: string) {
+    e.preventDefault()
+    setResizingColumn(columnKey)
+
+    const startX = e.clientX
+    const column = columnConfigs.find(col => col.key === columnKey)
+    const startWidth = columnWidths[columnKey] || (column?.width ? parseInt(column.width.replace(/\D/g, '')) * 4 : 200)
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - startX
+      const newWidth = Math.max(80, startWidth + diff)
+      setColumnWidths(prev => ({ ...prev, [columnKey]: newWidth }))
+    }
+
+    const handleMouseUp = () => {
+      setResizingColumn(null)
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  function toggleColumnVisibility(columnKey: string) {
+    setVisibleColumns(prev => {
+      const next = new Set(prev)
+      if (next.has(columnKey)) {
+        next.delete(columnKey)
+      } else {
+        next.add(columnKey)
+      }
+      return next
+    })
+  }
+
+  function resetTableSettings() {
+    setColumnWidths({})
+    setVisibleColumns(new Set(columnConfigs.map(col => col.key)))
+    toast.success('Tablo ayarları sıfırlandı')
+  }
+
+  const visibleColumnConfigs = useMemo(() => {
+    return columnConfigs.filter(col => visibleColumns.has(col.key))
+  }, [columnConfigs, visibleColumns])
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -446,6 +631,10 @@ export default function AllTasksPage() {
           <p className="text-sm text-gray-500">Sistemdeki tüm iş adımlarını takip edin.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowSettingsDialog(true)} className="gap-2">
+            <Settings className="h-4 w-4" />
+            Tablo Ayarları
+          </Button>
           <Button variant="outline" size="sm" onClick={resetFilters} className="gap-2">
             <X className="h-4 w-4" />
             Filtreleri Sıfırla
@@ -457,87 +646,253 @@ export default function AllTasksPage() {
         </div>
       </div>
 
+      {/* Gruplama Alanı */}
+      <div
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={cn(
+          "border-2 border-dashed rounded-lg p-4 transition-colors",
+          draggedColumn ? "border-blue-400 bg-blue-50" : "border-gray-300 bg-gray-50"
+        )}
+      >
+        {groupByColumn ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <GripVertical className="h-4 w-4 text-gray-400" />
+              <span className="text-sm font-medium text-gray-700">
+                Gruplandı:{' '}
+                <span className="font-semibold text-blue-600">
+                  {columnConfigs.find(col => col.key === groupByColumn)?.label}
+                </span>
+              </span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={clearGrouping}>
+              <X className="h-4 w-4 mr-1" />
+              Gruplamayı Kaldır
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+            <GripVertical className="h-4 w-4" />
+            <span>Gruplamak için bir sütunu buraya sürükleyin</span>
+          </div>
+        )}
+      </div>
+
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <Table className="min-w-[1400px]">
             <TableHeader>
               <TableRow className="bg-gray-50">
-                {columnConfigs.map((column) => {
+                {visibleColumnConfigs.map((column) => {
                   const isActive = sortConfig?.key === column.key
                   const sortLabel = isActive ? (sortConfig?.direction === 'asc' ? 'Artan' : 'Azalan') : 'Sırala'
+                  const width = columnWidths[column.key] || (column.width ? undefined : 200)
+
                   return (
-                    <TableHead key={column.key} className={cn('align-middle', column.width)}>
-                      <button
-                        type="button"
-                        onClick={() => toggleSort(column.key)}
-                        className="flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-gray-700"
+                    <TableHead
+                      key={column.key}
+                      className={cn('align-middle relative', column.width)}
+                      style={width ? { width: `${width}px` } : undefined}
+                    >
+                      <div
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, column.key)}
+                        className="flex items-center gap-1 cursor-move group"
                       >
-                        <span>{column.label}</span>
-                        <ArrowUpDown
-                          className={cn('h-4 w-4 text-gray-400', isActive && 'text-gray-700')}
-                          aria-hidden="true"
-                        />
-                        <span className="sr-only">{sortLabel}</span>
-                      </button>
+                        <GripVertical className="h-4 w-4 text-gray-300 group-hover:text-gray-500 flex-shrink-0" />
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(column.key)}
+                          className="flex flex-1 items-center justify-between gap-2 text-left text-sm font-semibold text-gray-700"
+                        >
+                          <span>{column.label}</span>
+                          <ArrowUpDown
+                            className={cn('h-4 w-4 text-gray-400', isActive && 'text-gray-700')}
+                            aria-hidden="true"
+                          />
+                          <span className="sr-only">{sortLabel}</span>
+                        </button>
+                      </div>
+                      {/* Resize Handle */}
+                      <div
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 bg-gray-300 opacity-0 hover:opacity-100 transition-opacity"
+                        onMouseDown={(e) => handleResizeStart(e, column.key)}
+                      />
                     </TableHead>
                   )
                 })}
                 <TableHead className="w-40 text-right">Aksiyonlar</TableHead>
               </TableRow>
               <TableRow className="bg-gray-50">
-                {columnConfigs.map((column) => (
-                  <TableCell key={`${column.key}-filter`} className={cn('py-2', column.width)}>
-                    {column.filterType === 'select' ? (
-                      <select
-                        value={filters[column.key] ?? ''}
-                        onChange={(event) =>
-                          setFilters((prev) => ({ ...prev, [column.key]: event.target.value }))
-                        }
-                        className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700"
-                      >
-                        <option value="">Tümü</option>
-                        {column.options?.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <Input
-                        value={filters[column.key] ?? ''}
-                        onChange={(event) =>
-                          setFilters((prev) => ({ ...prev, [column.key]: event.target.value }))
-                        }
-                        placeholder={column.placeholder}
-                        className="h-8 text-xs"
-                      />
-                    )}
-                  </TableCell>
-                ))}
+                {visibleColumnConfigs.map((column) => {
+                  const width = columnWidths[column.key] || (column.width ? undefined : 200)
+                  return (
+                    <TableCell
+                      key={`${column.key}-filter`}
+                      className={cn('py-2', column.width)}
+                      style={width ? { width: `${width}px` } : undefined}
+                    >
+                      {column.filterType === 'select' ? (
+                        <select
+                          value={filters[column.key] ?? ''}
+                          onChange={(event) =>
+                            setFilters((prev) => ({ ...prev, [column.key]: event.target.value }))
+                          }
+                          className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700"
+                        >
+                          <option value="">Tümü</option>
+                          {column.options?.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Input
+                          value={filters[column.key] ?? ''}
+                          onChange={(event) =>
+                            setFilters((prev) => ({ ...prev, [column.key]: event.target.value }))
+                          }
+                          placeholder={column.placeholder}
+                          className="h-8 text-xs"
+                        />
+                      )}
+                    </TableCell>
+                  )
+                })}
                 <TableCell />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={columnConfigs.length + 1} className="py-10 text-center text-sm text-gray-500">
+                  <TableCell colSpan={visibleColumnConfigs.length + 1} className="py-10 text-center text-sm text-gray-500">
                     Görevler yükleniyor...
                   </TableCell>
                 </TableRow>
               ) : sortedTasks.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={columnConfigs.length + 1} className="py-10 text-center text-sm text-gray-500">
+                  <TableCell colSpan={visibleColumnConfigs.length + 1} className="py-10 text-center text-sm text-gray-500">
                     Seçili filtrelere göre görev bulunamadı.
                   </TableCell>
                 </TableRow>
+              ) : groupedTasks ? (
+                // Gruplu Görünüm
+                groupedTasks.map((group) => {
+                  const isExpanded = expandedGroups.has(group.groupKey)
+
+                  return (
+                    <React.Fragment key={group.groupKey}>
+                      {/* Grup Başlığı */}
+                      <TableRow className="bg-gray-100 hover:bg-gray-200 cursor-pointer">
+                        <TableCell
+                          colSpan={visibleColumnConfigs.length + 1}
+                          onClick={() => toggleGroup(group.groupKey)}
+                          className="py-3"
+                        >
+                          <div className="flex items-center gap-2 font-semibold text-gray-900">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                            <span>{group.groupKey}</span>
+                            <Badge variant="outline" className="ml-2 bg-white">
+                              {group.count} görev
+                            </Badge>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Grup İçeriği */}
+                      {isExpanded && group.tasks.map((task) => {
+                        const canStart = task.status === 'ready'
+                        const canComplete = task.status === 'in_progress'
+                        const isSelected = selectedTask?.id === task.id
+
+                        return (
+                          <TableRow
+                            key={task.id}
+                            className={cn(
+                              "align-top cursor-pointer",
+                              isSelected ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-gray-50"
+                            )}
+                            onClick={() => setSelectedTask(task)}
+                          >
+                            {visibleColumnConfigs.map((column) => {
+                              const rawValue = column.accessor(task)
+                              const displayValue =
+                                rawValue === null || rawValue === undefined
+                                  ? '—'
+                                  : typeof rawValue === 'string'
+                                  ? rawValue.trim() === ''
+                                    ? '—'
+                                    : rawValue
+                                  : rawValue
+                              const width = columnWidths[column.key] || (column.width ? undefined : 200)
+
+                              return (
+                                <TableCell
+                                  key={column.key}
+                                  className={cn('align-top text-xs text-gray-700', column.width)}
+                                  style={width ? { width: `${width}px` } : undefined}
+                                >
+                                  {column.render ? column.render(task) : displayValue}
+                                </TableCell>
+                              )
+                            })}
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleStart(task.id)
+                                  }}
+                                  disabled={!canStart}
+                                >
+                                  <Play className="mr-2 h-4 w-4" />
+                                  Başlat
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleComplete(task)
+                                  }}
+                                  disabled={!canComplete}
+                                >
+                                  <CheckCircle className="mr-2 h-4 w-4" />
+                                  Tamamla
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </React.Fragment>
+                  )
+                })
               ) : (
+                // Normal Görünüm
                 sortedTasks.map((task) => {
                   const canStart = task.status === 'ready'
                   const canComplete = task.status === 'in_progress'
+                  const isSelected = selectedTask?.id === task.id
 
                   return (
-                    <TableRow key={task.id} className="align-top">
-                      {columnConfigs.map((column) => {
+                    <TableRow
+                      key={task.id}
+                      className={cn(
+                        "align-top cursor-pointer",
+                        isSelected ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-gray-50"
+                      )}
+                      onClick={() => setSelectedTask(task)}
+                    >
+                      {visibleColumnConfigs.map((column) => {
                         const rawValue = column.accessor(task)
                         const displayValue =
                           rawValue === null || rawValue === undefined
@@ -547,11 +902,13 @@ export default function AllTasksPage() {
                               ? '—'
                               : rawValue
                             : rawValue
+                        const width = columnWidths[column.key] || (column.width ? undefined : 200)
 
                         return (
                           <TableCell
                             key={column.key}
                             className={cn('align-top text-xs text-gray-700', column.width)}
+                            style={width ? { width: `${width}px` } : undefined}
                           >
                             {column.render ? column.render(task) : displayValue}
                           </TableCell>
@@ -562,7 +919,10 @@ export default function AllTasksPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleStart(task.id)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleStart(task.id)
+                            }}
                             disabled={!canStart}
                           >
                             <Play className="mr-2 h-4 w-4" />
@@ -571,7 +931,10 @@ export default function AllTasksPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleComplete(task)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleComplete(task)
+                            }}
                             disabled={!canComplete}
                           >
                             <CheckCircle className="mr-2 h-4 w-4" />
@@ -587,6 +950,83 @@ export default function AllTasksPage() {
           </Table>
         </div>
       </Card>
+
+      <TaskDetailPanel
+        task={selectedTask}
+        isOpen={!!selectedTask}
+        onClose={() => setSelectedTask(null)}
+        onUpdate={(taskId, updates) => {
+          // Handle task updates here if needed
+          console.log('Task updated:', taskId, updates)
+        }}
+        onStart={handleStart}
+        onComplete={handleComplete}
+        onPause={(taskId) => {
+          // TODO: Implement pause functionality
+          toast.info('Durdurma özelliği yakında eklenecek')
+        }}
+      />
+
+      {/* Settings Dialog */}
+      <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Tablo Ayarları</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Column Visibility */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Görünür Sütunlar</h3>
+              <div className="grid grid-cols-2 gap-3">
+                {columnConfigs.map((column) => {
+                  const isVisible = visibleColumns.has(column.key)
+                  return (
+                    <button
+                      key={column.key}
+                      onClick={() => toggleColumnVisibility(column.key)}
+                      className={cn(
+                        "flex items-center gap-2 p-3 rounded-lg border-2 transition-colors text-left",
+                        isVisible
+                          ? "border-blue-500 bg-blue-50 hover:bg-blue-100"
+                          : "border-gray-200 bg-white hover:bg-gray-50"
+                      )}
+                    >
+                      {isVisible ? (
+                        <Eye className="h-4 w-4 text-blue-600" />
+                      ) : (
+                        <EyeOff className="h-4 w-4 text-gray-400" />
+                      )}
+                      <span className={cn(
+                        "text-sm font-medium",
+                        isVisible ? "text-blue-900" : "text-gray-600"
+                      )}>
+                        {column.label}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-4 border-t">
+              <div className="text-sm text-gray-600">
+                {visibleColumns.size} / {columnConfigs.length} sütun görünür
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={resetTableSettings}>
+                  <RefreshCcw className="h-4 w-4 mr-2" />
+                  Sıfırla
+                </Button>
+                <Button onClick={() => setShowSettingsDialog(false)}>
+                  Tamam
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

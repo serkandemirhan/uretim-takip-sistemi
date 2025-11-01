@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { NotificationsDropdown } from '@/components/layouts/NotificationsDropdown'
@@ -28,6 +29,16 @@ import {
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils/cn'
+
+// QueryClient'ı component dışında oluşturuyoruz
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+})
 
 export default function DashboardLayout({
   children,
@@ -91,7 +102,8 @@ export default function DashboardLayout({
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <QueryClientProvider client={queryClient}>
+      <div className="min-h-screen bg-gray-50 flex">
       <aside
         className={cn(
           'fixed top-0 bottom-0 left-0 z-30 border-r border-gray-200 bg-white transition-all duration-200',
@@ -220,5 +232,6 @@ export default function DashboardLayout({
         <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4">{children}</main>
       </div>
     </div>
+    </QueryClientProvider>
   )
 }

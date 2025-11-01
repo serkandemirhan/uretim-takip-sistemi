@@ -42,7 +42,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
-import { usePermissions } from '@/hooks/usePermissions' // Yetki hook'unu import et
+import { usePermissions } from '@/lib/hooks/usePermissions' // Yetki hook'unu import et
 
 const CATEGORY_OPTIONS = [
   { value: 'ONBOARDING', label: 'Onboarding', prefix: 'ON' },

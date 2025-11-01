@@ -35,7 +35,9 @@
       "Bash(PGPASSWORD=reklam_pass_123 pg_dump:*)",
       "Bash(tail:*)",
       "Bash(xargs:*)",
-      "Bash(npx shadcn@latest add:*)"
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(wc:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

@@ -15,7 +15,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
-import { Download, FileIcon, Loader2, Trash2, Grid3x3, List, FileText, FileImage, FileSpreadsheet, FileVideo, FileArchive, File } from 'lucide-react'
+import { Download, FileIcon, Loader2, Trash2, Grid3x3, List, FileText, FileImage, FileSpreadsheet, FileVideo, FileArchive, File, ChevronRight, ChevronDown, Folder, FolderOpen } from 'lucide-react'
 import { handleApiError } from '@/lib/utils/error-handler'
 import { MultiSelect, MultiSelectOption } from '@/components/ui/multi-select'
 
@@ -162,6 +162,8 @@ export default function FilesExplorerPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
   const [selectedProcesses, setSelectedProcesses] = useState<string[]>([])
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set())
+  const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     void load()
@@ -251,18 +253,6 @@ export default function FilesExplorerPage() {
     arr.sort((a, b) => a.name.localeCompare(b.name))
     return arr
   }, [explorerTree])
-
-  const selectedCustomerNode = useMemo(() => {
-    if (selectedCustomer === 'all') return null
-    return explorerTree.get(selectedCustomer) ?? null
-  }, [selectedCustomer, explorerTree])
-
-  const jobList = useMemo(() => {
-    if (!selectedCustomerNode) return []
-    const arr = Array.from(selectedCustomerNode.jobs.values())
-    arr.sort((a, b) => (a.jobNumber || '').localeCompare(b.jobNumber || ''))
-    return arr
-  }, [selectedCustomerNode])
 
   const processOptions = useMemo(() => {
     const processMap = new Map<string, MultiSelectOption>()
@@ -366,19 +356,44 @@ export default function FilesExplorerPage() {
     }
   }
 
+  const toggleCustomer = (customerId: string) => {
+    const newSet = new Set(expandedCustomers)
+    if (newSet.has(customerId)) {
+      newSet.delete(customerId)
+    } else {
+      newSet.add(customerId)
+    }
+    setExpandedCustomers(newSet)
+  }
+
+  const toggleJob = (jobId: string) => {
+    const newSet = new Set(expandedJobs)
+    if (newSet.has(jobId)) {
+      newSet.delete(jobId)
+    } else {
+      newSet.add(jobId)
+    }
+    setExpandedJobs(newSet)
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full overflow-hidden">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Dosya Yönetimi</h1>
         <p className="text-sm text-gray-500">Tüm müşteri ve iş dosyalarını buradan görüntüleyin.</p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[220px_260px_1fr]">
-        <Card className="h-full">
-          <CardHeader className="py-4">
-            <CardTitle className="text-sm">Müşteriler</CardTitle>
+      <div className="grid gap-4 lg:grid-cols-[280px_1fr] w-full max-w-full">
+        {/* Sol Panel - Klasör Ağacı */}
+        <Card className="h-full min-w-0">
+          <CardHeader className="py-4 border-b">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Folder className="h-4 w-4" />
+              Klasörler
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="p-2 space-y-1 max-h-[calc(100vh-280px)] overflow-y-auto">
+            {/* Tüm Dosyalar */}
             <button
               type="button"
               onClick={() => {
@@ -387,135 +402,160 @@ export default function FilesExplorerPage() {
                 setSelectedStep(null)
               }}
               className={cn(
-                'flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors',
+                'flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors',
                 selectedCustomer === 'all' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100',
               )}
             >
-              <span>Tüm Dosyalar</span>
+              <FolderOpen className="h-4 w-4 flex-shrink-0" />
+              <span className="flex-1 text-left">Tüm Dosyalar</span>
               <span className="text-xs text-gray-500">{entries.length}</span>
             </button>
 
+            {/* Müşteriler */}
             {customersList.map((customer) => {
               const total = customer.files.length + Array.from(customer.jobs.values()).reduce((acc, job) => {
                 let count = job.files.length
                 job.steps.forEach((step) => (count += step.files.length))
                 return acc + count
               }, 0)
+              const isExpanded = expandedCustomers.has(customer.id)
+              const isSelected = selectedCustomer === customer.id && !selectedJob
+              const jobsList = Array.from(customer.jobs.values()).sort((a, b) => (a.jobNumber || '').localeCompare(b.jobNumber || ''))
+
               return (
-                <button
-                  key={customer.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedCustomer(customer.id)
-                    setSelectedJob(null)
-                    setSelectedStep(null)
-                  }}
-                  className={cn(
-                    'flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors',
-                    selectedCustomer === customer.id
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-100',
+                <div key={customer.id} className="space-y-1">
+                  {/* Müşteri Klasörü */}
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => toggleCustomer(customer.id)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="h-3 w-3 text-gray-600" />
+                      ) : (
+                        <ChevronRight className="h-3 w-3 text-gray-600" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer(customer.id)
+                        setSelectedJob(null)
+                        setSelectedStep(null)
+                      }}
+                      className={cn(
+                        'flex flex-1 items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors',
+                        isSelected
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'text-gray-700 hover:bg-gray-100',
+                      )}
+                    >
+                      <Folder className="h-4 w-4 flex-shrink-0" />
+                      <span className="flex-1 text-left truncate" title={customer.name}>
+                        {customer.name}
+                      </span>
+                      <span className="text-xs text-gray-500">{total}</span>
+                    </button>
+                  </div>
+
+                  {/* İşler ve Süreçler */}
+                  {isExpanded && (
+                    <div className="ml-4 space-y-1 border-l-2 border-gray-200 pl-2">
+                      {jobsList.map((job) => {
+                        const jobCount = job.files.length + Array.from(job.steps.values()).reduce((acc, step) => acc + step.files.length, 0)
+                        const isJobExpanded = expandedJobs.has(job.id)
+                        const isJobSelected = selectedJob === job.id && !selectedStep
+                        const stepsList = Array.from(job.steps.values())
+
+                        return (
+                          <div key={job.id} className="space-y-1">
+                            <div className="flex items-center">
+                              {stepsList.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleJob(job.id)}
+                                  className="p-1 hover:bg-gray-100 rounded"
+                                >
+                                  {isJobExpanded ? (
+                                    <ChevronDown className="h-3 w-3 text-gray-600" />
+                                  ) : (
+                                    <ChevronRight className="h-3 w-3 text-gray-600" />
+                                  )}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCustomer(customer.id)
+                                  setSelectedJob(job.id)
+                                  setSelectedStep(null)
+                                }}
+                                className={cn(
+                                  'flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
+                                  stepsList.length === 0 && 'ml-5',
+                                  isJobSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100',
+                                )}
+                              >
+                                <Folder className="h-3.5 w-3.5 flex-shrink-0" />
+                                <span className="flex-1 text-left truncate" title={job.title || job.jobNumber || 'İş'}>
+                                  {job.jobNumber ? `${job.jobNumber}` : job.title || 'İş'}
+                                </span>
+                                <span className="text-[10px] text-gray-500">{jobCount}</span>
+                              </button>
+                            </div>
+
+                            {/* Süreçler */}
+                            {isJobExpanded && stepsList.length > 0 && (
+                              <div className="ml-4 space-y-1 border-l-2 border-gray-200 pl-2">
+                                {stepsList.map((step) => {
+                                  const isStepSelected = selectedStep === step.id
+                                  return (
+                                    <button
+                                      key={step.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedCustomer(customer.id)
+                                        setSelectedJob(job.id)
+                                        setSelectedStep(step.id)
+                                      }}
+                                      className={cn(
+                                        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
+                                        isStepSelected ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100',
+                                      )}
+                                    >
+                                      <FileIcon className="h-3 w-3 flex-shrink-0" />
+                                      <span className="flex-1 text-left truncate" title={step.name}>
+                                        {step.code ? `${step.code}` : step.name}
+                                      </span>
+                                      <span className="text-[10px] text-gray-500">{step.files.length}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
                   )}
-                >
-                  <span className="truncate" title={customer.name}>
-                    {customer.name}
-                  </span>
-                  <span className="text-xs text-gray-500">{total}</span>
-                </button>
+                </div>
               )
             })}
           </CardContent>
         </Card>
 
-        <Card className="h-full">
-          <CardHeader className="py-4">
-            <CardTitle className="text-sm">İşler / Süreçler</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {selectedCustomer === 'all' ? (
-              <p className="text-xs text-gray-500">Gösterilecek müşteri seçin.</p>
-            ) : !selectedCustomerNode ? (
-              <p className="text-xs text-gray-500">Dosya bulunamadı.</p>
-            ) : (
-              <div className="space-y-1">
-                {selectedCustomerNode.files.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedJob(null)
-                      setSelectedStep(null)
-                    }}
-                    className={cn(
-                      'flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors',
-                      !selectedJob ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100',
-                    )}
-                  >
-                    <span>Müşteri klasörü</span>
-                    <span className="text-xs text-gray-500">{selectedCustomerNode.files.length}</span>
-                  </button>
-                )}
-                {jobList.map((job) => {
-                  const jobCount = job.files.length + Array.from(job.steps.values()).reduce((acc, step) => acc + step.files.length, 0)
-                  const active = selectedJob === job.id && !selectedStep
-                  return (
-                    <div key={job.id} className="space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedJob(job.id)
-                          setSelectedStep(null)
-                        }}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors',
-                          active ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100',
-                        )}
-                      >
-                        <span className="truncate" title={job.title || job.jobNumber || 'İş'}>
-                          {job.jobNumber ? `${job.jobNumber} • ${job.title ?? ''}` : job.title || 'İş'}
-                        </span>
-                        <span className="text-xs text-gray-500">{jobCount}</span>
-                      </button>
-                      {Array.from(job.steps.values()).map((step) => {
-                        const stepActive = selectedStep === step.id
-                        return (
-                          <button
-                            key={step.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedJob(job.id)
-                              setSelectedStep(step.id)
-                            }}
-                            className={cn(
-                              'ml-4 flex w-[calc(100%-1rem)] items-center justify-between rounded-md px-3 py-2 text-xs transition-colors',
-                              stepActive ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100',
-                            )}
-                          >
-                            <span className="truncate" title={step.name}>
-                              {step.code ? `${step.code} • ${step.name}` : step.name}
-                            </span>
-                            <span className="text-[11px] text-gray-500">{step.files.length}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="min-h-[540px]">
+        <Card className="min-h-[540px] overflow-hidden min-w-0 max-w-full">
           <CardHeader className="flex flex-col gap-3 py-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <CardTitle className="text-sm">Dosyalar</CardTitle>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <MultiSelect
                   options={processOptions}
                   selected={selectedProcesses}
                   onChange={setSelectedProcesses}
                   placeholder="Süreç filtrele..."
-                  className="w-64"
+                  className="w-48 md:w-64 max-w-full"
                 />
                 <div className="flex items-center gap-1 rounded-md border border-gray-200 p-1">
                   <Button
@@ -549,6 +589,7 @@ export default function FilesExplorerPage() {
             />
           </CardHeader>
           {viewMode === 'list' ? (
+            <div className="overflow-x-auto overflow-y-auto max-w-full w-full">
             <Table>
               <TableHeader className="bg-gray-50">
                 <TableRow>
@@ -597,7 +638,7 @@ export default function FilesExplorerPage() {
                           </div>
                         </div>
                         {/* Hover tooltip */}
-                        <div className="absolute left-0 top-full mt-1 hidden group-hover:block z-50 bg-gray-900 text-white text-xs rounded-md shadow-lg p-3 min-w-[280px]">
+                        <div className="absolute left-0 top-full mt-1 hidden group-hover:block z-50 bg-gray-900 text-white text-xs rounded-md shadow-lg p-3 min-w-[280px] max-w-[90vw] pointer-events-none">
                           <div className="space-y-1">
                             <div className="flex justify-between">
                               <span className="text-gray-400">Boyut:</span>
@@ -664,8 +705,9 @@ export default function FilesExplorerPage() {
                 )}
               </TableBody>
             </Table>
+            </div>
           ) : (
-            <CardContent>
+            <CardContent className="overflow-x-hidden overflow-y-auto max-w-full">
               {loading ? (
                 <div className="py-12 text-center text-sm text-gray-500">
                   Dosyalar yükleniyor...
@@ -675,14 +717,14 @@ export default function FilesExplorerPage() {
                   Dosya bulunamadı.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                <div className="grid gap-4 w-full" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
                   {fileList.map((file) => {
                     const IconComponent = getFileIcon(file.filename, file.content_type)
                     const iconColor = getFileIconColor(file.filename, file.content_type)
                     return (
                       <div
                         key={file.id}
-                        className="group relative flex flex-col items-center p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-all"
+                        className="group relative flex flex-col items-center p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-all overflow-hidden"
                         onClick={() => handleDownload(file.id)}
                         title={file.filename}
                       >
@@ -695,7 +737,7 @@ export default function FilesExplorerPage() {
                         </p>
 
                       {/* Hover tooltip */}
-                      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block z-50 bg-gray-900 text-white text-xs rounded-md shadow-lg p-3 min-w-[240px]">
+                      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block z-50 bg-gray-900 text-white text-xs rounded-md shadow-lg p-3 min-w-[240px] max-w-[90vw] pointer-events-none">
                         <div className="space-y-1">
                           <div className="font-medium text-white mb-2 break-words">{file.filename}</div>
                           <div className="flex justify-between gap-4">

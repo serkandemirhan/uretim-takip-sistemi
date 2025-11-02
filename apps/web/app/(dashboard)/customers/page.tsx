@@ -8,6 +8,9 @@ import {
   Pencil,
   Plus,
   Trash2,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown, // Keep for a subtle hint on non-active columns
   X,
 } from 'lucide-react'
 
@@ -71,6 +74,11 @@ const EMPTY_FORM: CustomerFormValues = {
   notes: '',
 }
 
+type SortConfig = {
+  key: keyof Customer
+  direction: 'ascending' | 'descending'
+}
+
 export default function CustomersPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -83,6 +91,7 @@ export default function CustomersPage() {
   const [saving, setSaving] = useState(false)
   const [activeCustomerId, setActiveCustomerId] = useState<string | null>(null)
   const [form, setForm] = useState<CustomerFormValues>(EMPTY_FORM)
+  const [sortConfig, setSortConfig] = useState<SortConfig | null>(null)
 
   useEffect(() => {
     void loadCustomers()
@@ -141,6 +150,44 @@ export default function CustomersPage() {
         .some((value) => String(value).toLowerCase().includes(term)),
     )
   }, [customers, q])
+
+  const sortedCustomers = useMemo(() => {
+    const sortableItems = [...filtered]
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        const aValue = a[sortConfig.key] ?? ''
+        const bValue = b[sortConfig.key] ?? ''
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'ascending' ? -1 : 1
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'ascending' ? 1 : -1
+        }
+        return 0
+      })
+    }
+    return sortableItems
+  }, [filtered, sortConfig])
+
+  const requestSort = (key: keyof Customer) => {
+    let direction: 'ascending' | 'descending' = 'ascending'
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending'
+    }
+    setSortConfig({ key, direction })
+  }
+
+  const getSortIcon = (key: keyof Customer) => {
+    if (sortConfig?.key !== key) {
+      // Aktif olmayan kolonlar için daha belirsiz bir ikon
+      return <ArrowUpDown className="h-3 w-3 text-gray-400" />
+    }
+    if (sortConfig.direction === 'ascending') {
+      return <ArrowUp className="h-4 w-4 text-blue-600" />
+    }
+    return <ArrowDown className="h-4 w-4 text-blue-600" />
+  }
 
   const openCreatePanel = () => {
     setPanelMode('create')
@@ -432,7 +479,7 @@ export default function CustomersPage() {
           onChange={(e) => setQ(e.target.value)}
           className="max-w-md"
         />
-        <span className="text-sm text-gray-500">Toplam: {filtered.length}</span>
+        <span className="text-sm text-gray-500">Toplam: {sortedCustomers.length}</span>
       </div>
 
       <Card>
@@ -447,18 +494,38 @@ export default function CustomersPage() {
               <table className="w-full table-fixed text-left text-sm">
                 <thead>
                   <tr className="border-b bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="w-[18%] px-3 py-3">Ad</th>
-                    <th className="w-[10%] px-3 py-3">Kod</th>
-                    <th className="w-[14%] px-3 py-3">Yetkili</th>
+                    <th className="w-[18%] px-3 py-3">
+                      <button onClick={() => requestSort('name')} className="flex items-center gap-2">
+                        Ad {getSortIcon('name')}
+                      </button>
+                    </th>
+                    <th className="w-[10%] px-3 py-3">
+                      <button onClick={() => requestSort('short_code')} className="flex items-center gap-2">
+                        Kod {getSortIcon('short_code')}
+                      </button>
+                    </th>
+                    <th className="w-[14%] px-3 py-3">
+                      <button onClick={() => requestSort('contact_person')} className="flex items-center gap-2">
+                        Yetkili {getSortIcon('contact_person')}
+                      </button>
+                    </th>
                     <th className="w-[14%] px-3 py-3">Telefon</th>
-                    <th className="w-[16%] px-3 py-3">E-posta</th>
-                    <th className="w-[12%] px-3 py-3">Şehir</th>
+                    <th className="w-[16%] px-3 py-3">
+                      <button onClick={() => requestSort('email')} className="flex items-center gap-2">
+                        E-posta {getSortIcon('email')}
+                      </button>
+                    </th>
+                    <th className="w-[12%] px-3 py-3">
+                      <button onClick={() => requestSort('city')} className="flex items-center gap-2">
+                        Şehir {getSortIcon('city')}
+                      </button>
+                    </th>
                     <th className="w-[18%] px-3 py-3">Adres</th>
                     <th className="w-[8%] px-3 py-3 text-right">İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.length === 0 ? (
+                  {sortedCustomers.length === 0 ? (
                     <tr>
                       <td
                         colSpan={8}
@@ -468,7 +535,7 @@ export default function CustomersPage() {
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((customer) => {
+                    sortedCustomers.map((customer) => {
                       const phones = [customer.phone, customer.phone_secondary, customer.gsm]
                         .filter(Boolean)
                         .join(' / ')

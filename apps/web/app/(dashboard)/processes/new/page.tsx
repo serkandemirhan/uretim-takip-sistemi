@@ -37,7 +37,7 @@ export default function NewProcessPage() {
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.code.trim()) {
-      toast.error('Süreç adı ve kodu zorunludur')
+      toast.error('Operasyon adı ve kodu zorunludur')
       return
     }
     try {
@@ -50,11 +50,11 @@ export default function NewProcessPage() {
         is_production: !!form.is_production,
         order_index: Number(form.order_index) || 0,
       })
-      toast.success('Süreç oluşturuldu')
+      toast.success('Operasyon oluşturuldu')
       router.push('/processes')
     } catch (e: any) {
       handleError(e)
-      toast.error(e?.response?.data?.error ?? 'Süreç oluşturulamadı')
+      toast.error(e?.response?.data?.error ?? 'Operasyon oluşturulamadı')
     } finally {
       setSaving(false)
     }
@@ -64,12 +64,12 @@ export default function NewProcessPage() {
     <div className="max-w-3xl">
       <Card>
         <CardHeader>
-          <CardTitle>Yeni Süreç</CardTitle>
+          <CardTitle>Yeni Operasyon</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Süreç Adı *</Label>
+              <Label className="text-sm font-medium">Operasyon Adı *</Label>
               <Input
                 placeholder="Örn: Baskı Hazırlık"
                 value={form.name}
@@ -117,7 +117,7 @@ export default function NewProcessPage() {
                 checked={form.is_production}
                 onChange={(e) => onChange('is_production', e.target.checked)}
               />
-              <Label htmlFor="is_production">Üretim Süreci</Label>
+              <Label htmlFor="is_production">Üretim Operasyonu</Label>
             </div>
 
             <div className="space-y-2">

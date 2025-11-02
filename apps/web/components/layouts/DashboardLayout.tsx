@@ -45,7 +45,7 @@ export function DashboardLayout({ children, userRole }: DashboardLayoutProps) {
         { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
         { name: 'İşler', href: '/jobs', icon: Briefcase },
         { name: 'Müşteriler', href: '/customers', icon: Building2 },
-        { name: 'Süreçler', href: '/processes', icon: Workflow },
+        { name: 'Operasyonlar', href: '/processes', icon: Workflow },
         { name: 'Makineler', href: '/machines', icon: Cpu },
         { name: 'Makine Durumu', href: '/machines/status', icon: Cpu }, // ← YENİ
         { name: 'Kullanıcılar', href: '/users', icon: Users },

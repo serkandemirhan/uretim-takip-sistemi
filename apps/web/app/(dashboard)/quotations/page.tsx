@@ -23,6 +23,9 @@ import {
   Calendar,
   User,
   Building2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -43,6 +46,8 @@ export default function QuotationsPage() {
     customer_id: '',
     description: '',
   })
+  const [sortColumn, setSortColumn] = useState<string>('')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   useEffect(() => {
     loadQuotations()
@@ -145,11 +150,58 @@ export default function QuotationsPage() {
     return labels[status] || status
   }
 
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  const SortIcon = ({ column }: { column: string }) => {
+    if (sortColumn !== column) return <ArrowUpDown className="w-3 h-3 ml-1 inline opacity-30" />
+    return sortDirection === 'asc' ? (
+      <ArrowUp className="w-3 h-3 ml-1 inline" />
+    ) : (
+      <ArrowDown className="w-3 h-3 ml-1 inline" />
+    )
+  }
+
   const filteredQuotations = quotations.filter((q) =>
     q.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     q.quotation_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     q.customer_name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  const sortedQuotations = [...filteredQuotations].sort((a, b) => {
+    if (!sortColumn) return 0
+
+    let aValue: any = a[sortColumn as keyof typeof a]
+    let bValue: any = b[sortColumn as keyof typeof b]
+
+    // Handle numeric comparisons
+    if (sortColumn === 'total_cost' || sortColumn === 'item_count') {
+      aValue = Number(aValue) || 0
+      bValue = Number(bValue) || 0
+    }
+
+    // Handle date comparisons
+    if (sortColumn === 'created_at') {
+      aValue = new Date(aValue).getTime()
+      bValue = new Date(bValue).getTime()
+    }
+
+    // Handle string comparisons
+    if (typeof aValue === 'string') {
+      aValue = aValue.toLowerCase()
+      bValue = bValue?.toLowerCase() || ''
+    }
+
+    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
+    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
+    return 0
+  })
 
   return (
     <div className="space-y-6">
@@ -211,7 +263,7 @@ export default function QuotationsPage() {
         <div className="flex items-center justify-center py-12">
           <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
         </div>
-      ) : filteredQuotations.length === 0 ? (
+      ) : sortedQuotations.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-gray-500">
             {searchTerm || filterStatus || filterCustomer
@@ -227,18 +279,60 @@ export default function QuotationsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Teklif</TableHead>
-                      <TableHead className="hidden lg:table-cell">Müşteri</TableHead>
-                      <TableHead className="hidden xl:table-cell">Oluşturan</TableHead>
-                      <TableHead className="hidden lg:table-cell">Tarih</TableHead>
-                      <TableHead className="hidden xl:table-cell text-center">Ürün</TableHead>
-                      <TableHead className="text-right">Toplam</TableHead>
-                      <TableHead>Durum</TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('name')}
+                      >
+                        Teklif
+                        <SortIcon column="name" />
+                      </TableHead>
+                      <TableHead
+                        className="hidden lg:table-cell cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('customer_name')}
+                      >
+                        Müşteri
+                        <SortIcon column="customer_name" />
+                      </TableHead>
+                      <TableHead
+                        className="hidden xl:table-cell cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('created_by_name')}
+                      >
+                        Oluşturan
+                        <SortIcon column="created_by_name" />
+                      </TableHead>
+                      <TableHead
+                        className="hidden lg:table-cell cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('created_at')}
+                      >
+                        Tarih
+                        <SortIcon column="created_at" />
+                      </TableHead>
+                      <TableHead
+                        className="hidden xl:table-cell text-center cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('item_count')}
+                      >
+                        Ürün
+                        <SortIcon column="item_count" />
+                      </TableHead>
+                      <TableHead
+                        className="text-right cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('total_cost')}
+                      >
+                        Toplam
+                        <SortIcon column="total_cost" />
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('status')}
+                      >
+                        Durum
+                        <SortIcon column="status" />
+                      </TableHead>
                       <TableHead className="text-right">İşlemler</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredQuotations.map((quotation) => (
+                    {sortedQuotations.map((quotation) => (
                       <TableRow
                         key={quotation.id}
                         onClick={() => router.push(`/quotations/${quotation.id}`)}
@@ -279,7 +373,7 @@ export default function QuotationsPage() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
-                          <span className="font-semibold text-blue-600">
+                          <span className="font-semibold text-gray-900">
                             {quotation.total_cost
                               ? `${Number(quotation.total_cost).toLocaleString('tr-TR', {
                                   minimumFractionDigits: 2,
@@ -303,19 +397,20 @@ export default function QuotationsPage() {
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </Link>
-                            {quotation.status === 'draft' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(event) => {
-                                  event.stopPropagation()
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                if (quotation.status === 'draft') {
                                   handleDelete(quotation.id, quotation.name)
-                                }}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
+                                }
+                              }}
+                              disabled={quotation.status !== 'draft'}
+                              className={quotation.status === 'draft' ? 'text-red-600 hover:text-red-700' : 'text-gray-400'}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -327,7 +422,7 @@ export default function QuotationsPage() {
           </Card>
 
           <div className="space-y-4 md:hidden">
-            {filteredQuotations.map((quotation) => (
+            {sortedQuotations.map((quotation) => (
               <Card key={quotation.id} className="transition-shadow hover:shadow-md">
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between">
@@ -375,7 +470,7 @@ export default function QuotationsPage() {
                           ürün
                         </span>
                         <span className="text-gray-600">•</span>
-                        <span className="font-semibold text-blue-600">
+                        <span className="font-semibold text-gray-900">
                           {quotation.total_cost
                             ? `${Number(quotation.total_cost).toLocaleString('tr-TR', {
                                 minimumFractionDigits: 2,
@@ -398,16 +493,19 @@ export default function QuotationsPage() {
                           <Eye className="h-4 w-4" />
                         </Button>
                       </Link>
-                      {quotation.status === 'draft' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(quotation.id, quotation.name)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (quotation.status === 'draft') {
+                            handleDelete(quotation.id, quotation.name)
+                          }
+                        }}
+                        disabled={quotation.status !== 'draft'}
+                        className={quotation.status === 'draft' ? 'text-red-600 hover:text-red-700' : 'text-gray-400'}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>

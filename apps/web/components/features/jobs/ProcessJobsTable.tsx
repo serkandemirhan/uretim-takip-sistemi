@@ -434,14 +434,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       onDragOver={(e) => handleDragOver(e, 'no')}
                       onDrop={(e) => handleDrop(e, 'no')}
                       onDragEnd={handleDragEnd}
-                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`group px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'no' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'no' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.no }}
                     >
                       No
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors group-hover/header:bg-gray-300"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'no')}
                         onDoubleClick={(e) => {
                           e.preventDefault()
@@ -462,14 +462,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       onDragOver={(e) => handleDragOver(e, 'title')}
                       onDrop={(e) => handleDrop(e, 'title')}
                       onDragEnd={handleDragEnd}
-                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`group px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'title' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'title' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.title }}
                     >
                       İş Adı
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'title')}
                         onDoubleClick={(e) => {
                           e.preventDefault()
@@ -490,14 +490,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       onDragOver={(e) => handleDragOver(e, 'customer')}
                       onDrop={(e) => handleDrop(e, 'customer')}
                       onDragEnd={handleDragEnd}
-                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`group px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'customer' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'customer' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.customer }}
                     >
                       Müşteri
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'customer')}
                         onDoubleClick={(e) => {
                           e.preventDefault()
@@ -518,14 +518,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       onDragOver={(e) => handleDragOver(e, 'dealer')}
                       onDrop={(e) => handleDrop(e, 'dealer')}
                       onDragEnd={handleDragEnd}
-                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`group px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'dealer' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'dealer' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.dealer }}
                     >
                       Bayi
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'dealer')}
                         onDoubleClick={(e) => {
                           e.preventDefault()
@@ -546,14 +546,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       onDragOver={(e) => handleDragOver(e, 'delivery')}
                       onDrop={(e) => handleDrop(e, 'delivery')}
                       onDragEnd={handleDragEnd}
-                      className={`px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`group px-2 py-2 text-left font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'delivery' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'delivery' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.delivery }}
                     >
                       Teslim Tarihi
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'delivery')}
                         onDoubleClick={(e) => {
                           e.preventDefault()
@@ -574,14 +574,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       onDragOver={(e) => handleDragOver(e, 'progress')}
                       onDrop={(e) => handleDrop(e, 'progress')}
                       onDragEnd={handleDragEnd}
-                      className={`px-2 py-2 text-center font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`group px-2 py-2 text-center font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === 'progress' ? 'opacity-50' : ''
                       } ${dragOverColumn === 'progress' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.progress }}
                     >
                       İlerleme
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'progress')}
                         onDoubleClick={(e) => {
                           e.preventDefault()
@@ -605,14 +605,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       onDragOver={(e) => handleDragOver(e, group.id)}
                       onDrop={(e) => handleDrop(e, group.id)}
                       onDragEnd={handleDragEnd}
-                      className={`px-2 py-2 text-center font-medium text-gray-700 relative cursor-move select-none ${
+                      className={`group px-2 py-2 text-center font-medium text-gray-700 relative cursor-move select-none ${
                         draggingColumn === group.id ? 'opacity-50' : ''
                       } ${dragOverColumn === group.id ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths[group.id] }}
                     >
                       <div>{group.name}</div>
                       <div
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition-colors"
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, group.id)}
                         onDoubleClick={(e) => {
                           e.preventDefault()

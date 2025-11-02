@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   hrDocumentsAPI,
@@ -127,7 +127,7 @@ export default function HrDocumentSettingsPage() {
   const [typeDialogOpen, setTypeDialogOpen] = useState(false)
   const [requirementDialogOpen, setRequirementDialogOpen] = useState(false)
 
-  const { data: docTypes = [], isLoading: loadingTypes, refetch: refetchDocTypes } = useQuery({
+  const { data: docTypes = [], isLoading: loadingTypes, refetch: refetchDocTypes, isError: docTypesIsError, error: docTypesError } = useQuery({
     queryKey: ['hrDocumentTypes'],
     queryFn: async () => {
       const response = await hrDocumentsAPI.getDocumentTypes({ include_inactive: true })
@@ -149,12 +149,14 @@ export default function HrDocumentSettingsPage() {
       }))
       return mapped
     },
-    onError: (error) => {
-      handleError(error, { title: 'Doküman tipleri yüklenemedi' })
-    },
   })
+  useEffect(() => {
+    if (docTypesIsError && docTypesError) {
+      handleError(docTypesError, { title: 'Doküman tipleri yüklenemedi' })
+    }
+  }, [docTypesIsError, docTypesError])
 
-  const { data: requirements = [], isLoading: loadingRequirements, refetch: refetchRequirements } = useQuery({
+  const { data: requirements = [], isLoading: loadingRequirements, refetch: refetchRequirements, isError: reqIsError, error: reqError } = useQuery({
     queryKey: ['hrDocumentRequirements'],
     queryFn: async () => {
       const response = await hrDocumentsAPI.listDocumentRequirements()
@@ -176,12 +178,14 @@ export default function HrDocumentSettingsPage() {
       }))
       return mapped
     },
-    onError: (error) => {
-      handleError(error, { title: 'Zorunluluk kuralları yüklenemedi' })
-    },
   })
+  useEffect(() => {
+    if (reqIsError && reqError) {
+      handleError(reqError, { title: 'Zorunluluk kuralları yüklenemedi' })
+    }
+  }, [reqIsError, reqError])
 
-  const { data: roles = [], isLoading: loadingRoles } = useQuery({
+  const { data: roles = [], isLoading: loadingRoles, isError: rolesIsError, error: rolesError } = useQuery({
     queryKey: ['allRoles'],
     queryFn: async () => {
       const response = await rolesAPI.getAll()
@@ -193,10 +197,12 @@ export default function HrDocumentSettingsPage() {
       }))
       return mapped
     },
-    onError: (error) => {
-      handleError(error, { title: 'Roller alınamadı' })
-    },
   })
+  useEffect(() => {
+    if (rolesIsError && rolesError) {
+      handleError(rolesError, { title: 'Roller alınamadı' })
+    }
+  }, [rolesIsError, rolesError])
 
   const docTypeMap = useMemo(() => {
     const map = new Map<string, DocumentType>()

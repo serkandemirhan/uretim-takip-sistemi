@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Badge } from '@/components/ui/badge'
+import { useState, useMemo, useEffect } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { User, CheckCircle2, Clock, AlertCircle, Pause, XCircle, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 
 interface JobStep {
@@ -35,52 +34,27 @@ interface ProcessListSidebarProps {
   position?: 'left' | 'right'
 }
 
-function getStatusIcon(status: string) {
+function getStatusDotClass(status: string): string {
   switch (status) {
     case 'completed':
-      return <CheckCircle2 className="w-4 h-4 text-green-600 fill-green-100" />
+      return 'bg-green-500'
     case 'in_progress':
-      return <Clock className="w-4 h-4 text-blue-600 fill-blue-100" />
+    case 'active':
+      return 'bg-blue-500'
     case 'ready':
-      return <Circle className="w-4 h-4 text-cyan-600 fill-cyan-100" />
+    case 'waiting':
+      return 'bg-green-500'
     case 'blocked':
-      return <Pause className="w-4 h-4 text-orange-600 fill-orange-100" />
     case 'canceled':
-      return <XCircle className="w-4 h-4 text-red-600 fill-red-100" />
+      return 'bg-red-500'
+    case 'on_hold':
+      return 'bg-amber-500'
     case 'pending':
+    case 'draft':
+    case 'not_started':
     default:
-      return <AlertCircle className="w-4 h-4 text-gray-500 fill-gray-100" />
+      return 'bg-gray-300'
   }
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'completed':
-      return 'bg-green-100 text-green-700 border-green-200'
-    case 'in_progress':
-      return 'bg-blue-100 text-blue-700 border-blue-200'
-    case 'ready':
-      return 'bg-blue-50 text-blue-600 border-blue-100'
-    case 'blocked':
-      return 'bg-orange-100 text-orange-700 border-orange-200'
-    case 'canceled':
-      return 'bg-red-100 text-red-700 border-red-200'
-    case 'pending':
-    default:
-      return 'bg-gray-100 text-gray-600 border-gray-200'
-  }
-}
-
-function getStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    pending: 'Bekliyor',
-    ready: 'Hazır',
-    in_progress: 'Devam',
-    completed: 'Tamamlandı',
-    blocked: 'Durduruldu',
-    canceled: 'İptal',
-  }
-  return labels[status] || status
 }
 
 export function ProcessListSidebar({
@@ -89,7 +63,7 @@ export function ProcessListSidebar({
   onSelectStep,
   position = 'left',
 }: ProcessListSidebarProps) {
-  const [selectedGroup, setSelectedGroup] = useState<string>('all')
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   // Group steps by process group
   const groups = useMemo(() => {
@@ -122,13 +96,23 @@ export function ProcessListSidebar({
       .sort((a, b) => a.order - b.order)
   }, [steps])
 
-  const visibleGroups = useMemo(() => {
-    if (selectedGroup === 'all') {
-      return groups
-    }
-    const group = groups.find((g) => g.id === selectedGroup)
-    return group ? [group] : []
-  }, [groups, selectedGroup])
+  // Tüm grupları başlangıçta açık yap
+  useEffect(() => {
+    const allGroupIds = new Set(groups.map(g => g.id))
+    setExpandedGroups(allGroupIds)
+  }, [groups])
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(groupId)) {
+        newSet.delete(groupId)
+      } else {
+        newSet.add(groupId)
+      }
+      return newSet
+    })
+  }
 
   const borderClass = position === 'right' ? 'border-l' : 'border-r'
 
@@ -142,46 +126,33 @@ export function ProcessListSidebar({
 
   return (
     <div className={cn('w-80 bg-gray-50 flex flex-col', borderClass)}>
-      {/* Group Tabs */}
-      <div className="bg-white border-b">
-        <div className="flex overflow-x-auto">
-          <button
-            onClick={() => setSelectedGroup('all')}
-            className={cn(
-              'px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors',
-              selectedGroup === 'all'
-                ? 'border-blue-500 text-blue-600 bg-blue-50'
-                : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-            )}
-          >
-            Tümü ({steps.length})
-          </button>
-          {groups.map((group) => (
-            <button
-              key={group.id}
-              onClick={() => setSelectedGroup(group.id)}
-              className={cn(
-                'px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors',
-                selectedGroup === group.id
-                  ? 'border-blue-500 text-blue-600 bg-blue-50'
-                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              )}
-            >
-              {group.name} ({group.steps.length})
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Process List - Grouped by Process Group */}
+      {/* Process List - Accordion Groups */}
       <ScrollArea className="flex-1">
-        <div className="p-1 space-y-3">
-          {visibleGroups.map((group) => (
+        <div className="p-1 space-y-2">
+          {groups.map((group) => {
+            const isExpanded = expandedGroups.has(group.id)
+            return (
             <div key={group.id} className="space-y-1">
-              <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                {group.name}
-              </div>
-              {group.steps.map((step, index) => {
+              {/* Accordion Header */}
+              <button
+                onClick={() => toggleGroup(group.id)}
+                className="w-full flex items-center gap-2 px-2 py-2 hover:bg-gray-100 rounded transition-colors"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-4 h-4 text-gray-600" />
+                ) : (
+                  <ChevronUp className="w-4 h-4 text-gray-600" />
+                )}
+                <div className="flex-1 text-left text-xs font-semibold uppercase tracking-wide text-gray-700">
+                  {group.name}
+                </div>
+                <div className="text-[10px] text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
+                  {group.steps.length}
+                </div>
+              </button>
+
+              {/* Accordion Content */}
+              {isExpanded && group.steps.map((step, index) => {
                 const isSelected = step.id === selectedStepId
                 const processName = step.process?.name || 'Süreç'
                 const assignedName = step.assigned_to?.full_name || step.assigned_to?.name || '-'
@@ -220,8 +191,13 @@ export function ProcessListSidebar({
                       {stepNumber}
                     </span>
 
-                    {/* Status Icon */}
-                    <span className="flex-shrink-0">{getStatusIcon(step.status)}</span>
+                    {/* Status Color Dot */}
+                    <span
+                      className={cn(
+                        'flex-shrink-0 h-3 w-3 rounded-full',
+                        getStatusDotClass(step.status)
+                      )}
+                    />
 
                     {/* Process Name */}
                     <div className="flex-1 min-w-0">
@@ -246,7 +222,8 @@ export function ProcessListSidebar({
                 )
               })}
             </div>
-          ))}
+            )
+          })}
         </div>
       </ScrollArea>
     </div>

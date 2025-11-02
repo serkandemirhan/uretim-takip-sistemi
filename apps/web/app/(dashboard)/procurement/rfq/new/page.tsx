@@ -117,9 +117,13 @@ export default function NewRFQPage() {
       return
     }
 
-    // Check if all quantities are valid
-    const hasInvalidQuantity = Object.values(quantities).some((q) => q <= 0)
-    if (hasInvalidQuantity) {
+    // Build items and validate quantities
+    const items: RFQItem[] = Object.entries(quantities).map(([stock_id, quantity]) => ({
+      stock_id,
+      quantity,
+    }))
+    const hasInvalidQuantity = items.some((i) => i.quantity <= 0)
+    if (hasInvalidQuantity || items.length === 0) {
       toast.error('Tüm malzemeler için geçerli miktar girin')
       return
     }
@@ -127,11 +131,6 @@ export default function NewRFQPage() {
     try {
       setSubmitting(true)
       const token = localStorage.getItem('token')
-
-      const items: RFQItem[] = Object.entries(quantities).map(([stock_id, quantity]) => ({
-        stock_id,
-        quantity,
-      }))
 
       const res = await fetch(`${API_URL}/api/procurement/rfq`, {
         method: 'POST',
@@ -149,11 +148,11 @@ export default function NewRFQPage() {
 
       if (!res.ok) {
         const error = await res.json()
-        throw new Error(error.message || 'RFQ oluşturulamadı')
+        throw new Error(error.message || 'Teklif Talebi oluşturulamadı')
       }
 
       const result = await res.json()
-      toast.success(`RFQ başarıyla oluşturuldu: ${result.rfq_number}`)
+      toast.success(`Teklif Talebi başarıyla oluşturuldu: ${result.rfq_number}`)
 
       // Redirect to RFQ detail page
       router.push(`/procurement/rfq/${result.rfq_id}`)
@@ -183,7 +182,7 @@ export default function NewRFQPage() {
             <AlertCircle className="h-12 w-12 text-orange-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Malzeme Seçilmedi</h2>
             <p className="text-gray-600 mb-4">
-              RFQ oluşturmak için malzeme seçmeniz gerekiyor.
+              Teklif Talebi oluşturmak için malzeme seçmeniz gerekiyor.
             </p>
             <Link href="/procurement/needs-analysis">
               <Button>
@@ -209,7 +208,7 @@ export default function NewRFQPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Yeni RFQ Oluştur</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Yeni Teklif Talebi Oluştur</h1>
             <p className="text-sm text-gray-600 mt-1">
               {materials.length} malzeme için fiyat teklifi talebi
             </p>
@@ -221,7 +220,7 @@ export default function NewRFQPage() {
           className="bg-blue-600 hover:bg-blue-700"
         >
           <Save className="h-4 w-4 mr-2" />
-          {submitting ? 'Oluşturuluyor...' : 'RFQ Oluştur'}
+          {submitting ? 'Oluşturuluyor...' : 'Teklif Talebi Oluştur'}
         </Button>
       </div>
 
@@ -230,7 +229,7 @@ export default function NewRFQPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            RFQ Bilgileri
+            Teklif Talebi Bilgileri
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -240,7 +239,7 @@ export default function NewRFQPage() {
             </label>
             <Input
               type="text"
-              placeholder="RFQ başlığı girin..."
+              placeholder="Teklif Talebi başlığı girin..."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full"
@@ -250,7 +249,7 @@ export default function NewRFQPage() {
           <div>
             <label className="text-sm font-medium text-gray-700 mb-2 block">Açıklama</label>
             <Textarea
-              placeholder="RFQ hakkında ek bilgiler..."
+              placeholder="Teklif Talebi hakkında ek bilgiler..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -370,12 +369,12 @@ export default function NewRFQPage() {
           <div className="flex gap-3">
             <FileText className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-blue-900">
-              <p className="font-medium mb-2">RFQ Oluşturma Hakkında</p>
+              <p className="font-medium mb-2">Teklif Talebi Oluşturma Hakkında</p>
               <ul className="space-y-1 list-disc list-inside text-blue-800">
-                <li>RFQ numarası otomatik olarak oluşturulacaktır</li>
+                <li>Teklif Talebi numarası otomatik olarak oluşturulacaktır</li>
                 <li>Talep miktarlarını ihtiyacınıza göre düzenleyebilirsiniz</li>
-                <li>RFQ oluşturulduktan sonra tedarikçilere gönderebilirsiniz</li>
-                <li>Tedarikçi teklifleri RFQ detay sayfasından yönetilecektir</li>
+                <li>Teklif Talebi oluşturulduktan sonra tedarikçilere gönderebilirsiniz</li>
+                <li>Tedarikçi teklifleri Teklif Talebi detay sayfasından yönetilecektir</li>
               </ul>
             </div>
           </div>

@@ -7,7 +7,7 @@ export function usePermissions() {
 
   // Basit bir yetkilendirme kontrolü
   // Gerçek implementasyonda kullanıcı rollerine göre kontrol yapılmalı
-  const can = (permission: string) => {
+  const can = (permission: string, action?: string) => {
     // Şimdilik tüm kullanıcılar tüm yetkilere sahip
     // Gerçek implementasyonda user.role veya user.permissions kontrol edilmeli
     return true

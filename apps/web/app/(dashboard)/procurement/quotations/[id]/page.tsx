@@ -184,7 +184,7 @@ export default function QuotationDetailPage() {
           <Link href={`/procurement/rfq/${quotation.rfq_id}`}>
             <Button variant="outline" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              RFQ'ya Dön
+              Talebe Dön
             </Button>
           </Link>
           <div>
@@ -193,7 +193,7 @@ export default function QuotationDetailPage() {
               {getStatusBadge(quotation.status)}
             </div>
             <p className="text-sm text-gray-600">
-              RFQ: {quotation.rfq_number} - {quotation.rfq_title}
+              Talep: {quotation.rfq_number} - {quotation.rfq_title}
             </p>
           </div>
         </div>
@@ -343,7 +343,7 @@ export default function QuotationDetailPage() {
                   <th className="pb-3 font-medium text-gray-700">#</th>
                   <th className="pb-3 font-medium text-gray-700">Malzeme</th>
                   <th className="pb-3 font-medium text-gray-700">Kod</th>
-                  <th className="pb-3 font-medium text-gray-700 text-right">RFQ Miktar</th>
+                  <th className="pb-3 font-medium text-gray-700 text-right">Talep Miktarı</th>
                   <th className="pb-3 font-medium text-gray-700 text-right">Teklif Miktar</th>
                   <th className="pb-3 font-medium text-gray-700 text-right">Birim Fiyat</th>
                   <th className="pb-3 font-medium text-gray-700 text-right">Toplam</th>

@@ -839,6 +839,7 @@ export const quotationsAPI = {
   create: async (data: {
     name: string
     customer_id?: string
+    dealer_id?: string
     description?: string
     job_id?: string | null
     status?: string
@@ -852,6 +853,7 @@ export const quotationsAPI = {
     data: {
       name?: string
       customer_id?: string
+      dealer_id?: string
       description?: string
       status?: string
       job_id?: string | null

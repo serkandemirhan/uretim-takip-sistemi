@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import {
   Search,
   CheckSquare,
   FileText,
+  List,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
@@ -147,25 +148,26 @@ export default function PurchasingNeedsAnalysisPage() {
   }
 
   const getIssueTypeBadge = (issueType: string) => {
+    // Neutral, icon-led badges. Only critical uses warning color.
     switch (issueType) {
       case 'both':
         return (
-          <Badge className="bg-purple-100 text-purple-700 border-purple-200">
-            <AlertTriangle className="w-3 h-3 mr-1" />
-            Proje + Stok
+          <Badge variant="outline" className="text-xs text-gray-700">
+            <AlertTriangle className="w-3 h-3 mr-1 text-red-600" />
+            Kritik Eksik
           </Badge>
         )
       case 'project':
         return (
-          <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-            <TrendingDown className="w-3 h-3 mr-1" />
+          <Badge variant="outline" className="text-xs text-gray-700">
+            <FileText className="w-3 h-3 mr-1 text-gray-500" />
             Proje Eksik
           </Badge>
         )
       case 'stock_level':
         return (
-          <Badge className="bg-orange-100 text-orange-700 border-orange-200">
-            <Package className="w-3 h-3 mr-1" />
+          <Badge variant="outline" className="text-xs text-gray-700">
+            <AlertTriangle className="w-3 h-3 mr-1 text-orange-600" />
             Min. Stok Altı
           </Badge>
         )
@@ -178,7 +180,7 @@ export default function PurchasingNeedsAnalysisPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-400 mx-auto"></div>
           <p className="mt-4 text-gray-600">Yükleniyor...</p>
         </div>
       </div>
@@ -196,65 +198,14 @@ export default function PurchasingNeedsAnalysisPage() {
           </p>
         </div>
         {selectedMaterials.size > 0 && (
-          <Button onClick={handleCreateRFQ} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={handleCreateRFQ} className="bg-blue-600 hover:bg-blue-700 text-white">
             <FileText className="h-4 w-4 mr-2" />
-            RFQ Oluştur ({selectedMaterials.size})
+            Teklif Talebi Oluştur ({selectedMaterials.size})
           </Button>
         )}
       </div>
 
-      {/* Stats Cards */}
-      {summary && (
-        <div className="grid grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Toplam Eksik Malzeme</p>
-                  <p className="text-2xl font-bold">{summary.total_items}</p>
-                </div>
-                <Package className="h-8 w-8 text-blue-600 opacity-50" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Proje Eksikleri</p>
-                  <p className="text-2xl font-bold text-blue-600">{summary.project_shortage_items}</p>
-                </div>
-                <TrendingDown className="h-8 w-8 text-blue-600 opacity-50" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Kritik Stok Seviyesi</p>
-                  <p className="text-2xl font-bold text-orange-600">{summary.critical_stock_items}</p>
-                </div>
-                <AlertTriangle className="h-8 w-8 text-orange-600 opacity-50" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Seçili Malzeme</p>
-                  <p className="text-2xl font-bold text-green-600">{selectedMaterials.size}</p>
-                </div>
-                <CheckSquare className="h-8 w-8 text-green-600 opacity-50" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Stats Cards removed for focused UI */}
 
       {/* Filter Tabs */}
       <Card>
@@ -265,37 +216,40 @@ export default function PurchasingNeedsAnalysisPage() {
           </div>
           <div className="flex gap-2">
             <Button
-              variant={filterType === 'all' ? 'default' : 'outline'}
+              variant="outline"
               onClick={() => setFilterType('all')}
-              className={cn(filterType === 'all' && 'bg-blue-600 hover:bg-blue-700')}
+              className={cn(
+                'border-gray-300 text-gray-700',
+                filterType === 'all' && 'bg-gray-100 border-gray-500 text-gray-900'
+              )}
             >
-              <Package className="h-4 w-4 mr-2" />
+              <Package className="h-4 w-4 mr-2 text-gray-500" />
               Tümü
             </Button>
             <Button
-              variant={filterType === 'project_shortage' ? 'default' : 'outline'}
+              variant="outline"
               onClick={() => setFilterType('project_shortage')}
-              className={cn(filterType === 'project_shortage' && 'bg-blue-600 hover:bg-blue-700')}
+              className={cn(
+                'border-gray-300 text-gray-700',
+                filterType === 'project_shortage' && 'bg-gray-100 border-gray-500 text-gray-900'
+              )}
             >
-              <TrendingDown className="h-4 w-4 mr-2" />
+              <TrendingDown className="h-4 w-4 mr-2 text-gray-500" />
               Projede Eksik Malzemeler
             </Button>
             <Button
-              variant={filterType === 'critical_stock' ? 'default' : 'outline'}
+              variant="outline"
               onClick={() => setFilterType('critical_stock')}
-              className={cn(filterType === 'critical_stock' && 'bg-orange-600 hover:bg-orange-700')}
+              className={cn(
+                'border-gray-300 text-gray-700',
+                filterType === 'critical_stock' && 'bg-orange-50 border-orange-500 text-orange-700'
+              )}
             >
-              <AlertTriangle className="h-4 w-4 mr-2" />
+              <AlertTriangle className="h-4 w-4 mr-2 text-orange-600" />
               Minimum Stok Altındakiler
             </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Search & Category Filter */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4 items-end">
+          <div className="flex gap-4 items-end mt-4">
             <div className="flex-1">
               <label className="text-sm font-medium text-gray-700 mb-2 block">Ara</label>
               <div className="relative">
@@ -356,85 +310,126 @@ export default function PurchasingNeedsAnalysisPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[1400px]">
                 <thead>
                   <tr className="border-b text-left text-sm">
-                    <th className="pb-3 font-medium text-gray-700 w-12">
+                    <th className="pb-3 font-normal text-gray-700 w-12">
                       <Checkbox
                         checked={selectedMaterials.size === filteredMaterials.length}
                         onCheckedChange={toggleSelectAll}
                       />
                     </th>
-                    <th className="pb-3 font-medium text-gray-700">Malzeme</th>
-                    <th className="pb-3 font-medium text-gray-700">Kod</th>
-                    <th className="pb-3 font-medium text-gray-700">Kategori</th>
-                    <th className="pb-3 font-medium text-gray-700 text-right">Mevcut Stok</th>
-                    <th className="pb-3 font-medium text-gray-700 text-right">Kullanılabilir</th>
-                    <th className="pb-3 font-medium text-gray-700 text-right">Proje İhtiyacı</th>
-                    <th className="pb-3 font-medium text-gray-700 text-right">Proje Eksik</th>
-                    <th className="pb-3 font-medium text-gray-700 text-right">Min. Stok</th>
-                    <th className="pb-3 font-medium text-gray-700 text-right">Önerilen Sipariş</th>
-                    <th className="pb-3 font-medium text-gray-700">Durum</th>
-                    <th className="pb-3 font-medium text-gray-700">İşler</th>
+                    <th className="pb-3 font-normal text-gray-700">Malzeme</th>
+                    <th className="pb-3 font-normal text-gray-700">Kod</th>
+                    <th className="pb-3 font-normal text-gray-700">Kategori</th>
+                    <th className="pb-3 font-normal text-gray-700 text-right">Mevcut Stok</th>
+                    <th className="pb-3 font-normal text-gray-700 text-right">Kullanılabilir</th>
+                    <th className="pb-3 font-normal text-gray-700 text-right">Proje İhtiyacı</th>
+                    <th className="pb-3 font-normal text-gray-700 text-right">Proje Eksik</th>
+                    <th className="pb-3 font-normal text-gray-700 text-right">Min. Stok</th>
+                    <th className="pb-3 font-normal text-gray-700 text-right">Önerilen Sipariş</th>
+                    <th className="pb-3 font-normal text-gray-700">Durum</th>
+                    <th className="pb-3 font-normal text-gray-700">İşler</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredMaterials.map((material) => (
-                    <tr
-                      key={material.stock_id}
-                      className={cn(
-                        'border-b hover:bg-gray-50 cursor-pointer',
-                        selectedMaterials.has(material.stock_id) && 'bg-blue-50 hover:bg-blue-100'
-                      )}
-                      onClick={() => toggleMaterialSelection(material.stock_id)}
-                    >
-                      <td className="py-3" onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          checked={selectedMaterials.has(material.stock_id)}
-                          onCheckedChange={() => toggleMaterialSelection(material.stock_id)}
-                        />
-                      </td>
-                      <td className="py-3">
-                        <div className="font-medium">{material.product_name}</div>
-                      </td>
-                      <td className="py-3 text-sm text-gray-600">{material.product_code}</td>
-                      <td className="py-3">
-                        {material.category && (
-                          <Badge variant="outline" className="text-xs">
-                            {material.category}
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="py-3 text-right font-medium">
-                        {material.current_quantity.toFixed(2)} {material.unit}
-                      </td>
-                      <td className="py-3 text-right font-medium text-green-600">
-                        {material.available_quantity.toFixed(2)} {material.unit}
-                      </td>
-                      <td className="py-3 text-right font-bold text-blue-700">
-                        {material.total_remaining_need.toFixed(2)} {material.unit}
-                      </td>
-                      <td className="py-3 text-right font-bold text-red-600">
-                        {material.project_shortage > 0 ? `${material.project_shortage.toFixed(2)} ${material.unit}` : '-'}
-                      </td>
-                      <td className="py-3 text-right font-medium text-orange-600">
-                        {material.min_stock_level > 0 ? `${material.min_stock_level.toFixed(2)} ${material.unit}` : '-'}
-                      </td>
-                      <td className="py-3 text-right font-bold text-purple-700">
-                        {material.suggested_order_quantity.toFixed(2)} {material.unit}
-                      </td>
-                      <td className="py-3">{getIssueTypeBadge(material.issue_type)}</td>
-                      <td className="py-3">
-                        {material.jobs_count > 0 ? (
-                          <Badge variant="outline" className="text-xs" title={material.job_numbers.join(', ')}>
-                            {material.jobs_count} iş
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-gray-400">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {/* Grouped sections: critical (both), project, stock level */}
+                  {(() => {
+                    const critical = filteredMaterials.filter((m) => m.issue_type === 'both')
+                    const project = filteredMaterials.filter((m) => m.issue_type === 'project')
+                    const stock = filteredMaterials.filter((m) => m.issue_type === 'stock_level')
+                    const groups = [
+                      { key: 'both', title: 'Kritik Eksikler (Proje + Stok)', items: critical },
+                      { key: 'project', title: 'Proje Eksikleri', items: project },
+                      { key: 'stock', title: 'Minimum Stok Altı', items: stock },
+                    ].filter((g) => g.items.length > 0)
+                    return groups.map((group) => (
+                      <Fragment key={`group-${group.key}`}>
+                        <tr className="bg-gray-50">
+                          <td colSpan={12} className="px-3 py-2 text-xs font-semibold uppercase text-gray-500">
+                            {group.title}
+                          </td>
+                        </tr>
+                        {group.items.map((material) => (
+                          <tr
+                            key={material.stock_id}
+                            className={cn(
+                              'border-b hover:bg-gray-50 cursor-pointer',
+                              selectedMaterials.has(material.stock_id) && 'bg-gray-100 hover:bg-gray-200'
+                            )}
+                            onClick={() => toggleMaterialSelection(material.stock_id)}
+                          >
+                            <td className="py-3" onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={selectedMaterials.has(material.stock_id)}
+                                onCheckedChange={() => toggleMaterialSelection(material.stock_id)}
+                              />
+                            </td>
+                            <td className="py-3">
+                              <div className="text-gray-900">{material.product_name}</div>
+                            </td>
+                            <td className="py-3 text-sm text-gray-600 whitespace-nowrap">{material.product_code}</td>
+                            <td className="py-3">
+                              {material.category && (
+                                <Badge variant="outline" className="text-xs text-gray-600">
+                                  {material.category}
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="py-3 text-right whitespace-nowrap">
+                              <span className="text-gray-900">{material.current_quantity.toFixed(2)}</span>{' '}
+                              <span className="text-gray-400">{material.unit}</span>
+                            </td>
+                            <td className="py-3 text-right whitespace-nowrap">
+                              <span className={cn('', material.available_quantity < 0 ? 'text-red-600' : 'text-gray-900')}>
+                                {material.available_quantity.toFixed(2)}
+                              </span>{' '}
+                              <span className="text-gray-400">{material.unit}</span>
+                            </td>
+                            <td className="py-3 text-right whitespace-nowrap">
+                              <span className="text-gray-900">{material.total_remaining_need.toFixed(2)}</span>{' '}
+                              <span className="text-gray-400">{material.unit}</span>
+                            </td>
+                            <td className="py-3 text-right whitespace-nowrap">
+                              {material.project_shortage > 0 ? (
+                                <>
+                                  <span className="text-red-600">{material.project_shortage.toFixed(2)}</span>{' '}
+                                  <span className="text-gray-400">{material.unit}</span>
+                                </>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="py-3 text-right whitespace-nowrap">
+                              {material.min_stock_level > 0 ? (
+                                <>
+                                  <span className="text-gray-900">{material.min_stock_level.toFixed(2)}</span>{' '}
+                                  <span className="text-gray-400">{material.unit}</span>
+                                </>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="py-3 text-right whitespace-nowrap">
+                              <span className="text-gray-900">{material.suggested_order_quantity.toFixed(2)}</span>{' '}
+                              <span className="text-gray-400">{material.unit}</span>
+                            </td>
+                            <td className="py-3">{getIssueTypeBadge(material.issue_type)}</td>
+                            <td className="py-3">
+                              {material.jobs_count > 0 ? (
+                                <Badge variant="outline" className="text-xs text-gray-700" title={material.job_numbers.join(', ')}>
+                                  <List className="w-3 h-3 mr-1 text-gray-500" />
+                                  {material.jobs_count} iş
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-gray-400">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -443,13 +438,13 @@ export default function PurchasingNeedsAnalysisPage() {
       </Card>
 
       {/* Help Text */}
-      <Card className="bg-blue-50 border-blue-200">
+      <Card className="bg-gray-50 border-gray-200">
         <CardContent className="pt-6">
           <div className="flex gap-3">
-            <Package className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-900">
+            <Package className="h-5 w-5 text-gray-500 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-gray-800">
               <p className="font-medium mb-2">Nasıl Kullanılır?</p>
-              <ul className="space-y-1 list-disc list-inside text-blue-800">
+              <ul className="space-y-1 list-disc list-inside text-gray-700">
                 <li>
                   <strong>Proje Eksikleri:</strong> Aktif projelerdeki malzeme listelerinden kaynaklanan eksikler
                 </li>
@@ -460,10 +455,10 @@ export default function PurchasingNeedsAnalysisPage() {
                   <strong>Önerilen Sipariş:</strong> Proje eksikleri ve minimum stok ihtiyacının toplamı
                 </li>
                 <li>
-                  Sipariş vermek istediğiniz malzemeleri seçin ve "RFQ Oluştur" butonuna tıklayın
+                  Sipariş vermek istediğiniz malzemeleri seçin ve "Teklif Talebi Oluştur" butonuna tıklayın
                 </li>
                 <li>
-                  RFQ oluşturulduktan sonra tedarikçilere gönderip fiyat teklifleri alabilirsiniz
+                  Teklif talebi oluşturulduktan sonra tedarikçilere gönderip fiyat teklifleri alabilirsiniz
                 </li>
               </ul>
             </div>

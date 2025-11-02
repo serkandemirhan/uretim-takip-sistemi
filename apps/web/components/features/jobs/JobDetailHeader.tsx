@@ -147,23 +147,20 @@ export function JobDetailHeader({
           </div>
         </div>
 
-        {/* Description - Scrollable, max 3-4 lines */}
+        {/* Açıklama - otomatik yükseklik, kırpmasız */}
         {job.description && (
           <div className="border-t pt-3">
             <div className="text-xs font-medium text-gray-500 mb-1">Açıklama</div>
-            <ScrollArea className="h-12 w-full">
-              <p className="text-sm text-gray-700 pr-4 whitespace-pre-wrap">
-                {job.description}
-              </p>
-            </ScrollArea>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+              {job.description}
+            </p>
           </div>
         )}
 
         {/* Files Row */}
         <div className="border-t pt-3">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-xs font-medium text-gray-500">İş Dosyaları</div>
-            {hasMoreFiles && (
+          {hasMoreFiles && (
+            <div className="flex justify-end mb-1">
               <Button
                 type="button"
                 variant="ghost"
@@ -183,8 +180,8 @@ export function JobDetailHeader({
                   </>
                 )}
               </Button>
-            )}
-          </div>
+            </div>
+          )}
           <FileUpload
             refType="job"
             refId={job.id}

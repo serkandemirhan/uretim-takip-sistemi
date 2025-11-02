@@ -245,7 +245,7 @@ export default function QuotationComparisonPage() {
             <Link href={`/procurement/rfq/${rfqId}`}>
               <Button>
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                RFQ Detayına Dön
+                Talep Detayına Dön
               </Button>
             </Link>
           </CardContent>
@@ -270,7 +270,7 @@ export default function QuotationComparisonPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Teklif Karşılaştırma</h1>
             <p className="text-sm text-gray-600 mt-1">
-              {data.rfq.rfq_number} - {data.rfq.title}
+              Talep No: {data.rfq.rfq_number} - {data.rfq.title}
             </p>
           </div>
         </div>

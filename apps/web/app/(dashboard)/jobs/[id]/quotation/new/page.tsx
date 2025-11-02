@@ -33,6 +33,7 @@ type JobPayload = {
   revision_no?: number | null
   status?: string | null
   customer?: { id?: string; name?: string | null } | null
+  dealer?: { id?: string; name?: string | null } | null
   due_date?: string | null
   description?: string | null
 }
@@ -134,12 +135,16 @@ export default function JobQuotationCreatePage() {
     if (customerId) {
       payload.customer_id = customerId
     }
+    const dealerId = job?.dealer?.id
+    if (dealerId) {
+      payload.dealer_id = dealerId
+    }
 
     try {
       setSubmitting(true)
       await quotationsAPI.create(payload)
       toast.success('Teklif oluşturuldu')
-      router.push(`/jobs/${jobId}/quotations`)
+      router.push(`/jobs/${jobId}?tab=quotations`)
     } catch (error: any) {
       handleApiError(error, 'Create quotation from job page')
       toast.error(error?.response?.data?.error || 'Teklif oluşturulamadı')
@@ -154,7 +159,7 @@ export default function JobQuotationCreatePage() {
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
             {jobId && (
-              <Link href={`/jobs/${jobId}`}>
+              <Link href={`/jobs/${jobId}?tab=quotations`}>
                 <Button variant="outline">
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   İşe Geri Dön
@@ -248,7 +253,7 @@ export default function JobQuotationCreatePage() {
                     {submitting ? 'Oluşturuluyor...' : 'Teklif Oluştur'}
                   </Button>
                   {jobId && (
-                    <Link href={`/jobs/${jobId}`}>
+                    <Link href={`/jobs/${jobId}?tab=quotations`}>
                       <Button type="button" variant="outline">
                         Vazgeç
                       </Button>

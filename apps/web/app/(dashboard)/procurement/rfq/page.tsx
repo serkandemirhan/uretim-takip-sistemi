@@ -138,7 +138,7 @@ export default function RFQListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">RFQ (Fiyat Teklifi Talepleri)</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Teklif Talepleri (RFQ)</h1>
           <p className="text-sm text-gray-600 mt-1">
             Tedarikçilere gönderilen fiyat teklifi taleplerini yönetin
           </p>
@@ -146,7 +146,7 @@ export default function RFQListPage() {
         <Link href="/procurement/needs-analysis">
           <Button className="bg-blue-600 hover:bg-blue-700">
             <Plus className="h-4 w-4 mr-2" />
-            Yeni RFQ
+            Yeni Teklif Talebi
           </Button>
         </Link>
       </div>
@@ -157,7 +157,7 @@ export default function RFQListPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Toplam RFQ</p>
+                <p className="text-sm text-gray-600">Toplam Talep</p>
                 <p className="text-2xl font-bold">{rfqs.length}</p>
               </div>
               <FileText className="h-8 w-8 text-blue-600 opacity-50" />
@@ -218,7 +218,7 @@ export default function RFQListPage() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   type="text"
-                  placeholder="RFQ numarası, başlık veya oluşturan..."
+                  placeholder="Talep numarası, başlık veya oluşturan..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -252,15 +252,15 @@ export default function RFQListPage() {
       {/* RFQ List */}
       <Card>
         <CardHeader>
-          <CardTitle>RFQ Listesi ({filteredRFQs.length})</CardTitle>
+          <CardTitle>Teklif Talebi Listesi ({filteredRFQs.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {filteredRFQs.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Henüz RFQ bulunmuyor</p>
+              <p>Henüz Teklif Talebi bulunmuyor</p>
               <p className="text-sm mt-2">
-                Yeni bir RFQ oluşturmak için yukarıdaki "Yeni RFQ" butonuna tıklayın
+                Yeni bir talep oluşturmak için yukarıdaki "Yeni Teklif Talebi" butonuna tıklayın
               </p>
             </div>
           ) : (
@@ -268,7 +268,7 @@ export default function RFQListPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b text-left text-sm">
-                    <th className="pb-3 font-medium text-gray-700">RFQ No</th>
+                    <th className="pb-3 font-medium text-gray-700">Talep No</th>
                     <th className="pb-3 font-medium text-gray-700">Başlık</th>
                     <th className="pb-3 font-medium text-gray-700">Durum</th>
                     <th className="pb-3 font-medium text-gray-700 text-center">Malzeme</th>
@@ -360,12 +360,12 @@ export default function RFQListPage() {
           <div className="flex gap-3">
             <FileText className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-blue-900">
-              <p className="font-medium mb-2">RFQ Yönetimi Hakkında</p>
+              <p className="font-medium mb-2">Teklif Talebi Yönetimi Hakkında</p>
               <ul className="space-y-1 list-disc list-inside text-blue-800">
-                <li>RFQ'ları tedarikçilere göndererek fiyat teklifleri alın</li>
+                <li>Talepleri tedarikçilere göndererek fiyat teklifleri alın</li>
                 <li>Gelen teklifleri karşılaştırın ve en uygun teklifi seçin</li>
                 <li>Seçilen teklife göre satın alma siparişi oluşturun</li>
-                <li>Son teklif tarihi yaklaşan veya geçen RFQ'lar otomatik olarak vurgulanır</li>
+                <li>Son teklif tarihi yaklaşan veya geçen talepler otomatik olarak vurgulanır</li>
               </ul>
             </div>
           </div>

@@ -1,29 +1,63 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import StatusBadge from '@/components/features/procurement/StatusBadge'
-import PriorityBadge from '@/components/features/procurement/PriorityBadge'
-import { purchaseRequestsAPI } from '@/lib/api/procurement'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  FileText,
+  Plus,
+  Search,
+  Filter,
+  Clock,
+  CheckCircle,
+  XCircle,
+  GitBranch,
+  ChevronDown,
+  Columns,
+} from 'lucide-react'
+import Link from 'next/link'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils/cn'
+import { purchaseRequestsAPI } from '@/lib/api/procurement'
+
+interface PurchaseRequest {
+  id: string
+  request_number: string
+  title: string
+  status: string
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  created_at: string
+  updated_at: string
+  requested_by_name: string
+  items_count: number
+}
 
 export default function PurchaseRequestsPage() {
-  const [requests, setRequests] = useState([])
+  const router = useRouter()
+  const [requests, setRequests] = useState<PurchaseRequest[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<string>('all')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
 
   useEffect(() => {
     loadRequests()
-  }, [filter])
+  }, [])
 
   const loadRequests = async () => {
     try {
       setLoading(true)
-      const filters = filter !== 'all' ? { status: filter } : {}
-      const response = await purchaseRequestsAPI.list(filters)
+      const response = await purchaseRequestsAPI.list()
       setRequests(response.data || [])
     } catch (error) {
       toast.error('Satın alma talepleri yüklenemedi')
@@ -33,99 +67,180 @@ export default function PurchaseRequestsPage() {
     }
   }
 
+  const filteredRequests = useMemo(() => {
+    return requests.filter((req) => {
+      const matchesSearch =
+        req.request_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        req.requested_by_name.toLowerCase().includes(searchTerm.toLowerCase())
+
+      const matchesStatus = statusFilter === 'all' || req.status === statusFilter
+
+      return matchesSearch && matchesStatus
+    })
+  }, [requests, searchTerm, statusFilter])
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      draft: { text: 'Taslak', className: 'bg-gray-100 text-gray-700 border-gray-200' },
+      pending_approval: { text: 'Onay Bekliyor', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+      approved: { text: 'Onaylandı', className: 'bg-green-100 text-green-700 border-green-200' },
+      rejected: { text: 'Reddedildi', className: 'bg-red-100 text-red-700 border-red-200' },
+      processing: { text: 'İşlemde', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+      partially_completed: { text: 'Kısmen Tamamlandı', className: 'bg-purple-100 text-purple-700 border-purple-200' },
+      completed: { text: 'Tamamlandı', className: 'bg-gray-100 text-gray-700 border-gray-200' },
+    }
+    const config = statusConfig[status as keyof typeof statusConfig] || { text: status, className: 'bg-gray-100' }
+    return <Badge className={cn('text-xs', config.className)}>{config.text}</Badge>
+  }
+
+  const getPriorityBadge = (priority: string) => {
+    const priorityConfig = {
+      low: { text: 'Düşük', className: 'bg-gray-100 text-gray-700' },
+      medium: { text: 'Normal', className: 'bg-blue-100 text-blue-700' },
+      high: { text: 'Yüksek', className: 'bg-orange-100 text-orange-700' },
+      urgent: { text: 'Acil', className: 'bg-red-100 text-red-700' },
+    }
+    const config = priorityConfig[priority as keyof typeof priorityConfig] || { text: priority, className: 'bg-gray-100' }
+    return <Badge className={cn('text-xs', config.className)}>{config.text}</Badge>
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('tr-TR', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Satın Alma Talepleri</h1>
-          <p className="text-sm text-gray-600">Purchase Requests yönetimi</p>
+          <p className="text-sm text-gray-600 mt-1">
+            Oluşturulan malzeme ihtiyaç taleplerini yönetin
+          </p>
         </div>
         <Link href="/procurement/requests/new">
           <Button>
             <Plus className="mr-2 h-4 w-4" />
-            Yeni Talep
+            Yeni Talep Oluştur
           </Button>
         </Link>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2">
-        {['all', 'draft', 'pending_approval', 'approved'].map((status) => (
-          <Button
-            key={status}
-            variant={filter === status ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilter(status)}
-          >
-            {status === 'all' ? 'Tümü' :
-             status === 'draft' ? 'Taslak' :
-             status === 'pending_approval' ? 'Onay Bekliyor' :
-             'Onaylananlar'}
-          </Button>
-        ))}
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex gap-4 items-end">
+            <div className="flex-1">
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Ara</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Talep no, başlık veya oluşturan..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
 
-      {/* Lista */}
-      {loading ? (
-        <Card>
-          <CardContent className="py-8 text-center text-gray-500">
-            Yükleniyor...
-          </CardContent>
-        </Card>
-      ) : requests.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-gray-500">
-            Henüz satın alma talebi yok
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {requests.map((request: any) => (
-            <Card key={request.id}>
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Link
-                        href={`/procurement/requests/${request.id}`}
-                        className="text-lg font-semibold text-gray-900 hover:text-blue-600"
-                      >
-                        {request.request_number}
-                      </Link>
-                      <StatusBadge status={request.status} type="pr" />
-                      <PriorityBadge priority={request.priority} />
-                    </div>
+            <div className="w-48">
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Durum</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm"
+              >
+                <option value="all">Tümü</option>
+                <option value="draft">Taslak</option>
+                <option value="pending_approval">Onay Bekliyor</option>
+                <option value="approved">Onaylandı</option>
+                <option value="rejected">Reddedildi</option>
+                <option value="completed">Tamamlandı</option>
+              </select>
+            </div>
 
-                    <div className="grid grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500">Kalemler:</span>
-                        <span className="ml-2 font-medium">{request.items_count}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Toplam:</span>
-                        <span className="ml-2 font-medium">{request.estimated_total?.toLocaleString('tr-TR')} ₺</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Talep Eden:</span>
-                        <span className="ml-2">{request.requested_by_name}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Tarih:</span>
-                        <span className="ml-2">{new Date(request.created_at).toLocaleDateString('tr-TR')}</span>
-                      </div>
-                    </div>
+            <Button variant="outline" onClick={loadRequests}>
+              <Filter className="h-4 w-4 mr-2" />
+              Yenile
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-                    {request.notes && (
-                      <p className="mt-2 text-sm text-gray-600 line-clamp-1">{request.notes}</p>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* Tablo */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Talep Listesi ({filteredRequests.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {filteredRequests.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Henüz satın alma talebi bulunmuyor</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b text-left text-sm">
+                    <th className="pb-3 font-medium text-gray-700">Talep No</th>
+                    <th className="pb-3 font-medium text-gray-700">Başlık</th>
+                    <th className="pb-3 font-medium text-gray-700">Durum</th>
+                    <th className="pb-3 font-medium text-gray-700">Öncelik</th>
+                    <th className="pb-3 font-medium text-gray-700 text-center">Kalem</th>
+                    <th className="pb-3 font-medium text-gray-700">Oluşturan</th>
+                    <th className="pb-3 font-medium text-gray-700">Tarih</th>
+                    <th className="pb-3 font-medium text-gray-700"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRequests.map((req) => (
+                    <tr
+                      key={req.id}
+                      className="border-b hover:bg-gray-50 cursor-pointer"
+                      onClick={() => router.push(`/procurement/requests/${req.id}`)}
+                    >
+                      <td className="py-3">
+                        <span className="font-mono text-sm font-medium text-blue-600">
+                          {req.request_number}
+                        </span>
+                      </td>
+                      <td className="py-3 font-medium text-gray-800">{req.title}</td>
+                      <td className="py-3">{getStatusBadge(req.status)}</td>
+                      <td className="py-3">{getPriorityBadge(req.priority)}</td>
+                      <td className="py-3 text-center">
+                        <Badge variant="outline" className="text-xs">
+                          {req.items_count}
+                        </Badge>
+                      </td>
+                      <td className="py-3 text-sm text-gray-600">{req.requested_by_name}</td>
+                      <td className="py-3 text-sm text-gray-600">{formatDate(req.created_at)}</td>
+                      <td className="py-3">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push(`/procurement/requests/${req.id}`)
+                          }}
+                        >
+                          Detay
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

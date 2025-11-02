@@ -8,7 +8,7 @@ import { Layers, Settings2, SlidersHorizontal, ShieldCheck, Users, Shield, Workf
 const sections = [
   {
     title: 'Genel Ayarlar',
-    description: 'Sistem genelindeki kullanıcı, rol ve süreç ayarları.',
+    description: 'Sistem genelindeki kullanıcı, rol ve operasyon ayarları.',
     items: [
       {
         title: 'Kullanıcılar',
@@ -23,8 +23,8 @@ const sections = [
         icon: Shield,
       },
       {
-        title: 'Süreçler',
-        description: 'İş akış süreçlerini ve adımlarını yönetin.',
+        title: 'Operasyonlar',
+        description: 'İş akışı operasyonlarını ve adımlarını yönetin.',
         href: '/processes',
         icon: Workflow,
       },

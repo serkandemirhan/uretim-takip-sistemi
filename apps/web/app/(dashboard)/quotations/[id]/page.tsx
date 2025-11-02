@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { quotationsAPI, stocksAPI, customersAPI, unitsAPI } from '@/lib/api/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -46,6 +46,7 @@ const createEmptyManualItem = () => ({
 
 export default function QuotationDetailPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const quotationId = useMemo(() => {
     const raw = (params as Record<string, string | string[] | undefined>)?.quotationId ?? (params as Record<string, string | string[] | undefined>)?.id
     if (Array.isArray(raw)) {
@@ -53,6 +54,21 @@ export default function QuotationDetailPage() {
     }
     return (raw as string) || ''
   }, [params])
+  const backToParam = searchParams.get('backTo')
+  const backLinkHref = useMemo(() => {
+    if (!backToParam) {
+      return '/quotations'
+    }
+    try {
+      const decoded = decodeURIComponent(backToParam)
+      if (decoded.startsWith('/') && !decoded.startsWith('//')) {
+        return decoded
+      }
+    } catch {
+      // ignore decoding errors and fall back to default
+    }
+    return '/quotations'
+  }, [backToParam])
 
   const [quotation, setQuotation] = useState<any>(null)
   const [stocks, setStocks] = useState<any[]>([])
@@ -624,7 +640,7 @@ export default function QuotationDetailPage() {
   return (
     <div className="space-y-6">
       {/* Back Button */}
-      <Link href="/quotations">
+      <Link href={backLinkHref}>
         <Button variant="ghost" size="sm">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Tekliflere Dön
@@ -984,7 +1000,12 @@ export default function QuotationDetailPage() {
                 </p>
               ) : (
                 items.map((item: any, index: number) => {
+                  const formatQuantity = (value: number) =>
+                    Number.isInteger(value)
+                      ? String(value)
+                      : Number(value.toFixed(3)).toString()
                   const quantityValue = Number(item.quantity ?? 0)
+                  const quantityDisplay = formatQuantity(quantityValue)
                   const unitCostValue = Number(item.unit_cost ?? 0)
                   const currencyCode = (item.currency || 'TRY').toUpperCase()
                   const totalDisplay = Number(item.total_cost || 0).toLocaleString('tr-TR', {
@@ -1066,22 +1087,26 @@ export default function QuotationDetailPage() {
                         type="number"
                         step="0.001"
                         min="0"
-                        defaultValue={item.quantity ?? ''}
+                        defaultValue={quantityDisplay}
                         className="h-8 text-xs text-right"
                         onBlur={(e) => {
                           const raw = e.target.value
                           if (!raw.trim()) {
-                            e.target.value = item.quantity ?? ''
+                            e.target.value = quantityDisplay
                             return
                           }
                           const parsed = parseFloat(raw)
                           if (Number.isNaN(parsed) || parsed < 0) {
                             toast.error('Miktar geçersiz')
-                            e.target.value = item.quantity ?? ''
+                            e.target.value = quantityDisplay
                             return
                           }
-                          if (parsed === quantityValue) return
+                          if (parsed === quantityValue) {
+                            e.target.value = formatQuantity(parsed)
+                            return
+                          }
                           handleUpdateItem(item.id, 'quantity', parsed)
+                          e.target.value = formatQuantity(parsed)
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {

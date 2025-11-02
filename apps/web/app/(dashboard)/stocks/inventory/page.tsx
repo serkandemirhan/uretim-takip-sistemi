@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, Fragment } from 'react'
 import { toast } from 'sonner'
 import {
   Loader2,
@@ -10,15 +10,24 @@ import {
   AlertTriangle,
   Package,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   ShoppingCart,
   Settings,
   SlidersHorizontal,
   GripVertical,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Upload,
+  FileDown,
+  X,
 } from 'lucide-react'
-import { stocksAPI, stockMovementsAPI, jobsAPI } from '@/lib/api/client'
+import { stocksAPI } from '@/lib/api/client'
 import { useStockFieldSettings } from '@/lib/hooks/useStockFieldSettings'
+import { cn } from '@/lib/utils/cn'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -34,6 +43,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 type Stock = {
   id: string
@@ -118,6 +133,117 @@ type StockFormValues = {
   properties2?: string
   // Note: Adding all 10 fields makes form too large,
   // will add as needed in UI
+}
+
+const BASE_STOCK_TEMPLATE_COLUMNS: Array<{
+  key: string
+  label: string
+  required?: boolean
+  sample?: string
+}> = [
+  { key: 'product_code', label: 'Ürün Kodu', required: true, sample: 'STK-001' },
+  { key: 'product_name', label: 'Ürün Adı', required: true, sample: 'Çelik Vida' },
+  { key: 'category', label: 'Kategori', sample: 'Bağlantı Elemanları' },
+  { key: 'unit', label: 'Birim', required: true, sample: 'adet' },
+  { key: 'current_quantity', label: 'Mevcut Stok', sample: '0' },
+  { key: 'min_quantity', label: 'Asgari Stok', sample: '10' },
+  { key: 'unit_price', label: 'Birim Fiyat', sample: '12.5' },
+  { key: 'currency', label: 'Para Birimi', sample: 'TRY' },
+  { key: 'supplier_name', label: 'Tedarikçi', sample: 'Örnek Tedarik' },
+  { key: 'description', label: 'Açıklama', sample: 'Paslanmaz çelik vida' },
+  { key: 'is_critical', label: 'Kritik Stok (E/H)', sample: 'H' },
+]
+
+const CSV_TRUE_VALUES = new Set(['1', 'true', 'evet', 'e', 'yes', 'ok', 'aktif', 'var'])
+const CSV_FALSE_VALUES = new Set(['0', 'false', 'hayır', 'hayir', 'h', 'no', 'pasif', 'yok'])
+
+function formatCsvValue(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  const str = String(value)
+  if (/[";,\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
+
+function parseBooleanFromCsv(value: string | undefined | null): boolean | undefined {
+  if (value === undefined || value === null) return undefined
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return undefined
+  if (CSV_TRUE_VALUES.has(normalized)) return true
+  if (CSV_FALSE_VALUES.has(normalized)) return false
+  return undefined
+}
+
+function parseNumberFromCsv(value: string | undefined | null): number | undefined {
+  if (value === undefined || value === null) return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  let normalized = trimmed.replace(/\s/g, '')
+  const hasComma = normalized.includes(',')
+  const hasDot = normalized.includes('.')
+  if (hasComma && hasDot) {
+    normalized = normalized.replace(/\./g, '').replace(',', '.')
+  } else if (hasComma) {
+    normalized = normalized.replace(',', '.')
+  }
+  const parsed = Number(normalized)
+  if (Number.isNaN(parsed)) return undefined
+  return parsed
+}
+
+function detectDelimiter(line: string): string {
+  if (line.includes(';') && line.includes(',')) {
+    return line.indexOf(';') < line.indexOf(',') ? ';' : ','
+  }
+  if (line.includes(';')) return ';'
+  return ','
+}
+
+function parseCsv(content: string, delimiter: string): string[][] {
+  const rows: string[][] = []
+  let current = ''
+  let row: string[] = []
+  let insideQuotes = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+
+    if (char === '"') {
+      if (insideQuotes && content[i + 1] === '"') {
+        current += '"'
+        i++
+      } else {
+        insideQuotes = !insideQuotes
+      }
+    } else if (char === '\r') {
+      continue
+    } else if (char === '\n') {
+      if (insideQuotes) {
+        current += char
+      } else {
+        row.push(current)
+        rows.push(row)
+        row = []
+        current = ''
+      }
+    } else if (char === delimiter && !insideQuotes) {
+      row.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+
+  row.push(current)
+  rows.push(row)
+
+  return rows.filter((r) => !(r.length === 1 && r[0].trim() === ''))
+}
+
+function extractFieldKeyFromHeader(header: string): string | undefined {
+  const match = header.match(/\[([^\]]+)\]/)
+  return match?.[1]?.trim()
 }
 
 const EMPTY_FORM: StockFormValues = {
@@ -218,6 +344,8 @@ const BASE_COLUMN_DEFINITIONS: Record<string, ColumnDefinition> = {
   },
 }
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+
 export default function StocksInventoryPage() {
   const router = useRouter()
 
@@ -264,6 +392,16 @@ export default function StocksInventoryPage() {
   const [filteredStocks, setFilteredStocks] = useState<Stock[]>([])
   const [q, setQ] = useState('')
   const [showCriticalOnly, setShowCriticalOnly] = useState(false)
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' } | null>(null)
+  const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
+  const [hoveredStockId, setHoveredStockId] = useState<string | null>(null)
+  const [groupByColumns, setGroupByColumns] = useState<string[]>([])
+  const [dragOverGroupArea, setDragOverGroupArea] = useState(false)
+  const MAX_GROUP_COLUMNS = 3
+  const NON_GROUPABLE_COLUMNS = useMemo<Set<ColumnId>>(
+    () => new Set<ColumnId>(['current_quantity', 'available_quantity', 'unit_price']),
+    []
+  )
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
@@ -281,34 +419,188 @@ export default function StocksInventoryPage() {
   const [tableSettingsLoaded, setTableSettingsLoaded] = useState(false)
   const [draggingColumn, setDraggingColumn] = useState<ColumnId | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<ColumnId | null>(null)
+  const [exportingCsv, setExportingCsv] = useState(false)
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false)
+  const [importingCsv, setImportingCsv] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(25)
 
   const visibleColumns = useMemo(
     () => columnOrder.filter((columnId) => columnVisibility[columnId] !== false) as ColumnId[],
     [columnOrder, columnVisibility]
   )
 
-  // Kolon genişliklerini hesapla - toplamı %100'e tamamla
-  const calculatedWidths = useMemo(() => {
-    const widths: Record<string, string> = {}
+  const headerDefinitions = useMemo(
+    () => [
+      ...BASE_STOCK_TEMPLATE_COLUMNS.map((column) => ({
+        key: column.key,
+        header: `${column.label} [${column.key}]`,
+        label: column.label,
+      })),
+      ...activeFields.map((field) => ({
+        key: field.field_key,
+        header: `${field.custom_label} [${field.field_key}]`,
+        label: field.custom_label,
+      })),
+    ],
+    [activeFields]
+  )
 
-    // Toplam pixel genişliğini hesapla
-    let totalPixels = 0
-    visibleColumns.forEach((columnId) => {
-      const definition = COLUMN_DEFINITIONS[columnId]
-      const width = columnWidths[columnId] ?? definition.defaultWidth
-      totalPixels += width
+  function resolveHeaderKey(header: string): string | undefined {
+    if (!header) return undefined
+    const trimmed = header.trim()
+    if (!trimmed) return undefined
+
+    const bracketKey = extractFieldKeyFromHeader(trimmed)
+    if (bracketKey) {
+      const normalizedBracket = bracketKey.toLowerCase()
+      const baseByKey = BASE_STOCK_TEMPLATE_COLUMNS.find(
+        (column) => column.key.toLowerCase() === normalizedBracket
+      )
+      if (baseByKey) return baseByKey.key
+      const dynamicByKey = activeFields.find(
+        (field) => field.field_key.toLowerCase() === normalizedBracket
+      )
+      if (dynamicByKey) return dynamicByKey.field_key
+      return bracketKey
+    }
+
+    const normalized = trimmed.toLowerCase()
+    const baseMatch = BASE_STOCK_TEMPLATE_COLUMNS.find(
+      (column) =>
+        column.key.toLowerCase() === normalized || column.label.toLowerCase() === normalized
+    )
+    if (baseMatch) {
+      return baseMatch.key
+    }
+
+    const dynamicMatch = activeFields.find((field) => {
+      const fieldKey = field.field_key.toLowerCase()
+      const labelNormalized = field.custom_label.trim().toLowerCase()
+      return fieldKey === normalized || labelNormalized === normalized
     })
 
-    // Her kolonun yüzdesini hesapla
+    return dynamicMatch?.field_key
+  }
+
+  const columnPixelWidths = useMemo(() => {
+    const widths: Record<string, number> = {}
     visibleColumns.forEach((columnId) => {
       const definition = COLUMN_DEFINITIONS[columnId]
-      const width = columnWidths[columnId] ?? definition.defaultWidth
-      const percentage = (width / totalPixels) * 100
-      widths[columnId] = `${percentage.toFixed(2)}%`
+      widths[columnId] = columnWidths[columnId] ?? definition.defaultWidth
     })
-
     return widths
   }, [visibleColumns, columnWidths, COLUMN_DEFINITIONS])
+
+  const minimumTableWidth = useMemo(() => {
+    return visibleColumns.reduce((total, columnId) => {
+      const definition = COLUMN_DEFINITIONS[columnId]
+      return total + (columnPixelWidths[columnId] ?? definition?.minWidth ?? 120)
+    }, 0)
+  }, [visibleColumns, COLUMN_DEFINITIONS, columnPixelWidths])
+
+  const sortedStocks = useMemo(() => {
+    const sortableItems = [...filteredStocks]
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        const aValue = (a as any)[sortConfig.key] ?? ''
+        const bValue = (b as any)[sortConfig.key] ?? ''
+
+        // Numeric comparison for numeric fields
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return sortConfig.direction === 'ascending' ? aValue - bValue : bValue - aValue
+        }
+
+        // String comparison
+        const aStr = String(aValue).toLowerCase()
+        const bStr = String(bValue).toLowerCase()
+
+        if (aStr < bStr) {
+          return sortConfig.direction === 'ascending' ? -1 : 1
+        }
+        if (aStr > bStr) {
+          return sortConfig.direction === 'ascending' ? 1 : -1
+        }
+        return 0
+      })
+    }
+    return sortableItems
+  }, [filteredStocks, sortConfig])
+
+  const groupedStocks = useMemo(() => {
+    if (groupByColumns.length === 0) {
+      return null
+    }
+
+    const groups = new Map<string, Stock[]>()
+
+    sortedStocks.forEach((stock) => {
+      const groupKey = groupByColumns
+        .map((col) => {
+          const value = (stock as any)[col]
+          return value !== null && value !== undefined ? String(value) : '(boş)'
+        })
+        .join(' | ')
+
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, [])
+      }
+      groups.get(groupKey)!.push(stock)
+    })
+
+    return Array.from(groups.entries()).map(([key, items]) => ({
+      groupKey: key,
+      items,
+    }))
+  }, [sortedStocks, groupByColumns])
+
+  const totalPages = useMemo(() => {
+    if (pageSize <= 0) return 1
+    return Math.max(1, Math.ceil(sortedStocks.length / pageSize))
+  }, [sortedStocks.length, pageSize])
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [page, totalPages])
+
+  const paginatedStocks = useMemo(() => {
+    if (pageSize <= 0) return sortedStocks
+    const startIndex = (page - 1) * pageSize
+    return sortedStocks.slice(startIndex, startIndex + pageSize)
+  }, [sortedStocks, page, pageSize])
+
+  const pageRangeStart = sortedStocks.length === 0 ? 0 : (page - 1) * pageSize + 1
+  const pageRangeEnd = sortedStocks.length === 0 ? 0 : Math.min(page * pageSize, sortedStocks.length)
+
+  const pageTotals = useMemo(() => {
+    return paginatedStocks.reduce(
+      (acc, stock) => {
+        const physical = Number(stock.current_quantity) || 0
+        const reserved = Number(stock.reserved_quantity) || 0
+        const available = Number(stock.available_quantity) || 0
+        const unitPrice = Number(stock.unit_price) || 0
+
+        acc.current += physical
+        acc.reserved += reserved
+        acc.available += available
+        acc.value += physical * unitPrice
+        return acc
+      },
+      { current: 0, reserved: 0, available: 0, value: 0 }
+    )
+  }, [paginatedStocks])
+
+  const quantityFormatter = useMemo(
+    () => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+    []
+  )
+  const currencyFormatter = useMemo(
+    () => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 2 }),
+    []
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -330,6 +622,10 @@ export default function StocksInventoryPage() {
   useEffect(() => {
     filterStocks()
   }, [stocks, q, showCriticalOnly])
+
+  useEffect(() => {
+    setPage(1)
+  }, [q, showCriticalOnly])
 
   // Aktif alanların string key listesi (array reference yerine primitive karşılaştırma için)
   const activeFieldKeys = useMemo(() => activeFields.map(f => f.field_key).join(','), [activeFields])
@@ -550,8 +846,9 @@ export default function StocksInventoryPage() {
   }
 
   function handleDragStart(event: React.DragEvent<HTMLButtonElement>, columnId: ColumnId) {
+    console.log('Drag start for column:', columnId)
     setDraggingColumn(columnId)
-    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.effectAllowed = 'copyMove'
     event.dataTransfer.setData('text/plain', columnId)
   }
 
@@ -593,6 +890,86 @@ export default function StocksInventoryPage() {
   function handleDragEnd() {
     setDragOverColumn(null)
     setDraggingColumn(null)
+    setDragOverGroupArea(false)
+  }
+
+  function handleGroupAreaDragOver(event: React.DragEvent<HTMLDivElement>) {
+    console.log('Drag over group area detected')
+    event.preventDefault()
+    event.stopPropagation()
+    if (
+      draggingColumn &&
+      draggingColumn !== 'actions' &&
+      !NON_GROUPABLE_COLUMNS.has(draggingColumn) &&
+      groupByColumns.length < MAX_GROUP_COLUMNS
+    ) {
+      console.log('Valid column dragging:', draggingColumn)
+      setDragOverGroupArea(true)
+      event.dataTransfer.dropEffect = 'copy'
+    } else {
+      event.dataTransfer.dropEffect = 'none'
+    }
+  }
+
+  function handleGroupAreaDragEnter(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (
+      draggingColumn &&
+      draggingColumn !== 'actions' &&
+      !NON_GROUPABLE_COLUMNS.has(draggingColumn) &&
+      groupByColumns.length < MAX_GROUP_COLUMNS
+    ) {
+      setDragOverGroupArea(true)
+    }
+  }
+
+  function handleGroupAreaDrop(event: React.DragEvent<HTMLDivElement>) {
+    console.log('Drop detected! Event:', event)
+    event.preventDefault()
+    event.stopPropagation()
+    setDragOverGroupArea(false)
+
+    const columnId = draggingColumn || event.dataTransfer.getData('text/plain')
+    console.log('Drop detected! Column ID:', columnId)
+
+    if (!columnId || columnId === 'actions' || NON_GROUPABLE_COLUMNS.has(columnId)) {
+      console.log('Invalid column or actions column')
+      return
+    }
+
+    setGroupByColumns((prev) => {
+      if (prev.includes(columnId)) {
+        console.log('Column already in group')
+        return prev
+      }
+      if (prev.length >= MAX_GROUP_COLUMNS) {
+        console.log('Maximum group columns reached')
+        return prev
+      }
+      const newGroups = [...prev, columnId]
+      console.log('Adding column to group. New groups:', newGroups)
+      return newGroups
+    })
+
+    // Reset dragging state
+    setDraggingColumn(null)
+  }
+
+  function handleGroupAreaDragLeave(event: React.DragEvent<HTMLDivElement>) {
+    console.log('Drag leave group area')
+    // Only set to false if we're actually leaving the container
+    if (event.currentTarget === event.target || !event.currentTarget.contains(event.relatedTarget as Node)) {
+      setDragOverGroupArea(false)
+    }
+  }
+
+  function removeGroupColumn(columnId: string) {
+    setGroupByColumns((prev) => prev.filter((col) => col !== columnId))
+  }
+
+  function clearGrouping() {
+    setGroupByColumns([])
   }
 
   function handleResizeMouseDown(event: React.MouseEvent<HTMLSpanElement>, columnId: ColumnId) {
@@ -643,19 +1020,19 @@ export default function StocksInventoryPage() {
         )
       case 'reserved_quantity':
         return (
-          <span className="text-sm text-orange-600">
+          <span className="text-sm">
             {stock.reserved_quantity || 0} {stock.unit}
           </span>
         )
       case 'available_quantity':
         return (
-          <span className={`font-semibold ${
+          <span className={
             (stock.available_quantity || 0) <= 0
               ? 'text-red-600'
               : (stock.available_quantity || 0) <= (stock.min_quantity || 0)
               ? 'text-orange-600'
-              : 'text-green-600'
-          }`}>
+              : ''
+          }>
             {stock.available_quantity || 0} {stock.unit}
           </span>
         )
@@ -701,7 +1078,7 @@ export default function StocksInventoryPage() {
           // field_type'a göre rendering
           if (fieldSetting.field_type === 'group') {
             return value ? (
-              <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+              <span className="text-sm">
                 {value}
               </span>
             ) : '-'
@@ -711,6 +1088,328 @@ export default function StocksInventoryPage() {
         }
         return null
     }
+  }
+
+  function handleDownloadTemplate() {
+    if (downloadingTemplate) return
+
+    try {
+      setDownloadingTemplate(true)
+
+      const headers = headerDefinitions.map((column) => column.header)
+      const sampleValues = Object.fromEntries(
+        BASE_STOCK_TEMPLATE_COLUMNS.map((column) => [column.key, column.sample ?? ''])
+      )
+      const sampleRow = headerDefinitions.map((column) => sampleValues[column.key] ?? '')
+
+      const csvRows = [headers, sampleRow]
+      const csvContent = csvRows
+        .map((row) => row.map(formatCsvValue).join(';'))
+        .join('\r\n')
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const timestamp = new Date().toISOString().slice(0, 10)
+      link.href = url
+      link.setAttribute('download', `stok_sablon_${timestamp}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast.success('CSV şablonu indirildi')
+    } catch (error) {
+      console.error('CSV template export error', error)
+      toast.error('Şablon indirilirken bir sorun oluştu')
+    } finally {
+      setDownloadingTemplate(false)
+    }
+  }
+
+  function handleExportCsv() {
+    if (exportingCsv) return
+    if (!stocks.length) {
+      toast.info('İndirilecek stok kartı bulunmuyor')
+      return
+    }
+
+    try {
+      setExportingCsv(true)
+
+      const headers = headerDefinitions.map((column) => column.header)
+      const rows = stocks.map((stock) =>
+        headerDefinitions.map((column) => {
+          const value = (stock as any)[column.key]
+          if (column.key === 'is_critical') {
+            return value ? 'E' : 'H'
+          }
+          if (column.key === 'currency') {
+            return (value || 'TRY').toString().toUpperCase()
+          }
+          return value ?? ''
+        })
+      )
+
+      const csvContent = [headers, ...rows]
+        .map((row) => row.map(formatCsvValue).join(';'))
+        .join('\r\n')
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const timestamp = new Date().toISOString().slice(0, 10)
+      link.href = url
+      link.setAttribute('download', `stok_listesi_${timestamp}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast.success('Stok listesi CSV olarak indirildi')
+    } catch (error) {
+      console.error('CSV export error', error)
+      toast.error('CSV dışa aktarımı sırasında bir hata oluştu')
+    } finally {
+      setExportingCsv(false)
+    }
+  }
+
+  function handleImportButtonClick() {
+    if (fieldsLoading) {
+      toast.info('Dinamik kolonlar yüklenirken lütfen tekrar deneyin')
+      return
+    }
+    fileInputRef.current?.click()
+  }
+
+  function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+    void importFromFile(file)
+    event.target.value = ''
+  }
+
+  async function importFromFile(file: File) {
+    if (fieldsLoading) {
+      toast.info('Dinamik kolonlar yüklenirken lütfen tekrar deneyin')
+      return
+    }
+
+    setImportingCsv(true)
+    try {
+      const rawContent = await file.text()
+      const normalizedContent = rawContent.replace(/^\uFEFF/, '')
+      const [firstLine = ''] = normalizedContent.split(/\r?\n/)
+      if (!firstLine.trim()) {
+        toast.error('Dosya boş görünüyor')
+        return
+      }
+
+      const delimiter = detectDelimiter(firstLine)
+      const rows = parseCsv(normalizedContent, delimiter)
+      if (rows.length < 2) {
+        toast.error('Veri satırı bulunamadı')
+        return
+      }
+
+      const headers = rows[0].map((header) => header.trim())
+      const headerMap = new Map<number, string>()
+      headers.forEach((header, index) => {
+        const key = resolveHeaderKey(header)
+        if (key) {
+          headerMap.set(index, key)
+        }
+      })
+
+      const missingRequired = BASE_STOCK_TEMPLATE_COLUMNS.filter(
+        (column) => column.required && !Array.from(headerMap.values()).includes(column.key)
+      )
+      if (missingRequired.length) {
+        toast.error(
+          `Eksik zorunlu kolonlar: ${missingRequired.map((column) => column.label).join(', ')}`
+        )
+        return
+      }
+
+      const dataRows = rows.slice(1).filter((row) => row.some((cell) => cell?.trim()))
+      if (!dataRows.length) {
+        toast.error('İçe aktarılacak veri bulunamadı')
+        return
+      }
+
+      const existingMap = new Map(
+        stocks.map((stock) => [stock.product_code.trim().toLowerCase(), stock])
+      )
+
+      let createdCount = 0
+      let updatedCount = 0
+      const failures: Array<{ code: string; reason: string }> = []
+
+      for (const row of dataRows) {
+        const record: Record<string, string> = {}
+        headerMap.forEach((key, columnIndex) => {
+          const rawValue = row[columnIndex] ?? ''
+          record[key] = rawValue.trim()
+        })
+
+        const productCode = record.product_code?.trim()
+        const productName = record.product_name?.trim()
+
+        if (!productCode || !productName) {
+          failures.push({
+            code: productCode || '(boş)',
+            reason: 'Ürün kodu ve adı zorunludur',
+          })
+          continue
+        }
+
+        const productCodeKey = productCode.toLowerCase()
+        const existing = existingMap.get(productCodeKey)
+        const isExisting = Boolean(existing?.id)
+
+        const payload: any = {
+          product_code: productCode,
+          product_name: productName,
+        }
+
+        if (record.category !== undefined || !isExisting) {
+          payload.category = record.category || null
+        }
+
+        if (record.unit !== undefined) {
+          if (record.unit) {
+            payload.unit = record.unit
+          } else if (!isExisting) {
+            payload.unit = 'adet'
+          }
+        } else if (!isExisting) {
+          payload.unit = 'adet'
+        }
+
+        const minQuantityValue =
+          record.min_quantity !== undefined ? parseNumberFromCsv(record.min_quantity) : undefined
+        if (minQuantityValue !== undefined) {
+          payload.min_quantity = minQuantityValue
+        } else if (!isExisting) {
+          payload.min_quantity = 0
+        }
+
+        const unitPriceValue =
+          record.unit_price !== undefined ? parseNumberFromCsv(record.unit_price) : undefined
+        if (unitPriceValue !== undefined) {
+          payload.unit_price = unitPriceValue
+        } else if (!isExisting) {
+          payload.unit_price = null
+        }
+
+        if (record.currency !== undefined) {
+          payload.currency = record.currency ? record.currency.toUpperCase() : 'TRY'
+        } else if (!isExisting) {
+          payload.currency = 'TRY'
+        }
+
+        if (record.supplier_name !== undefined || !isExisting) {
+          payload.supplier_name = record.supplier_name || null
+        }
+
+        if (record.description !== undefined || !isExisting) {
+          payload.description = record.description || null
+        }
+
+        if (record.is_critical !== undefined) {
+          const isCritical = parseBooleanFromCsv(record.is_critical)
+          if (typeof isCritical === 'boolean') {
+            payload.is_critical = isCritical
+          }
+        }
+
+        activeFields.forEach((field) => {
+          if (record[field.field_key] !== undefined) {
+            payload[field.field_key] = record[field.field_key] || null
+          }
+        })
+
+        const currentQuantity =
+          record.current_quantity !== undefined ? parseNumberFromCsv(record.current_quantity) : undefined
+
+        try {
+          if (existing?.id) {
+            const updatePayload = { ...payload }
+            if (currentQuantity !== undefined) {
+              updatePayload.current_quantity = currentQuantity
+            }
+            await stocksAPI.update(existing.id, updatePayload)
+            updatedCount += 1
+          } else {
+            const createPayload = {
+              ...payload,
+              current_quantity: currentQuantity ?? 0,
+            }
+            const created = await stocksAPI.create(createPayload)
+            const createdId = created?.data?.id ?? created?.id
+            if (createdId) {
+              existingMap.set(productCodeKey, { ...(created?.data ?? created), id: createdId } as Stock)
+            }
+            createdCount += 1
+          }
+        } catch (error: any) {
+          const reason =
+            error?.response?.data?.error ||
+            error?.message ||
+            'Sunucu hatası'
+          failures.push({ code: productCode, reason })
+        }
+      }
+
+      await loadStocks()
+      await loadSummary()
+
+      const resultMessages: string[] = []
+      if (createdCount) {
+        resultMessages.push(`${createdCount} yeni stok oluşturuldu`)
+      }
+      if (updatedCount) {
+        resultMessages.push(`${updatedCount} stok güncellendi`)
+      }
+
+      if (failures.length) {
+        console.error('CSV import errors:', failures)
+        const baseMessage = resultMessages.length ? resultMessages.join(', ') : ''
+        toast.warning(
+          `${baseMessage}${baseMessage ? '. ' : ''}${failures.length} satırda hata oluştu. Detaylar için konsolu kontrol edin.`
+        )
+      } else if (resultMessages.length) {
+        toast.success(resultMessages.join(', '))
+      } else {
+        toast.info('Herhangi bir kayıt içe aktarılmadı')
+      }
+    } catch (error) {
+      console.error('CSV import error', error)
+      toast.error('CSV içe aktarımı sırasında bir hata oluştu')
+    } finally {
+      setImportingCsv(false)
+    }
+  }
+
+  function requestSort(key: string) {
+    let direction: 'ascending' | 'descending' = 'ascending'
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending'
+    }
+    setSortConfig({ key, direction })
+  }
+
+  function getSortIcon(columnId: string) {
+    if (sortConfig?.key !== columnId) {
+      return null
+    }
+    if (sortConfig.direction === 'ascending') {
+      return <ArrowUp className="h-4 w-4 text-blue-600" />
+    }
+    return <ArrowDown className="h-4 w-4 text-blue-600" />
   }
 
   function filterStocks() {
@@ -838,55 +1537,107 @@ export default function StocksInventoryPage() {
           <h1 className="text-3xl font-bold">Stok Yönetimi</h1>
           <p className="text-muted-foreground">Tüm stok kartları ve mevcut durumlar</p>
         </div>
-        <Button onClick={openCreateDialog}>
-          <Plus className="w-4 h-4 mr-2" />
-          Yeni Stok Kartı
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <Link href="/stocks/movements">
+            <Button variant="outline" className="gap-2">
+              <ArrowUpDown className="w-4 h-4" />
+              Stok Hareketleri
+            </Button>
+          </Link>
+          <Link href="/stocks/purchase-orders">
+            <Button variant="outline" className="gap-2">
+              <ShoppingCart className="w-4 h-4" />
+              Satın Alma Emirleri
+            </Button>
+          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Download className="w-4 h-4" />
+                Import & Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={handleDownloadTemplate}
+                disabled={downloadingTemplate || fieldsLoading}
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                {downloadingTemplate ? 'Hazırlanıyor...' : 'CSV Şablon İndir'}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleExportCsv}
+                disabled={exportingCsv || stocks.length === 0}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                {exportingCsv ? 'Dışa aktarılıyor...' : 'CSV Dışa Aktar'}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleImportButtonClick}
+                disabled={importingCsv || fieldsLoading}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {importingCsv ? 'Yükleniyor...' : 'CSV İçe Aktar'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button onClick={openCreateDialog}>
+            <Plus className="w-4 h-4 mr-2" />
+            Yeni Stok Kartı
+          </Button>
+        </div>
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid gap-4 md:grid-cols-4 px-4 sm:px-6 lg:px-8">
+        <div className="grid gap-3 md:grid-cols-4 px-4 sm:px-6 lg:px-8">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Toplam Stok Değeri (TRY)</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4">
+              <CardTitle className="text-xs font-medium">Toplam Stok Değeri (TRY)</CardTitle>
+              <Package className="h-3.5 w-3.5 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="pb-3">
+              <div className="text-xl font-bold">
                 {summary.total_value?.TRY?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Toplam Stok Kalemi</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4">
+              <CardTitle className="text-xs font-medium">Toplam Stok Kalemi</CardTitle>
+              <Package className="h-3.5 w-3.5 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary.total_stock_items}</div>
+            <CardContent className="pb-3">
+              <div className="text-xl font-bold">{summary.total_stock_items}</div>
             </CardContent>
           </Card>
 
           <Card className="border-orange-200 bg-orange-50">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-orange-900">Kritik Seviye</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-orange-600" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4">
+              <CardTitle className="text-xs font-medium text-orange-900">Kritik Seviye</CardTitle>
+              <AlertTriangle className="h-3.5 w-3.5 text-orange-600" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-900">{summary.critical_stock_count}</div>
+            <CardContent className="pb-3">
+              <div className="text-xl font-bold text-orange-900">{summary.critical_stock_count}</div>
             </CardContent>
           </Card>
 
           <Link href="/stocks/settings">
             <Card className="cursor-pointer hover:shadow-md transition-shadow border-2 border-transparent hover:border-blue-200">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Döviz Kurları</CardTitle>
-                <Settings className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4">
+                <CardTitle className="text-xs font-medium">Döviz Kurları</CardTitle>
+                <Settings className="h-3.5 w-3.5 text-muted-foreground" />
               </CardHeader>
-              <CardContent>
-                <div className="text-sm">
+              <CardContent className="pb-3">
+                <div className="text-xs">
                   <div>USD: {summary.currency_rates?.USD_to_TRY?.toFixed(2)} ₺</div>
                   <div>EUR: {summary.currency_rates?.EUR_to_TRY?.toFixed(2)} ₺</div>
                 </div>
@@ -896,138 +1647,341 @@ export default function StocksInventoryPage() {
         </div>
       )}
 
-      {/* Quick Actions & Filters */}
-      <div className="px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-4">
-          {/* Quick Actions */}
-          <div className="flex flex-wrap gap-3">
-            <Link href="/stocks/movements">
-              <Button variant="outline" className="gap-2">
-                <ArrowUpDown className="w-4 h-4" />
-                Stok Hareketleri
-              </Button>
-            </Link>
-            <Link href="/stocks/purchase-orders">
-              <Button variant="outline" className="gap-2">
-                <ShoppingCart className="w-4 h-4" />
-                Satın Alma Emirleri
-              </Button>
-            </Link>
-          </div>
-
-          {/* Filters */}
-          <div className="flex gap-3 items-center w-full lg:w-auto">
-            <Input
-              placeholder="Ara (ürün adı, kodu, kategori)..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="max-w-md"
-            />
-            <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
-              <input
-                type="checkbox"
-                checked={showCriticalOnly}
-                onChange={(e) => setShowCriticalOnly(e.target.checked)}
-                className="w-4 h-4"
-              />
-              <span className="text-sm">Sadece Kritik Stoklar</span>
-            </label>
-          </div>
-        </div>
-      </div>
-
       {/* Stock List */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-between items-center mb-4 gap-4">
+            <div className="flex gap-3 items-center flex-1">
+              {/* Grouping Area */}
+              <div
+                className={cn(
+                  'min-w-[360px] h-10 border-2 border-dashed rounded-md flex flex-wrap items-center gap-2 px-3 transition-colors',
+                  dragOverGroupArea
+                    ? 'border-blue-500 bg-blue-50'
+                    : groupByColumns.length > 0
+                    ? 'border-gray-300 bg-gray-50'
+                    : 'border-gray-300 bg-white'
+                )}
+                onDragEnter={handleGroupAreaDragEnter}
+                onDragOver={handleGroupAreaDragOver}
+                onDrop={handleGroupAreaDrop}
+                onDragLeave={handleGroupAreaDragLeave}
+              >
+                {groupByColumns.length === 0 ? (
+                  <span className="text-xs text-muted-foreground whitespace-nowrap pointer-events-none">
+                    Gruplamak için kolon sürükleyin
+                  </span>
+                ) : (
+                  <div className="flex items-center gap-2 w-full flex-wrap">
+                    {groupByColumns.map((colId) => {
+                      const definition = COLUMN_DEFINITIONS[colId]
+                      return (
+                        <div
+                          key={colId}
+                          className="flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium pointer-events-none"
+                        >
+                          <span>{definition?.label || colId}</span>
+                          <button
+                            onClick={() => removeGroupColumn(colId)}
+                            className="hover:bg-blue-200 rounded-full p-0.5 pointer-events-auto"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                    {groupByColumns.length < MAX_GROUP_COLUMNS && (
+                      <span className="text-xs text-muted-foreground pointer-events-none">
+                        +{MAX_GROUP_COLUMNS - groupByColumns.length} daha
+                      </span>
+                    )}
+                    {groupByColumns.length > 0 && (
+                      <button
+                        onClick={clearGrouping}
+                        className="ml-auto text-xs text-red-600 hover:text-red-800 pointer-events-auto"
+                      >
+                        Temizle
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <Input
+                placeholder="Ara (ürün adı, kodu, kategori)..."
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="max-w-md"
+              />
+              <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={showCriticalOnly}
+                  onChange={(e) => setShowCriticalOnly(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Sadece Kritik Stoklar</span>
+              </label>
+            </div>
             <Button variant="outline" size="sm" onClick={() => setColumnSettingsOpen(true)}>
               <SlidersHorizontal className="w-4 h-4 mr-2" />
               Kolon Ayarları
             </Button>
           </div>
-          {filteredStocks.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
+          {sortedStocks.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
               Stok bulunamadı
             </div>
           ) : (
-            <div className="w-full overflow-hidden">
-              <table className="w-full table-fixed border-collapse" style={{ tableLayout: 'fixed' }}>
-                <colgroup>
-                  {visibleColumns.map((columnId) => {
-                    return <col key={`col-${columnId}`} style={{ width: calculatedWidths[columnId] }} />
-                  })}
-                </colgroup>
-                <thead>
-                  <tr className="border-b">
+            <>
+              <div className="w-full overflow-x-auto rounded-md border border-gray-200">
+                <table
+                  className="w-full border-collapse text-sm"
+                  style={{ minWidth: Math.max(minimumTableWidth, 960) }}
+                >
+                  <colgroup>
                     {visibleColumns.map((columnId) => {
                       const definition = COLUMN_DEFINITIONS[columnId]
-                      const width = columnWidths[columnId] ?? definition.defaultWidth
+                      const width = columnPixelWidths[columnId] ?? definition.defaultWidth
                       const minWidth = definition.minWidth ?? 120
-                      const alignClass = definition.align === 'right' ? 'text-right' : 'text-left'
-                      const isDragTarget = dragOverColumn === columnId
-
                       return (
-                        <th
-                          key={columnId}
-                          className={`relative p-2 text-sm font-semibold ${alignClass} ${isDragTarget ? 'bg-blue-50' : ''}`}
-                          onDragOver={(event) => handleDragOver(event, columnId)}
-                          onDrop={() => handleDrop(columnId)}
-                          onDragLeave={() => setDragOverColumn(null)}
-                        >
-                          <div className={`flex items-center gap-2 ${definition.align === 'right' ? 'justify-end' : ''}`}>
-                            <button
-                              type="button"
-                              className="flex h-6 w-6 items-center justify-center rounded border border-transparent bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground focus:border-blue-500 focus:outline-none"
-                              draggable
-                              onDragStart={(event) => handleDragStart(event, columnId)}
-                              onDragEnd={handleDragEnd}
-                              aria-label={`${definition.label} sütununu taşı`}
-                            >
-                              <GripVertical className="h-4 w-4" />
-                            </button>
-                            <span className="text-sm font-semibold truncate">{definition.label}</span>
-                          </div>
-                          <span
-                            className="absolute right-0 top-1/2 h-6 w-1.5 -translate-y-1/2 cursor-col-resize rounded bg-transparent hover:bg-blue-300"
-                            onMouseDown={(event) => handleResizeMouseDown(event, columnId)}
-                            aria-hidden="true"
-                          />
-                        </th>
+                        <col
+                          key={`col-${columnId}`}
+                          style={{ width, minWidth }}
+                        />
                       )
                     })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStocks.map((stock) => (
-                    <tr
-                      key={stock.id}
-                      className={`border-b hover:bg-muted/50 cursor-pointer transition-colors ${stock.is_critical ? 'bg-orange-50' : ''}`}
-                      onClick={() => router.push(`/stocks/movements?stock_id=${stock.id}`)}
-                      title="Stok hareketlerini görüntülemek için tıklayın"
-                    >
+                  </colgroup>
+                  <thead className="bg-gray-100 text-gray-700 border-b border-gray-200">
+                    <tr>
                       {visibleColumns.map((columnId) => {
                         const definition = COLUMN_DEFINITIONS[columnId]
-                        const width = columnWidths[columnId] ?? definition.defaultWidth
+                        const width = columnPixelWidths[columnId] ?? definition.defaultWidth
                         const minWidth = definition.minWidth ?? 120
-                        const alignClass = definition.align === 'right' ? 'text-right' : 'text-left'
+                        const alignClass = definition.align === 'right' ? 'justify-end text-right' : 'text-left'
+                        const isDragTarget = dragOverColumn === columnId
 
                         return (
-                          <td
-                            key={`${stock.id}-${columnId}`}
-                            className={`p-2 align-top ${alignClass}`}
-                            onClick={columnId === 'actions' ? (event) => event.stopPropagation() : undefined}
+                          <th
+                            key={columnId}
+                            className={cn(
+                              'group relative px-3 py-1 text-xs font-semibold uppercase tracking-wide',
+                              alignClass,
+                              isDragTarget ? 'bg-blue-50' : ''
+                            )}
+                            style={{ width, minWidth }}
+                            onDragOver={(event) => handleDragOver(event, columnId)}
+                            onDrop={() => handleDrop(columnId)}
+                            onDragLeave={() => setDragOverColumn(null)}
                           >
-                            <div className="truncate">
-                              {renderCell(stock, columnId)}
+                            <div className={cn('flex items-center gap-2', definition.align === 'right' ? 'justify-end' : '')}>
+                              <button
+                                type="button"
+                                className="flex h-6 w-6 items-center justify-center rounded border border-transparent bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground focus:border-blue-500 focus:outline-none"
+                                draggable
+                                onDragStart={(event) => handleDragStart(event, columnId)}
+                                onDragEnd={handleDragEnd}
+                                aria-label={`${definition.label} sütununu taşı`}
+                              >
+                                <GripVertical className="h-4 w-4" />
+                              </button>
+                              {columnId !== 'actions' ? (
+                                <button
+                                  onClick={() => requestSort(columnId)}
+                                  className="flex items-center gap-2 hover:text-gray-900 transition-colors"
+                                  draggable
+                                  onDragStart={(event) => handleDragStart(event, columnId)}
+                                  onDragEnd={handleDragEnd}
+                                  aria-label={`${definition.label} sütununu grupla`}
+                                >
+                                  <span className="truncate text-sm font-semibold text-gray-700">{definition.label}</span>
+                                  {getSortIcon(columnId)}
+                                </button>
+                              ) : (
+                                <span className="truncate text-sm font-semibold text-gray-700">{definition.label}</span>
+                              )}
                             </div>
-                          </td>
+                            <span
+                              className="absolute right-0 top-1/2 h-6 w-1.5 -translate-y-1/2 cursor-col-resize rounded bg-transparent transition-colors group-hover:bg-gray-300 hover:bg-blue-400"
+                              onMouseDown={(event) => handleResizeMouseDown(event, columnId)}
+                              aria-hidden="true"
+                            />
+                          </th>
                         )
                       })}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {groupedStocks ? (
+                      // Gruplu rendering
+                      groupedStocks.map((group, groupIndex) => (
+                        <Fragment key={`group-${groupIndex}`}>
+                          {/* Group Header Row */}
+                          <tr className="bg-gray-200 border-b-2 border-gray-300">
+                            <td
+                              colSpan={visibleColumns.length}
+                              className="px-3 py-1.5 font-semibold text-sm text-gray-800"
+                            >
+                              {group.groupKey} ({group.items.length} kayıt)
+                            </td>
+                          </tr>
+                          {/* Group Items */}
+                          {group.items.map((stock, index) => {
+                            const isEven = index % 2 === 0
+                            const isSelected = selectedStockId === stock.id
+                            const isHovered = hoveredStockId === stock.id
+                            const rowClass = cn(
+                              'border-b transition-colors cursor-pointer',
+                              isSelected || isHovered
+                                ? 'bg-blue-100 hover:bg-blue-100/80'
+                                : isEven
+                                ? 'bg-white hover:bg-gray-100/80'
+                                : 'bg-gray-50 hover:bg-gray-100/80',
+                              stock.is_critical && !isSelected && !isHovered && 'bg-orange-50 hover:bg-orange-100/80'
+                            )
+
+                            return (
+                              <tr
+                                key={stock.id}
+                                className={rowClass}
+                                onMouseEnter={() => setHoveredStockId(stock.id)}
+                                onMouseLeave={() => setHoveredStockId(null)}
+                                onClick={() => {
+                                  setSelectedStockId(stock.id)
+                                  router.push(`/stocks/movements?stock_id=${stock.id}`)
+                                }}
+                                title="Stok hareketlerini görüntülemek için tıklayın"
+                              >
+                                {visibleColumns.map((columnId) => {
+                                  const definition = COLUMN_DEFINITIONS[columnId]
+                                  const width = columnPixelWidths[columnId] ?? definition.defaultWidth
+                                  const minWidth = definition.minWidth ?? 120
+                                  const alignClass = definition.align === 'right' ? 'text-right' : 'text-left'
+
+                                  return (
+                                    <td
+                                      key={`${stock.id}-${columnId}`}
+                                      className={cn('px-3 py-1 align-middle text-sm', alignClass)}
+                                      style={{ width, minWidth }}
+                                      onClick={columnId === 'actions' ? (event) => event.stopPropagation() : undefined}
+                                    >
+                                      <div className="truncate text-gray-900">
+                                        {renderCell(stock, columnId)}
+                                      </div>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            )
+                          })}
+                        </Fragment>
+                      ))
+                    ) : (
+                      // Normal rendering (without grouping)
+                      paginatedStocks.map((stock, index) => {
+                        const isEven = index % 2 === 0
+                        const isSelected = selectedStockId === stock.id
+                        const isHovered = hoveredStockId === stock.id
+                        const rowClass = cn(
+                          'border-b transition-colors cursor-pointer',
+                          isSelected || isHovered
+                            ? 'bg-blue-100 hover:bg-blue-100/80'
+                            : isEven
+                            ? 'bg-white hover:bg-gray-100/80'
+                            : 'bg-gray-50 hover:bg-gray-100/80',
+                          stock.is_critical && !isSelected && !isHovered && 'bg-orange-50 hover:bg-orange-100/80'
+                        )
+
+                        return (
+                          <tr
+                            key={stock.id}
+                            className={rowClass}
+                            onMouseEnter={() => setHoveredStockId(stock.id)}
+                            onMouseLeave={() => setHoveredStockId(null)}
+                            onClick={() => {
+                              setSelectedStockId(stock.id)
+                              router.push(`/stocks/movements?stock_id=${stock.id}`)
+                            }}
+                            title="Stok hareketlerini görüntülemek için tıklayın"
+                          >
+                            {visibleColumns.map((columnId) => {
+                              const definition = COLUMN_DEFINITIONS[columnId]
+                              const width = columnPixelWidths[columnId] ?? definition.defaultWidth
+                              const minWidth = definition.minWidth ?? 120
+                              const alignClass = definition.align === 'right' ? 'text-right' : 'text-left'
+
+                              return (
+                                <td
+                                  key={`${stock.id}-${columnId}`}
+                                  className={cn('px-3 py-1 align-middle text-sm', alignClass)}
+                                  style={{ width, minWidth }}
+                                  onClick={columnId === 'actions' ? (event) => event.stopPropagation() : undefined}
+                                >
+                                  <div className="truncate text-gray-900">
+                                    {renderCell(stock, columnId)}
+                                  </div>
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 space-y-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    {pageRangeStart}-{pageRangeEnd} / {sortedStocks.length} kayıt
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>Sayfa boyutu</span>
+                      <select
+                        value={pageSize}
+                        onChange={(event) => {
+                          const nextSize = Number(event.target.value)
+                          setPageSize(nextSize)
+                          setPage(1)
+                        }}
+                        className="h-8 rounded-md border border-gray-300 bg-white px-2 text-sm focus:border-blue-500 focus:outline-none"
+                      >
+                        {PAGE_SIZE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                        disabled={page <= 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm text-muted-foreground">
+                        Sayfa {page} / {totalPages}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={page >= totalPages}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -1037,12 +1991,11 @@ export default function StocksInventoryPage() {
           <DialogHeader>
             <DialogTitle>Tablo Kolon Ayarları</DialogTitle>
             <DialogDescription>
-              Kolonların sırasını ve görünürlüğünü buradan yönetebilirsiniz. Genişliği değiştirmek için tablo
-              başlıklarının sağ kenarını tutup sürükleyin.
+              Kolonların sırasını ve görünürlüğünü buradan yönetebilirsiniz.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="space-y-1.5 max-h-[70vh] overflow-y-auto pr-1">
             {columnOrder.map((columnId) => {
               const definition = COLUMN_DEFINITIONS[columnId]
 
@@ -1056,48 +2009,50 @@ export default function StocksInventoryPage() {
               return (
                 <div
                   key={`column-setting-${columnId}`}
-                  className="flex items-center justify-between rounded-md border border-gray-200 bg-white p-3"
+                  className="flex items-center justify-between rounded border border-gray-200 bg-white p-1.5 pl-2"
                 >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="flex items-center justify-center rounded-md bg-gray-100 p-2 flex-shrink-0">
-                      <GripVertical className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="flex items-center justify-center rounded bg-gray-100 p-1 flex-shrink-0">
+                      <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium truncate">{definition.label}</span>
-                        {isMandatory && <span className="text-xs text-muted-foreground flex-shrink-0">(zorunlu)</span>}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-medium truncate">{definition.label}</span>
+                        {isMandatory && <span className="text-[10px] text-muted-foreground flex-shrink-0">(zorunlu)</span>}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                       <span className="whitespace-nowrap">{isVisible ? 'Görünür' : 'Gizli'}</span>
                       <input
                         type="checkbox"
-                        className="h-4 w-4"
+                        className="h-3.5 w-3.5"
                         checked={isVisible}
                         onChange={(event) => handleVisibilityToggle(columnId, event.target.checked)}
                         disabled={isMandatory}
                       />
                     </label>
-                    <div className="h-6 w-px bg-gray-200"></div>
+                    <div className="h-5 w-px bg-gray-200"></div>
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="h-7 w-7"
                       onClick={() => moveColumn(columnId, 'up')}
                       disabled={currentIndex === 0}
                       aria-label={`${definition.label} kolonunu yukarı taşı`}
                     >
-                      <ChevronUp className="h-4 w-4" />
+                      <ChevronUp className="h-3.5 w-3.5" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="h-7 w-7"
                       onClick={() => moveColumn(columnId, 'down')}
                       disabled={currentIndex === columnOrder.length - 1}
                       aria-label={`${definition.label} kolonunu aşağı taşı`}
                     >
-                      <ChevronDown className="h-4 w-4" />
+                      <ChevronDown className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>

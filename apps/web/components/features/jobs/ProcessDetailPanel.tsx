@@ -12,6 +12,8 @@ import {
   User,
   Calendar,
   Clock,
+  CalendarCheck,
+  CalendarClock,
   Settings,
   FileText,
   MessageSquare,
@@ -28,8 +30,8 @@ import {
 } from 'lucide-react'
 import { formatDate } from '@/lib/utils/formatters'
 import { toast } from 'sonner'
-import { FileUpload } from '@/components/features/files/FileUpload'
 import { JobFilesRow } from '@/components/features/jobs/JobFilesRow'
+import { FileUpload } from '@/components/features/files/FileUpload'
 import { filesAPI } from '@/lib/api/client'
 import { cn } from '@/lib/utils/cn'
 
@@ -56,6 +58,8 @@ interface JobStep {
   production_notes?: string
   due_date?: string
   due_time?: string
+  planned_start_date?: string
+  planned_end_date?: string
   started_at?: string
   completed_at?: string
   estimated_duration?: number
@@ -174,8 +178,11 @@ export function ProcessDetailPanel({
     machine_id: '',
     due_date: '',
     due_time: '',
+    planned_start_date: '',
+    planned_end_date: '',
     estimated_duration_days: 0,
     estimated_duration_hours: 0,
+    requirements: '',
   })
 
   const filesList = Array.isArray(files?.files) ? files.files : []
@@ -201,8 +208,11 @@ export function ProcessDetailPanel({
         machine_id: step.machine?.id || '',
         due_date: step.due_date ? step.due_date.split('T')[0] : '',
         due_time: step.due_time || '',
+        planned_start_date: step.planned_start_date ? step.planned_start_date.split('T')[0] : '',
+        planned_end_date: step.planned_end_date ? step.planned_end_date.split('T')[0] : '',
         estimated_duration_days: days,
         estimated_duration_hours: hours,
+        requirements: step.requirements || '',
       })
     }
   }, [
@@ -211,9 +221,11 @@ export function ProcessDetailPanel({
     step?.machine?.id,
     step?.due_date,
     step?.due_time,
+    step?.planned_start_date,
+    step?.planned_end_date,
     step?.estimated_duration,
+    step?.requirements,
   ])
-
   if (!step) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50">
@@ -226,10 +238,9 @@ export function ProcessDetailPanel({
   }
 
   const processName = step.process?.name || 'Süreç'
-  const processDescription = step.process?.description
   const assignedName = step.assigned_to?.full_name || step.assigned_to?.name || 'Atanmamış'
   const machineName = step.machine?.name || 'Belirlenmedi'
-  const requirements = step.requirements || ''
+  const requirementsText = step.requirements || ''
   const noteList = step.notes || []
   const currentUserId = currentUser?.id ? String(currentUser.id) : null
   const dueDateDisplay = step.due_date ? formatDate(step.due_date) : '-'
@@ -257,7 +268,10 @@ export function ProcessDetailPanel({
         machine_id: formData.machine_id || null,
         due_date: formData.due_date || null,
         due_time: formData.due_time || null,
+        planned_start_date: formData.planned_start_date || null,
+        planned_end_date: formData.planned_end_date || null,
         estimated_duration: totalMinutes,
+        requirements: formData.requirements,
       })
 
       toast.success('Süreç güncellendi')
@@ -333,8 +347,8 @@ export function ProcessDetailPanel({
   return (
     <div className="flex-1 flex flex-col bg-white">
       <ScrollArea className="flex-1">
-        <div className="px-6 py-4 space-y-6">
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 shadow-sm">
+        <div className="px-4 py-2.5 space-y-2">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -372,8 +386,11 @@ export function ProcessDetailPanel({
                           machine_id: step.machine?.id || '',
                           due_date: step.due_date ? step.due_date.split('T')[0] : '',
                           due_time: step.due_time || '',
+                          planned_start_date: step.planned_start_date ? step.planned_start_date.split('T')[0] : '',
+                          planned_end_date: step.planned_end_date ? step.planned_end_date.split('T')[0] : '',
                           estimated_duration_days: days,
                           estimated_duration_hours: hours,
+                          requirements: step.requirements || '',
                         })
                       }}
                       disabled={submitting}
@@ -426,30 +443,41 @@ export function ProcessDetailPanel({
             </div>
           </div>
 
-          {/* Process Description */}
-          {processDescription && (
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <FileText className="w-4 h-4" />
-                  Süreç Açıklaması
-                </div>
-              </CardHeader>
-              <CardContent>
+          <Card className={isEditing ? 'bg-blue-50/50 border-blue-200' : ''}>
+            <CardHeader className="pb-1">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <FileText className="w-4 h-4" />
+                İş Gereksinimleri
+              </div>
+            </CardHeader>
+            <CardContent className="pt-1 px-3 pb-2.5">
+              {isEditing ? (
+                <Textarea
+                  value={formData.requirements}
+                  onChange={(e) =>
+                    setFormData({ ...formData, requirements: e.target.value })
+                  }
+                  placeholder="Bu operasyon için gerekli detayları girin..."
+                  className="bg-white text-sm"
+                  rows={3}
+                />
+              ) : requirementsText ? (
                 <p className="text-sm text-gray-600 whitespace-pre-wrap">
-                  {processDescription}
+                  {requirementsText}
                 </p>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <p className="text-sm text-gray-400 italic">
+                  Henüz gereksinim eklenmemiş
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Editable Details */}
           <Card>
-            <CardHeader className="pb-3">
-              <div className="text-sm font-medium text-gray-700">Detaylar</div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
+            <CardHeader className="hidden p-0 m-0 h-0" />
+            <CardContent className="pt-0">
+              <div className="grid gap-4 md:grid-cols-4">
                 <div className="space-y-3">
                   <div>
                     <Label className="text-xs text-gray-500 mb-1">Sorumlu</Label>
@@ -563,6 +591,45 @@ export function ProcessDetailPanel({
 
                 <div className="space-y-3">
                   <div>
+                    <Label className="text-xs text-gray-500 mb-1">
+                      Planlanan Başlangıç
+                    </Label>
+                    {isEditing ? (
+                      <Input
+                        type="date"
+                        value={formData.planned_start_date}
+                        onChange={(e) =>
+                          setFormData({ ...formData, planned_start_date: e.target.value })
+                        }
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                        <CalendarClock className="w-4 h-4 text-gray-400" />
+                        <span>{step.planned_start_date ? formatDate(step.planned_start_date) : '-'}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500 mb-1">Planlanan Bitiş</Label>
+                    {isEditing ? (
+                      <Input
+                        type="date"
+                        value={formData.planned_end_date}
+                        onChange={(e) =>
+                          setFormData({ ...formData, planned_end_date: e.target.value })
+                        }
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                        <CalendarCheck className="w-4 h-4 text-gray-400" />
+                        <span>{step.planned_end_date ? formatDate(step.planned_end_date) : '-'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
                     <Label className="text-xs text-gray-500 mb-1">Başlangıç Tarihi</Label>
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
                       <Calendar className="w-4 h-4 text-gray-400" />
@@ -613,18 +680,6 @@ export function ProcessDetailPanel({
             </Card>
           )}
 
-          {/* Requirements */}
-          {requirements && (
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="text-sm font-medium text-gray-700">İş Gereksinimleri</div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600 whitespace-pre-wrap">{requirements}</p>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Pause Form */}
           {showPauseForm && (
             <Card className="border-orange-200 bg-orange-50">
@@ -664,13 +719,10 @@ export function ProcessDetailPanel({
 
           {/* Files */}
           <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <FileText className="w-4 h-4" />
-                  Dosyalar ({filesList.length})
-                </div>
-                {hasMoreStepFiles && (
+            <CardHeader className="hidden p-0 m-0 h-0" />
+            <CardContent className="space-y-1.5 p-2">
+              {hasMoreStepFiles && (
+                <div className="flex justify-end mb-0.5">
                   <Button
                     type="button"
                     variant="ghost"
@@ -690,10 +742,8 @@ export function ProcessDetailPanel({
                       </>
                     )}
                   </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
+                </div>
+              )}
               <FileUpload
                 refType="job_step"
                 refId={step.id}
@@ -722,13 +772,10 @@ export function ProcessDetailPanel({
 
           {/* Notes */}
           <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <MessageSquare className="w-4 h-4" />
-                  Notlar ({noteList.length})
-                </div>
-                {onAddNote && !showNoteForm && (
+            <CardHeader className="hidden p-0 m-0 h-0" />
+            <CardContent className="space-y-1.5 p-2">
+              {onAddNote && !showNoteForm && (
+                <div className="flex justify-end mb-0.5">
                   <Button
                     variant="outline"
                     size="sm"
@@ -736,18 +783,16 @@ export function ProcessDetailPanel({
                   >
                     Not Ekle
                   </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
+                </div>
+              )}
               {showNoteForm && (
-                <div className="space-y-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="space-y-1.5 p-2 bg-blue-50 rounded-md border border-blue-200">
                   <Textarea
                     value={noteText}
                     onChange={(e) => setNoteText(e.target.value)}
                     placeholder="Notunuzu girin..."
-                    rows={3}
-                    className="bg-white"
+                    rows={2}
+                    className="bg-white text-sm"
                   />
                   <div className="flex gap-2">
                     <Button
@@ -772,7 +817,7 @@ export function ProcessDetailPanel({
               )}
 
               {noteList.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {noteList.map((note) => {
                     const authorName = note.user?.full_name || note.author_name || 'Kullanıcı'
                     const content = note.note_text || note.note || ''
@@ -800,14 +845,14 @@ export function ProcessDetailPanel({
                         className={cn('flex w-full', isMine ? 'justify-end' : 'justify-start')}
                       >
                         <div
-                          className={cn(
-                            'max-w-[80%] rounded-2xl px-4 py-2 text-sm shadow-sm',
+                        className={cn(
+                            'max-w-[80%] rounded-2xl px-3 py-1.5 text-sm shadow-sm',
                             isMine ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900',
                           )}
                         >
                           <div
                             className={cn(
-                              'mb-1 flex flex-wrap items-center gap-2 text-xs',
+                              'mb-1 flex flex-wrap items-center gap-1.5 text-[11px]',
                               isMine ? 'text-white/80' : 'text-gray-500',
                             )}
                           >

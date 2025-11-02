@@ -573,7 +573,10 @@ type StepSaveOverride = {
   machine_id?: string | null
   due_date?: string | null
   due_time?: string | null
+  planned_start_date?: string | null
+  planned_end_date?: string | null
   estimated_duration?: number | null
+  requirements?: string | null
 }
 
 async function handleStepSave(stepId: string, override?: StepSaveOverride) {
@@ -598,15 +601,26 @@ async function handleStepSave(stepId: string, override?: StepSaveOverride) {
   const dueTimeRaw = hasOverride('due_time')
     ? override?.due_time ?? ''
     : form?.due_time ?? ''
+  const plannedStartRaw = hasOverride('planned_start_date')
+    ? override?.planned_start_date ?? ''
+    : form?.planned_start_date ?? ''
+  const plannedEndRaw = hasOverride('planned_end_date')
+    ? override?.planned_end_date ?? ''
+    : form?.planned_end_date ?? ''
   const estimatedRaw = hasOverride('estimated_duration')
     ? override?.estimated_duration ?? null
     : combineDurationMinutes(
         form?.estimated_duration_days ?? 0,
         form?.estimated_duration_hours ?? 0,
       )
+  const requirementsRaw = hasOverride('requirements')
+    ? (override?.requirements ?? null)
+    : (form?.requirements ?? null)
 
   const dueDate = normalizeDate(dueDateRaw)
   const dueTime = normalizeTime(dueTimeRaw)
+  const plannedStart = normalizeDate(plannedStartRaw)
+  const plannedEnd = normalizeDate(plannedEndRaw)
 
   const normalizeEstimated = (value: number | null | undefined) => {
     if (value === null || value === undefined) return null
@@ -631,6 +645,8 @@ async function handleStepSave(stepId: string, override?: StepSaveOverride) {
             hasOverride('machine_id') ? (machineRaw ? String(machineRaw) : '') : item.machine_id,
           due_date: dueDate,
           due_time: dueTime,
+          planned_start_date: plannedStart,
+          planned_end_date: plannedEnd,
           estimated_duration_minutes: nextDuration,
           estimated_duration_days: durationSplit.days,
           estimated_duration_hours: durationSplit.hours,
@@ -651,7 +667,9 @@ async function handleStepSave(stepId: string, override?: StepSaveOverride) {
     estimated_duration: normalizedEstimated,
     due_date: dueDate,
     due_time: dueTime,
-    requirements: form?.requirements || null,
+    planned_start_date: plannedStart || null,
+    planned_end_date: plannedEnd || null,
+    requirements: requirementsRaw,
   }
 
   if (form?.process_id) {

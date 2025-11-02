@@ -260,7 +260,7 @@ export default function SupplierQuotationsPage() {
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
-                  placeholder="Teklif no, tedarikçi, RFQ ara..."
+                  placeholder="Teklif no, tedarikçi, Talep (RFQ) ara..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -357,9 +357,9 @@ export default function SupplierQuotationsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50">
+              <table className="w-full text-sm border-collapse">
+                <thead className="border-b bg-gray-50">
+                  <tr>
                     <th className="text-left py-2 px-4 uppercase text-xs tracking-wider font-semibold text-gray-600">
                       Teklif No
                     </th>

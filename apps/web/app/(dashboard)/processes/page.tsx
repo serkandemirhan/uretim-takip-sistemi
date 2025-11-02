@@ -127,7 +127,7 @@ export default function ProcessesPage() {
       resetNewProcess()
     } catch (error) {
       handleError(error)
-      toast.error('Süreçler yüklenemedi')
+      toast.error('Operasyonlar yüklenemedi')
     } finally {
       setLoading(false)
     }
@@ -413,7 +413,7 @@ const startEditProcess = (process: Process) => {
     const trimmedName = processForm.name?.trim()
     const trimmedCode = processForm.code?.trim()
     if (!trimmedName || !trimmedCode) {
-      toast.error('Süreç adı ve dosya ismi zorunludur')
+      toast.error('Operasyon adı ve dosya ismi zorunludur')
       return
     }
     try {
@@ -425,12 +425,12 @@ const startEditProcess = (process: Process) => {
         is_machine_based: !!processForm.is_machine_based,
         is_production: !!processForm.is_production,
       })
-      toast.success('Süreç güncellendi')
+      toast.success('Operasyon güncellendi')
       cancelProcessEdit()
       await loadProcesses(false)
     } catch (error) {
       handleError(error)
-      toast.error('Süreç güncellenemedi')
+      toast.error('Operasyon güncellenemedi')
     } finally {
       setSavingProcessId(null)
     }
@@ -442,11 +442,11 @@ const startEditProcess = (process: Process) => {
       await processesAPI.update(process.id, {
         group_id: targetGroupId || null,
       })
-      toast.success('Süreç grubu güncellendi')
+      toast.success('Operasyon grubu güncellendi')
       await loadProcesses(false)
     } catch (error) {
       handleError(error)
-      toast.error('Süreç yeniden gruplanamadı')
+      toast.error('Operasyon yeniden gruplanamadı')
     } finally {
       setSavingProcessId(null)
     }
@@ -527,15 +527,15 @@ const startEditProcess = (process: Process) => {
   }, [dragging, groupDraggingId, dirtyGroups, groupOrderDirty, savingOrder, saveOrder])
 
   const deleteProcess = async (process: Process) => {
-    if (!confirm(`"${process.name}" sürecini silmek istiyor musunuz?`)) return
+    if (!confirm(`"${process.name}" operasyonunu silmek istiyor musunuz?`)) return
     try {
       setSavingProcessId(process.id)
       await processesAPI.delete(process.id)
-      toast.success('Süreç silindi')
+      toast.success('Operasyon silindi')
       await loadProcesses(false)
     } catch (error) {
       handleError(error)
-      toast.error('Süreç silinemedi')
+      toast.error('Operasyon silinemedi')
     } finally {
       setSavingProcessId(null)
     }
@@ -633,7 +633,7 @@ const cancelNewProcess = () => {
 
 const handleCreateProcess = async (targetGroupId: string) => {
   if (!newProcessForm.name.trim() || !newProcessForm.code.trim()) {
-    toast.error('Süreç adı ve dosya ismi zorunludur')
+    toast.error('Operasyon adı ve dosya ismi zorunludur')
     return
   }
 
@@ -653,12 +653,12 @@ const handleCreateProcess = async (targetGroupId: string) => {
       order_index: orderIndex,
       group_id: targetGroupId === '__ungrouped__' ? null : targetGroupId,
     })
-    toast.success('Süreç oluşturuldu')
+    toast.success('Operasyon oluşturuldu')
     resetNewProcess()
     await loadProcesses(false)
   } catch (error) {
     handleError(error)
-    toast.error('Süreç oluşturulamadı')
+    toast.error('Operasyon oluşturulamadı')
   } finally {
     setCreatingProcess(false)
   }
@@ -778,7 +778,7 @@ const renderNewProcessRow = (groupId: string) => {
           autoFocus
           value={newProcessForm.name}
           onChange={(e) => setNewProcessForm((prev) => ({ ...prev, name: e.target.value }))}
-          placeholder="Süreç adı"
+          placeholder="Operasyon adı"
           disabled={creatingProcess}
         />
       </td>
@@ -812,8 +812,8 @@ const renderNewProcessRow = (groupId: string) => {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-3xl font-bold text-gray-900">Süreç Yönetimi</h1>
-        <p className="text-gray-600">Süreçleri tanımlayın, gruplayın ve düzenleyin</p>
+        <h1 className="text-3xl font-bold text-gray-900">Operasyon Yönetimi</h1>
+        <p className="text-gray-600">Operasyonları tanımlayın, gruplayın ve düzenleyin</p>
       </div>
 
       <Card className="w-full">
@@ -821,7 +821,7 @@ const renderNewProcessRow = (groupId: string) => {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <CardTitle>Yeni Grup Oluştur</CardTitle>
-              <p className="text-sm text-gray-500">Süreçler için dosya klasörlerini ve grupları yönetin</p>
+              <p className="text-sm text-gray-500">Operasyonlar için dosya klasörlerini ve grupları yönetin</p>
             </div>
             {(dirtyGroups.size > 0 || groupOrderDirty) && (
               <Button size="sm" className="gap-2" onClick={() => saveOrder()} disabled={savingOrder}>
@@ -867,7 +867,7 @@ const renderNewProcessRow = (groupId: string) => {
                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                   <tr>
                     <th className="py-2 px-4 w-[32px]"></th>
-                    <th className="py-2 px-4 text-left">Süreç</th>
+                    <th className="py-2 px-4 text-left">Operasyon</th>
                     <th className="py-2 px-4 text-left">Dosya İsmi</th>
                     <th className="py-2 px-4 text-left">Grup</th>
                     <th className="py-2 px-4 text-right">İşlem</th>
@@ -975,7 +975,7 @@ const renderNewProcessRow = (groupId: string) => {
                             )}
                           </td>
                           <td className="py-3 px-4 text-right text-xs text-gray-500">
-                            {group.processes.length} süreç
+                            {group.processes.length} operasyon
                           </td>
                         </tr>
                         {isExpanded &&
@@ -991,7 +991,7 @@ const renderNewProcessRow = (groupId: string) => {
                             onDrop={(e) => e.preventDefault()}
                           >
                             <td colSpan={5} className="py-4 px-4 text-center text-xs text-gray-500">
-                              Bu gruba henüz süreç eklenmemiş.
+                              Bu gruba henüz operasyon eklenmemiş.
                             </td>
                           </tr>
                         )}
@@ -1022,7 +1022,7 @@ const renderNewProcessRow = (groupId: string) => {
                     </td>
                     <td colSpan={4} className="py-3 px-4 text-sm font-semibold text-gray-900">
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span>Atanmamış Süreçler ({ungrouped.length})</span>
+                        <span>Atanmamış Operasyonlar ({ungrouped.length})</span>
                         <Button
                           size="sm"
                           variant="outline"
@@ -1051,7 +1051,7 @@ const renderNewProcessRow = (groupId: string) => {
                         onDrop={(e) => e.preventDefault()}
                       >
                         <td colSpan={5} className="py-4 px-4 text-center text-xs text-gray-500">
-                          Grupsuz süreç yok.
+                          Grupsuz operasyon yok.
                         </td>
                       </tr>
                     ))}
@@ -1159,7 +1159,7 @@ const renderNewProcessRow = (groupId: string) => {
                         <div className="divide-y">
                           {group.processes.length === 0 && newProcessTarget !== group.id ? (
                             <div className="p-4 text-center text-sm text-gray-500">
-                              Bu gruba henüz süreç eklenmemiş.
+                              Bu gruba henüz operasyon eklenmemiş.
                             </div>
                           ) : (
                             <>
@@ -1175,7 +1175,7 @@ const renderNewProcessRow = (groupId: string) => {
                                             <Input
                                               value={processForm.name ?? ''}
                                               onChange={(e) => setProcessForm((prev) => ({ ...prev, name: e.target.value }))}
-                                              placeholder="Süreç adı"
+                                              placeholder="Operasyon adı"
                                             />
                                             <Input
                                               value={processForm.code ?? ''}
@@ -1276,7 +1276,7 @@ const renderNewProcessRow = (groupId: string) => {
                                       autoFocus
                                       value={newProcessForm.name}
                                       onChange={(e) => setNewProcessForm((prev) => ({ ...prev, name: e.target.value }))}
-                                      placeholder="Süreç adı"
+                                      placeholder="Operasyon adı"
                                       disabled={creatingProcess}
                                     />
                                     <Input
@@ -1334,7 +1334,7 @@ const renderNewProcessRow = (groupId: string) => {
                           <ChevronRight className="h-4 w-4" />
                         )}
                         <p className="font-semibold text-gray-900">
-                          Atanmamış Süreçler ({ungrouped.length})
+                          Atanmamış Operasyonlar ({ungrouped.length})
                         </p>
                       </button>
                       <Button
@@ -1351,7 +1351,7 @@ const renderNewProcessRow = (groupId: string) => {
                     <div className="divide-y">
                       {ungrouped.length === 0 && newProcessTarget !== '__ungrouped__' ? (
                         <div className="p-4 text-center text-sm text-gray-500">
-                          Grupsuz süreç yok.
+                          Grupsuz operasyon yok.
                         </div>
                       ) : (
                         <>
@@ -1367,7 +1367,7 @@ const renderNewProcessRow = (groupId: string) => {
                                         <Input
                                           value={processForm.name ?? ''}
                                           onChange={(e) => setProcessForm((prev) => ({ ...prev, name: e.target.value }))}
-                                          placeholder="Süreç adı"
+                                          placeholder="Operasyon adı"
                                         />
                                         <Input
                                           value={processForm.code ?? ''}
@@ -1468,7 +1468,7 @@ const renderNewProcessRow = (groupId: string) => {
                                   autoFocus
                                   value={newProcessForm.name}
                                   onChange={(e) => setNewProcessForm((prev) => ({ ...prev, name: e.target.value }))}
-                                  placeholder="Süreç adı"
+                                  placeholder="Operasyon adı"
                                   disabled={creatingProcess}
                                 />
                                 <Input

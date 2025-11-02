@@ -290,7 +290,7 @@ export default function SupplierQuotationDialog({
                     <th className="pb-2">#</th>
                     <th className="pb-2">Malzeme</th>
                     <th className="pb-2">Kod</th>
-                    <th className="pb-2 text-right">RFQ Miktar</th>
+                  <th className="pb-2 text-right">Talep Miktarı</th>
                     <th className="pb-2 text-right">Teklif Miktar</th>
                     <th className="pb-2 text-right">Birim Fiyat *</th>
                     <th className="pb-2">Para Birimi</th>

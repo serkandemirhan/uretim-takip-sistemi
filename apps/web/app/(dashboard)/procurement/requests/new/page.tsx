@@ -36,6 +36,7 @@ export default function NewPurchaseRequestPage() {
   const [showStockPanel, setShowStockPanel] = useState(false)
 
   const [formData, setFormData] = useState({
+    title: '',
     quotation_id: '',
     job_id: '',
     priority: 'medium' as 'low' | 'medium' | 'high' | 'urgent',
@@ -111,6 +112,11 @@ export default function NewPurchaseRequestPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
+    if (!formData.title.trim()) {
+      toast.error('Talep başlığı zorunludur')
+      return
+    }
+
     if (items.length === 0) {
       toast.error('En az bir ürün eklemelisiniz')
       return
@@ -120,6 +126,7 @@ export default function NewPurchaseRequestPage() {
 
     try {
       const requestData = {
+        title: formData.title.trim(),
         quotation_id: formData.quotation_id || null,
         job_id: formData.job_id || null,
         priority: formData.priority,
@@ -170,6 +177,21 @@ export default function NewPurchaseRequestPage() {
               <CardTitle>Talep Bilgileri</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">
+                  Talep Başlığı <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="title"
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Örn: Ofis Malzemeleri Talebi"
+                  disabled={loading}
+                  required
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="job_id">İş (İsteğe Bağlı)</Label>
                 <select
@@ -257,6 +279,12 @@ export default function NewPurchaseRequestPage() {
               <CardTitle>Talep Özeti</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {formData.title && (
+                <div className="pb-3 border-b">
+                  <span className="text-xs text-gray-500">Başlık</span>
+                  <p className="font-medium text-sm mt-1">{formData.title}</p>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Öncelik:</span>
                 <PriorityBadge priority={formData.priority} />
@@ -422,7 +450,7 @@ export default function NewPurchaseRequestPage() {
 
         {/* Actions */}
         <div className="flex gap-3">
-          <Button type="submit" disabled={loading || items.length === 0}>
+          <Button type="submit" disabled={loading || items.length === 0 || !formData.title.trim()}>
             {loading ? 'Oluşturuluyor...' : 'Talep Oluştur (Taslak)'}
           </Button>
           <Link href="/procurement/requests">

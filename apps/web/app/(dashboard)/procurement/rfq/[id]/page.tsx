@@ -199,7 +199,7 @@ export default function RFQDetailPage() {
           </Link>
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-2xl font-bold text-gray-900">{rfq.rfq_number}</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Teklif Talebi {rfq.rfq_number}</h1>
               {getStatusBadge(rfq.status)}
             </div>
             <p className="text-lg text-gray-700 font-medium">{rfq.title}</p>
@@ -283,12 +283,12 @@ export default function RFQDetailPage() {
       {/* RFQ Information */}
       <Card>
         <CardHeader>
-          <CardTitle>RFQ Bilgileri</CardTitle>
+          <CardTitle>Talep Bilgileri</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <label className="text-sm font-medium text-gray-600">RFQ Numarası</label>
+              <label className="text-sm font-medium text-gray-600">Talep Numarası</label>
               <p className="mt-1 text-lg font-mono">{rfq.rfq_number}</p>
             </div>
 
@@ -506,12 +506,12 @@ export default function RFQDetailPage() {
           <div className="flex gap-3">
             <FileText className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-blue-900">
-              <p className="font-medium mb-2">RFQ İş Akışı</p>
+              <p className="font-medium mb-2">Teklif Talebi İş Akışı</p>
               <ul className="space-y-1 list-disc list-inside text-blue-800">
-                <li><strong>Taslak:</strong> RFQ oluşturuldu, henüz gönderilmedi</li>
+                <li><strong>Taslak:</strong> Talep oluşturuldu, henüz gönderilmedi</li>
                 <li><strong>Gönderildi:</strong> Tedarikçilere gönderildi, teklifler bekleniyor</li>
                 <li><strong>Kapatıldı:</strong> Teklifler değerlendirildi, satın alma siparişi oluşturulabilir</li>
-                <li><strong>İptal:</strong> RFQ iptal edildi</li>
+                <li><strong>İptal:</strong> Talep iptal edildi</li>
               </ul>
             </div>
           </div>

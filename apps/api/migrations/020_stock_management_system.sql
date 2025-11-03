@@ -72,7 +72,7 @@ COMMENT ON COLUMN purchase_requests.required_by_date IS 'Latest date materials a
 CREATE TABLE IF NOT EXISTS purchase_request_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     purchase_request_id UUID NOT NULL REFERENCES purchase_requests(id) ON DELETE CASCADE,
-    stock_id UUID NOT NULL REFERENCES stocks(id) ON DELETE RESTRICT,
+    product_id UUID NOT NULL REFERENCES stocks(id) ON DELETE RESTRICT,
     requested_quantity DECIMAL(10, 2) NOT NULL CHECK (requested_quantity > 0),
     approved_quantity DECIMAL(10, 2) CHECK (approved_quantity >= 0),
     received_quantity DECIMAL(10, 2) DEFAULT 0 CHECK (received_quantity >= 0),
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS purchase_request_items (
 );
 
 CREATE INDEX idx_purchase_request_items_purchase_request_id ON purchase_request_items(purchase_request_id);
-CREATE INDEX idx_purchase_request_items_stock_id ON purchase_request_items(stock_id);
+CREATE INDEX idx_purchase_request_items_product_id ON purchase_request_items(product_id);
 
 COMMENT ON TABLE purchase_request_items IS 'Individual materials requested in each purchase request';
 COMMENT ON COLUMN purchase_request_items.requested_quantity IS 'Quantity purchasing manager wants to order';
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS rfq_quotation_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     rfq_quotation_id UUID NOT NULL REFERENCES rfq_quotations(id) ON DELETE CASCADE,
     purchase_request_item_id UUID NOT NULL REFERENCES purchase_request_items(id) ON DELETE CASCADE,
-    stock_id UUID NOT NULL REFERENCES stocks(id) ON DELETE RESTRICT,
+    product_id UUID NOT NULL REFERENCES stocks(id) ON DELETE RESTRICT,
     quoted_quantity DECIMAL(10, 2) NOT NULL CHECK (quoted_quantity > 0),
     unit_price DECIMAL(10, 2) NOT NULL CHECK (unit_price >= 0),
     line_total DECIMAL(12, 2) GENERATED ALWAYS AS (quoted_quantity * unit_price) STORED,
@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS rfq_quotation_items (
 
 CREATE INDEX idx_rfq_quotation_items_rfq_quotation_id ON rfq_quotation_items(rfq_quotation_id);
 CREATE INDEX idx_rfq_quotation_items_purchase_request_item_id ON rfq_quotation_items(purchase_request_item_id);
-CREATE INDEX idx_rfq_quotation_items_stock_id ON rfq_quotation_items(stock_id);
+CREATE INDEX idx_rfq_quotation_items_product_id ON rfq_quotation_items(product_id);
 
 COMMENT ON TABLE rfq_quotation_items IS 'Individual line items in supplier quotations';
 COMMENT ON COLUMN rfq_quotation_items.quoted_quantity IS 'Quantity supplier can provide';
@@ -193,14 +193,14 @@ BEGIN
     -- Recalculate total on-order quantity for the affected stock
     UPDATE stocks
     SET on_order_quantity = COALESCE((
-        SELECT SUM(pri.approved_quantity - pri.received_quantity)
+        SELECT SUM(pri.ordered_quantity - pri.received_quantity)
         FROM purchase_request_items pri
         JOIN purchase_requests pr ON pri.purchase_request_id = pr.id
-        WHERE pri.stock_id = COALESCE(NEW.stock_id, OLD.stock_id)
+        WHERE pri.product_id = COALESCE(NEW.product_id, OLD.product_id)
         AND pr.status IN ('approved', 'ordered', 'partially_delivered')
-        AND pri.approved_quantity > pri.received_quantity
+        AND pri.ordered_quantity > pri.received_quantity
     ), 0)
-    WHERE id = COALESCE(NEW.stock_id, OLD.stock_id);
+    WHERE id = COALESCE(NEW.product_id, OLD.product_id);
 
     RETURN COALESCE(NEW, OLD);
 END;

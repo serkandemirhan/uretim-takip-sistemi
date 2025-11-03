@@ -718,6 +718,31 @@ def update_supplier(supplier_id):
         return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
 
 
+@procurement_bp.route('/suppliers/<supplier_id>', methods=['DELETE'])
+@token_required
+def delete_supplier(supplier_id):
+    """Delete supplier"""
+    try:
+        # Check if supplier has any quotations
+        check_query = "SELECT COUNT(*) as count FROM supplier_quotations WHERE supplier_id = %s"
+        check_result = execute_query(check_query, (supplier_id,))
+
+        if check_result and check_result[0]['count'] > 0:
+            return jsonify({'error': 'Bu tedarikçiye ait teklifler var, silinemez'}), 400
+
+        # Delete supplier
+        delete_query = "DELETE FROM suppliers WHERE id = %s"
+        execute_write(delete_query, (supplier_id,))
+
+        return jsonify({'message': 'Tedarikçi silindi'}), 200
+
+    except Exception as e:
+        print(f"Error deleting supplier: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Bir hata oluştu: {str(e)}'}), 500
+
+
 # ==================== Supplier Quotation Endpoints ====================
 
 @procurement_bp.route('/rfq/<rfq_id>/quotations', methods=['POST'])

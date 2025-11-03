@@ -118,17 +118,26 @@ def get_jobs():
                     js.requirements,
                     js.started_at,
                     js.due_date,
+                    js.planned_start_date,
+                    js.planned_end_date,
                     js.due_time,
                     p.name as process_name,
                     p.code as process_code,
                     p.description as process_description,
                     p.group_id as process_group_id,
                     pg.name as process_group_name,
-                    u.full_name as assigned_to_name
+                    pg.color as process_group_color,
+                    u.full_name as assigned_to_name,
+                    starter.full_name as started_by_name,
+                    completer.full_name as completed_by_name,
+                    js.started_by,
+                    js.completed_by
                 FROM job_steps js
                 LEFT JOIN processes p ON js.process_id = p.id
                 LEFT JOIN process_groups pg ON p.group_id = pg.id
                 LEFT JOIN users u ON js.assigned_to = u.id
+                LEFT JOIN users starter ON js.started_by = starter.id
+                LEFT JOIN users completer ON js.completed_by = completer.id
                 WHERE js.job_id = ANY(%s::uuid[])
                 ORDER BY js.job_id, COALESCE(js.order_index, 0)
             """
@@ -176,17 +185,28 @@ def get_jobs():
                     'status': step['status'],
                     'order_index': step.get('order_index', 0),
                     'due_date': step['due_date'].isoformat() if step.get('due_date') else None,
+                    'planned_start_date': step['planned_start_date'].isoformat() if step.get('planned_start_date') else None,
+                    'planned_end_date': step['planned_end_date'].isoformat() if step.get('planned_end_date') else None,
                     'due_time': step['due_time'].isoformat() if step.get('due_time') else None,
                     'process_name': step.get('process_name'),
                     'process_code': step.get('process_code'),
                     'process_description': step.get('process_description'),
                     'process_group_id': str(step['process_group_id']) if step.get('process_group_id') else None,
+                    'process_group_color': step.get('process_group_color'),
                     'process_group_name': step.get('process_group_name'),
                     'assigned_to': {
                         'id': str(step['assigned_to']) if step.get('assigned_to') else None,
                         'name': step.get('assigned_to_name')
                     } if step.get('assigned_to') else None,
                     'completed_at': step['completed_at'].isoformat() if step.get('completed_at') else None,
+                    'started_by': {
+                        'id': str(step['started_by']) if step.get('started_by') else None,
+                        'name': step.get('started_by_name')
+                    } if step.get('started_by') else None,
+                    'completed_by': {
+                        'id': str(step['completed_by']) if step.get('completed_by') else None,
+                        'name': step.get('completed_by_name')
+                    } if step.get('completed_by') else None,
                     'production_notes': step.get('production_notes'),
                     'requirements': step.get('requirements'),
                     'started_at': step['started_at'].isoformat() if step.get('started_at') else None,
@@ -237,12 +257,16 @@ def get_job(job_id):
                 js.*,
                 p.name as process_name, p.code as process_code, p.description as process_description,
                 pg.name as process_group_name, pg.order_index as process_group_order_index,
-                u.full_name as assigned_to_name,
-                m.name as machine_name
+                u_assigned.full_name as assigned_to_name,
+                m.name as machine_name,
+                u_starter.full_name as started_by_name,
+                u_completer.full_name as completed_by_name
             FROM job_steps js
             LEFT JOIN processes p ON js.process_id = p.id
             LEFT JOIN process_groups pg ON p.group_id = pg.id
-            LEFT JOIN users u ON js.assigned_to = u.id
+            LEFT JOIN users u_assigned ON js.assigned_to = u_assigned.id
+            LEFT JOIN users u_starter ON js.started_by = u_starter.id
+            LEFT JOIN users u_completer ON js.completed_by = u_completer.id
             LEFT JOIN machines m ON js.machine_id = m.id
             WHERE js.job_id = %s
             ORDER BY js.order_index
@@ -314,9 +338,19 @@ def get_job(job_id):
                         'name': step['machine_name']
                     } if step['machine_id'] else None,
                     'due_date': step['due_date'].isoformat() if step.get('due_date') else None,
+                    'planned_start_date': step['planned_start_date'].isoformat() if step.get('planned_start_date') else None,
+                    'planned_end_date': step['planned_end_date'].isoformat() if step.get('planned_end_date') else None,
                     'due_time': step['due_time'].isoformat() if step.get('due_time') else None,
                     'estimated_duration': int(step['estimated_duration']) if step.get('estimated_duration') is not None else None,
                     'started_at': step['started_at'].isoformat() if step['started_at'] else None,
+                    'started_by': {
+                        'id': str(step['started_by']) if step.get('started_by') else None,
+                        'name': step.get('started_by_name')
+                    } if step.get('started_by') else None,
+                    'completed_by': {
+                        'id': str(step['completed_by']) if step.get('completed_by') else None,
+                        'name': step.get('completed_by_name')
+                    } if step.get('completed_by') else None,
                     'completed_at': step['completed_at'].isoformat() if step['completed_at'] else None,
                     'production_quantity': float(step['production_quantity']) if step['production_quantity'] else None,
                     'production_unit': step['production_unit'],
@@ -389,6 +423,8 @@ def create_job():
             for idx, step in enumerate(data['steps']):
                 due_date_value = step.get('due_date')
                 due_time_value = step.get('due_time')
+                planned_start_date_value = step.get('planned_start_date')
+                planned_end_date_value = step.get('planned_end_date')
                 parsed_due_date = None
                 parsed_due_time = None
 
@@ -409,14 +445,29 @@ def create_job():
                     except ValueError:
                         conn.close()
                         return jsonify({'error': 'Adım termin saati geçersiz'}), 400
+                
+                parsed_planned_start_date = None
+                if planned_start_date_value not in (None, '', 'null'):
+                    try:
+                        parsed_planned_start_date = datetime.strptime(str(planned_start_date_value).strip(), '%Y-%m-%d').date()
+                    except ValueError:
+                        pass # Hata verme, sadece null bırak
+
+                parsed_planned_end_date = None
+                if planned_end_date_value not in (None, '', 'null'):
+                    try:
+                        parsed_planned_end_date = datetime.strptime(str(planned_end_date_value).strip(), '%Y-%m-%d').date()
+                    except ValueError:
+                        pass # Hata verme, sadece null bırak
 
                 insert_step_query = """
                     INSERT INTO job_steps (
                         job_id, process_id, order_index, assigned_to, machine_id,
                         status, is_parallel, estimated_duration,
-                        due_date, due_time, requirements
+                        due_date, due_time, requirements,
+                        planned_start_date, planned_end_date
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 step_params = (
                     job_id,
@@ -429,7 +480,9 @@ def create_job():
                     step.get('estimated_duration'),
                     parsed_due_date,
                     parsed_due_time,
-                    step.get('requirements') if step.get('requirements') else None
+                    step.get('requirements') if step.get('requirements') else None,
+                    parsed_planned_start_date,
+                    parsed_planned_end_date
                 )
                 cursor.execute(insert_step_query, step_params)
         
@@ -511,6 +564,7 @@ def activate_job(job_id):
 @token_required
 def complete_step(step_id):
     """Süreci tamamla ve bir sonrakini aktif et"""
+    current_user_id = request.current_user.get('user_id')
     try:
         data = request.get_json()
         
@@ -537,9 +591,7 @@ def complete_step(step_id):
             return jsonify({'error': 'Adım bulunamadı'}), 404
         
         current_user = getattr(request, 'current_user', None)
-        current_role = current_user.get('role') if current_user else None
-        current_user_id = current_user.get('user_id') if current_user else None
-
+        current_role = current_user.get('role') if current_user else None        
         if (
             step.get('assigned_to')
             and str(step['assigned_to']) != str(current_user_id)
@@ -555,13 +607,15 @@ def complete_step(step_id):
                 completed_at = NOW(),
                 production_quantity = %s,
                 production_unit = %s,
-                production_notes = %s
+                production_notes = %s,
+                completed_by = %s
             WHERE id = %s
             RETURNING job_id, order_index
         """, (
             data.get('production_quantity'),
             data.get('production_unit'),
             data.get('production_notes'),
+            current_user_id,
             step_id
         ))
         
@@ -775,6 +829,7 @@ def activate_step(step_id):
 @token_required
 def start_step(step_id):
     """Süreci başlat"""
+    current_user_id = request.current_user.get('user_id')
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -799,8 +854,7 @@ def start_step(step_id):
         
         current_user = getattr(request, 'current_user', None)
         current_role = current_user.get('role') if current_user else None
-        current_user_id = current_user.get('user_id') if current_user else None
-
+        
         if (
             step.get('assigned_to')
             and str(step['assigned_to']) != str(current_user_id)
@@ -812,9 +866,10 @@ def start_step(step_id):
         cursor.execute("""
             UPDATE job_steps 
             SET status = 'in_progress',
-                started_at = NOW()
+                started_at = NOW(),
+                started_by = %s
             WHERE id = %s
-            RETURNING id
+            RETURNING id, job_id
         """, (step_id,))
         
         result = cursor.fetchone()
@@ -1839,6 +1894,36 @@ def update_job_step(step_id):
                 params.append(parsed_due_time)
                 changed_labels.append('Termin saati')
 
+        if 'planned_start_date' in data:
+            planned_start_date_value = data.get('planned_start_date')
+            if planned_start_date_value in (None, '', 'null'):
+                update_fields.append("planned_start_date = %s")
+                params.append(None)
+            else:
+                try:
+                    parsed_planned_start_date = datetime.strptime(str(planned_start_date_value).strip(), '%Y-%m-%d').date()
+                except ValueError:
+                    conn.close()
+                    return jsonify({'error': 'planned_start_date geçersiz'}), 400
+                update_fields.append("planned_start_date = %s")
+                params.append(parsed_planned_start_date)
+                changed_labels.append('Planlanan Başlangıç')
+
+        if 'planned_end_date' in data:
+            planned_end_date_value = data.get('planned_end_date')
+            if planned_end_date_value in (None, '', 'null'):
+                update_fields.append("planned_end_date = %s")
+                params.append(None)
+            else:
+                try:
+                    parsed_planned_end_date = datetime.strptime(str(planned_end_date_value).strip(), '%Y-%m-%d').date()
+                except ValueError:
+                    conn.close()
+                    return jsonify({'error': 'planned_end_date geçersiz'}), 400
+                update_fields.append("planned_end_date = %s")
+                params.append(parsed_planned_end_date)
+                changed_labels.append('Planlanan Bitiş')
+
         if 'order_index' in data:
             try:
                 new_index = int(data.get('order_index'))
@@ -1968,6 +2053,8 @@ def add_job_step(job_id):
     try:
         data = request.get_json()
         
+        planned_start_date_value = data.get('planned_start_date')
+        planned_end_date_value = data.get('planned_end_date')
         if not data.get('process_id'):
             return jsonify({'error': 'Süreç ID gerekli'}), 400
 
@@ -1991,6 +2078,20 @@ def add_job_step(job_id):
                     parsed_due_time = datetime.strptime(raw_time, '%H:%M:%S').time()
             except ValueError:
                 return jsonify({'error': 'due_time geçersiz'}), 400
+
+        parsed_planned_start_date = None
+        if planned_start_date_value not in (None, '', 'null'):
+            try:
+                parsed_planned_start_date = datetime.strptime(str(planned_start_date_value).strip(), '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        parsed_planned_end_date = None
+        if planned_end_date_value not in (None, '', 'null'):
+            try:
+                parsed_planned_end_date = datetime.strptime(str(planned_end_date_value).strip(), '%Y-%m-%d').date()
+            except ValueError:
+                pass
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -2010,9 +2111,10 @@ def add_job_step(job_id):
             INSERT INTO job_steps (
                 job_id, process_id, order_index, assigned_to,
                 machine_id, status, is_parallel, estimated_duration,
-                due_date, due_time, requirements
+                due_date, due_time, requirements,
+                planned_start_date, planned_end_date
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
             job_id,
@@ -2025,7 +2127,9 @@ def add_job_step(job_id):
             data.get('estimated_duration'),
             parsed_due_date,
             parsed_due_time,
-            data.get('requirements') if data.get('requirements') else None
+            data.get('requirements') if data.get('requirements') else None,
+            parsed_planned_start_date,
+            parsed_planned_end_date
         ))
         
         result = cursor.fetchone()

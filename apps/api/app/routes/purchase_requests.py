@@ -42,7 +42,7 @@ def get_purchase_requests():
 
         query = """
             SELECT
-                pr.id, pr.request_number, pr.status, pr.priority,
+                pr.id, pr.request_number, pr.title, pr.status, pr.priority,
                 pr.quotation_id, pr.job_id,
                 pr.requested_date, pr.required_by_date,
                 pr.requested_by, pr.approved_by, pr.approved_at,
@@ -98,6 +98,7 @@ def get_purchase_requests():
         data = [{
             'id': str(r['id']),
             'request_number': r['request_number'],
+            'title': r.get('title'),
             'status': r['status'],
             'priority': r['priority'],
             'quotation_id': str(r['quotation_id']) if r.get('quotation_id') else None,
@@ -178,6 +179,7 @@ def get_purchase_request_detail(request_id):
         data = {
             'id': str(pr['id']),
             'request_number': pr['request_number'],
+            'title': pr.get('title'),
             'status': pr['status'],
             'priority': pr['priority'],
             'quotation_id': str(pr['quotation_id']) if pr.get('quotation_id') else None,
@@ -237,6 +239,10 @@ def create_purchase_request():
         data = request.get_json()
         user_id = request.current_user.get('user_id')
 
+        title = _s(data.get('title'))
+        if not title:
+            return jsonify({'error': 'Talep başlığı zorunludur'}), 400
+
         quotation_id = _s(data.get('quotation_id'))
         job_id = _s(data.get('job_id'))
         priority = _s(data.get('priority', 'medium'))
@@ -246,10 +252,10 @@ def create_purchase_request():
         # Talep oluştur
         pr_result = execute_write("""
             INSERT INTO purchase_requests
-            (quotation_id, job_id, priority, required_by_date, notes, requested_by, status)
-            VALUES (%s, %s, %s, %s, %s, %s, 'draft')
+            (title, quotation_id, job_id, priority, required_by_date, notes, requested_by, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'draft')
             RETURNING id
-        """, (quotation_id, job_id, priority, required_by_date, notes, user_id))
+        """, (title, quotation_id, job_id, priority, required_by_date, notes, user_id))
         pr_id = str(pr_result[0]['id']) if pr_result else None
 
         # Items ekle (eğer gönderildiyse)
@@ -317,6 +323,7 @@ def update_purchase_request(request_id):
         if pr['status'] != 'draft':
             return jsonify({'error': 'Sadece taslak durumundaki talepler güncellenebilir'}), 400
 
+        title = _s(data.get('title'))
         quotation_id = _s(data.get('quotation_id'))
         job_id = _s(data.get('job_id'))
         priority = _s(data.get('priority'))
@@ -325,10 +332,10 @@ def update_purchase_request(request_id):
 
         execute_write("""
             UPDATE purchase_requests
-            SET quotation_id = %s, job_id = %s, priority = %s,
+            SET title = %s, quotation_id = %s, job_id = %s, priority = %s,
                 required_by_date = %s, notes = %s
             WHERE id = %s
-        """, (quotation_id, job_id, priority, required_by_date, notes, str(request_id)))
+        """, (title, quotation_id, job_id, priority, required_by_date, notes, str(request_id)))
 
         return jsonify({'message': 'Satın alma talebi güncellendi'}), 200
     except Exception as e:

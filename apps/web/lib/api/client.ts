@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-type FileRefType = 'job' | 'job_step' | 'stock_movement' | 'user' | 'hr_employee_document'
+type FileRefType = 'job' | 'job_step' | 'stock_movement' | 'user' | 'user_avatar' | 'hr_employee_document'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 

@@ -753,10 +753,11 @@ export default function StockMovementsPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left p-2">Tarih</th>
-                    <th className="text-left p-2">Tip</th>
-                    <th className="text-left p-2">Ürün</th>
-                    <th className="text-right p-2">Miktar</th>
+                    <th className="text-left p-2 font-semibold text-gray-600">Tarih</th>
+                    <th className="text-left p-2 font-semibold text-gray-600">Tip</th>
+                    <th className="text-left p-2 font-semibold text-gray-600">Ürün Kodu</th>
+                    <th className="text-left p-2 font-semibold text-gray-600">Ürün Adı</th>
+                    <th className="text-right p-2 font-semibold text-gray-600">Miktar</th>
                     <th className="text-right p-2">Birim Fiyat</th>
                     <th className="text-right p-2">Toplam</th>
                     <th className="text-left p-2">Proje</th>
@@ -785,8 +786,10 @@ export default function StockMovementsPage() {
                         )}
                       </td>
                       <td className="p-2">
+                        <span className="font-mono text-sm">{movement.product_code}</span>
+                      </td>
+                      <td className="p-2">
                         <div className="font-medium">{movement.product_name}</div>
-                        <div className="text-xs text-muted-foreground">{movement.product_code}</div>
                       </td>
                       <td className="p-2 text-right font-medium">
                         {movement.quantity} {movement.unit}

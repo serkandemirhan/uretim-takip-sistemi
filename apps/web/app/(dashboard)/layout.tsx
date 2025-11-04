@@ -25,6 +25,7 @@ import {
   ShoppingCart,
   ShieldCheck,
   Receipt,
+  Truck,
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -81,12 +82,12 @@ export default function DashboardLayout({
     { name: 'Müşteriler', href: '/customers', icon: Building2, roles: ['yonetici', 'musteri_temsilcisi'] },
     { name: 'Teklifler', href: '/quotations', icon: ClipboardList, roles: ['yonetici', 'musteri_temsilcisi', 'satinalma'] },
     { name: 'Satın Alma', href: '/procurement/requests', icon: ShoppingCart, roles: ['yonetici', 'musteri_temsilcisi', 'satinalma', 'depocu'] },
-    { name: 'Tedarikçi Teklifleri', href: '/procurement/supplier-quotations', icon: Receipt, roles: ['yonetici', 'satinalma'] },
     { name: 'Stoklar', href: '/stocks/inventory', icon: Package, roles: ['yonetici', 'depocu', 'satinalma'] },
+    
     { name: 'Görevlerim', href: '/tasks', icon: CheckSquare, roles: ['operator'] },
     { name: 'Görevler', href: '/tasks/all', icon: CheckSquare, roles: ['yonetici'] },
     { name: 'Dosya Yönetimi', href: '/files/explorer', icon: FileText, roles: ['yonetici'] },
-    { name: 'Özlük Dokümanları', href: '/hr/documents', icon: ShieldCheck, roles: ['hr_admin', 'hr_manager', 'hr_specialist', 'hr_auditor', 'hr_employee'] },
+    { name: 'Özlük Dokümanları', href: '/hr/documents', icon: ShieldCheck, roles: ['yonetici', 'hr_admin', 'hr_manager', 'hr_specialist', 'hr_auditor', 'hr_employee'] },
     { name: 'Makineler', href: '/machines/status', icon: Cpu, roles: ['yonetici', 'operator'] },
   ]
 
@@ -94,11 +95,14 @@ export default function DashboardLayout({
   { name: 'Ayarlar', href: '/settings', icon: Settings, roles: ['yonetici', 'hr_admin', 'hr_manager', 'hr_specialist'] },
   ]
 
+  // Get all role codes from user's roles array
+  const userRoleCodes = user?.roles?.map((r) => r.code) || []
+
   const filteredPrimary = primaryNavigation.filter((item) =>
-    item.roles.includes(user?.role || ''),
+    item.roles.some((role) => userRoleCodes.includes(role)),
   )
   const filteredSecondary = secondaryNavigation.filter((item) =>
-    item.roles.includes(user?.role || ''),
+    item.roles.some((role) => userRoleCodes.includes(role)),
   )
 
   return (
@@ -206,11 +210,7 @@ export default function DashboardLayout({
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{user?.full_name}</p>
                     <p className="text-xs text-gray-500 truncate">
-                      {user?.role === 'yonetici'
-                        ? 'Yönetici'
-                        : user?.role === 'operator'
-                          ? 'Operatör'
-                          : 'Kullanıcı'}
+                      {user?.primary_role?.name || user?.roles?.[0]?.name || 'Kullanıcı'}
                     </p>
                   </div>
                 )}

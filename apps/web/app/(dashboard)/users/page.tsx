@@ -6,11 +6,27 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Users, Plus, Edit2, Trash2, Save, X, Mail, Star, UserCircle } from 'lucide-react'
+import { Users, Plus, Edit2, Trash2, Save, X, Mail, Star, UserCircle, Key } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { handleApiError, debugLog } from '@/lib/utils/error-handler'
 import { MultiRoleSelector } from '@/components/features/users/MultiRoleSelector'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 
 interface UserRole {
   role_id: string
@@ -44,6 +60,10 @@ export default function UsersPage() {
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([])
   const [primaryRoleId, setPrimaryRoleId] = useState<string | undefined>()
   const [savingRoles, setSavingRoles] = useState(false)
+  const [changingPasswordUser, setChangingPasswordUser] = useState<User | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
 
   useEffect(() => {
     loadUsers()
@@ -178,6 +198,46 @@ export default function UsersPage() {
       toast.error(error.response?.data?.error || 'Roller güncellenemedi')
     } finally {
       setSavingRoles(false)
+    }
+  }
+
+  function openPasswordChange(user: User) {
+    setChangingPasswordUser(user)
+    setNewPassword('')
+    setConfirmPassword('')
+  }
+
+  function closePasswordChange() {
+    setChangingPasswordUser(null)
+    setNewPassword('')
+    setConfirmPassword('')
+    setSavingPassword(false)
+  }
+
+  async function savePassword() {
+    if (!changingPasswordUser) return
+
+    if (!newPassword || newPassword.length < 6) {
+      toast.error('Şifre en az 6 karakter olmalıdır')
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error('Şifreler eşleşmiyor')
+      return
+    }
+
+    try {
+      setSavingPassword(true)
+      await usersAPI.update(changingPasswordUser.id, {
+        password: newPassword
+      })
+      toast.success('Şifre başarıyla değiştirildi')
+      closePasswordChange()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Şifre değiştirilemedi')
+    } finally {
+      setSavingPassword(false)
     }
   }
 
@@ -362,9 +422,18 @@ export default function UsersPage() {
                               <Edit2 className="w-3 h-3 mr-1" />
                               Güncelle
                             </Button>
-                          
 
-                           
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
+                              onClick={() => openPasswordChange(user)}
+                            >
+                              <Key className="w-3 h-3 mr-1" />
+                              Şifre
+                            </Button>
+
                             <Button
                               type="button"
                               size="sm"
@@ -375,7 +444,7 @@ export default function UsersPage() {
                               Roller
                             </Button>
 
-                              <Button
+                            <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleDelete(user.id, user.full_name)}
@@ -398,24 +467,16 @@ export default function UsersPage() {
       </Card>
 
       {managingRolesUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b px-6 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Rolleri Yönet</h3>
-                <p className="text-sm text-gray-500">{managingRolesUser.full_name}</p>
-              </div>
-              <button
-                type="button"
-                className="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
-                onClick={closeRoleManager}
-                aria-label="Roller penceresini kapat"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+        <Sheet open={true} onOpenChange={(open) => !open && closeRoleManager()}>
+          <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Rolleri Yönet</SheetTitle>
+              <SheetDescription>
+                {managingRolesUser.full_name} için roller düzenleyin
+              </SheetDescription>
+            </SheetHeader>
 
-            <div className="px-6 py-4">
+            <div className="py-6">
               <MultiRoleSelector
                 key={managingRolesUser.id}
                 selectedRoleIds={selectedRoleIds}
@@ -424,7 +485,7 @@ export default function UsersPage() {
               />
             </div>
 
-            <div className="flex justify-end gap-3 border-t px-6 py-4">
+            <SheetFooter className="sticky bottom-0 bg-white pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
@@ -440,9 +501,64 @@ export default function UsersPage() {
               >
                 {savingRoles ? 'Kaydediliyor...' : 'Rolleri Kaydet'}
               </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+      )}
+
+      {changingPasswordUser && (
+        <Dialog open={true} onOpenChange={(open) => !open && closePasswordChange()}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Şifre Değiştir</DialogTitle>
+              <DialogDescription>
+                {changingPasswordUser.full_name} ({changingPasswordUser.username}) için yeni şifre belirleyin
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Yeni Şifre</label>
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="En az 6 karakter"
+                  disabled={savingPassword}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Şifre Tekrar</label>
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Şifreyi tekrar girin"
+                  disabled={savingPassword}
+                />
+              </div>
             </div>
-          </div>
-        </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closePasswordChange}
+                disabled={savingPassword}
+              >
+                İptal
+              </Button>
+              <Button
+                type="button"
+                onClick={savePassword}
+                disabled={savingPassword}
+              >
+                {savingPassword ? 'Kaydediliyor...' : 'Şifreyi Kaydet'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )

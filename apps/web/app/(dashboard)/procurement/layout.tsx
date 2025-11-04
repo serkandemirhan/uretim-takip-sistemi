@@ -1,6 +1,6 @@
 'use client'
 
-import { ShoppingCart, Package, FileText, TrendingUp, Building2 } from 'lucide-react'
+import { ShoppingCart, Package, FileText, TrendingUp, Building2, Receipt, Truck } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -29,6 +29,18 @@ export default function ProcurementLayout({
       href: '/procurement/rfq',
       icon: FileText,
       description: 'Request for Quotation'
+    },
+    {
+      name: 'Tedarikçi Teklifleri',
+      href: '/procurement/supplier-quotations',
+      icon: Receipt,
+      description: 'Supplier Quotations'
+    },
+    {
+      name: 'Satınalma Siparişleri',
+      href: '/procurement/purchase-orders',
+      icon: Truck,
+      description: 'Purchase Orders'
     },
     {
       name: 'Tedarikçiler',

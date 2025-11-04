@@ -321,6 +321,57 @@ export default function FilesExplorerPage() {
     return step ? filterFiles(step.files) : []
   }, [entries, explorerTree, filter, selectedCustomer, selectedJob, selectedStep, selectedProcesses])
 
+  // Derive current subfolders for the right panel based on selection
+  type FolderItem = {
+    kind: 'customer' | 'job' | 'step'
+    id: string
+    label: string
+    subtitle?: string | null
+    count: number
+  }
+
+  const currentFolders: FolderItem[] = useMemo(() => {
+    const text = filter.trim().toLowerCase()
+    const folders: FolderItem[] = []
+
+    // Show subfolders of the current selection (customer -> jobs, job -> steps)
+    if (selectedCustomer !== 'all') {
+      const customer = explorerTree.get(selectedCustomer)
+      if (!customer) return []
+
+      if (!selectedJob) {
+        // List jobs as folders under this customer
+        const jobs = Array.from(customer.jobs.values())
+        jobs.forEach((job) => {
+          const count = job.files.length + Array.from(job.steps.values()).reduce((acc, s) => acc + s.files.length, 0)
+          const label = job.jobNumber ? job.jobNumber : (job.title || 'İş')
+          const subtitle = job.title || null
+          folders.push({ kind: 'job', id: job.id, label, subtitle, count })
+        })
+      } else {
+        const job = customer.jobs.get(selectedJob)
+        if (job && !selectedStep) {
+          const steps = Array.from(job.steps.values())
+          steps.forEach((step) => {
+            const label = step.code ? step.code : step.name
+            folders.push({ kind: 'step', id: step.id, label, subtitle: step.name, count: step.files.length })
+          })
+        }
+      }
+    }
+
+    // Apply text filter to folders by label/subtitle
+    const filtered = text
+      ? folders.filter((f) =>
+          f.label.toLowerCase().includes(text) || (f.subtitle || '')?.toLowerCase().includes(text),
+        )
+      : folders
+
+    // Order folders alphabetically by label
+    filtered.sort((a, b) => a.label.localeCompare(b.label))
+    return filtered
+  }, [explorerTree, selectedCustomer, selectedJob, selectedStep, filter])
+
   async function handleDownload(fileId: string) {
     try {
       setDownloadingId(fileId)
@@ -548,7 +599,7 @@ export default function FilesExplorerPage() {
         <Card className="min-h-[540px] overflow-hidden min-w-0 max-w-full">
           <CardHeader className="flex flex-col gap-3 py-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <CardTitle className="text-sm">Dosyalar</CardTitle>
+              <CardTitle className="text-sm">İçerik</CardTitle>
               <div className="flex items-center gap-3 flex-wrap">
                 <MultiSelect
                   options={processOptions}
@@ -607,14 +658,62 @@ export default function FilesExplorerPage() {
                       Dosyalar yükleniyor...
                     </TableCell>
                   </TableRow>
-                ) : fileList.length === 0 ? (
+                ) : (currentFolders.length === 0 && fileList.length === 0) ? (
                   <TableRow>
                     <TableCell colSpan={5} className="py-12 text-center text-sm text-gray-500">
-                      Dosya bulunamadı.
+                      İçerik bulunamadı.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  fileList.map((file) => (
+                  <>
+                    {currentFolders.length > 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="bg-gray-50 text-xs text-gray-600">Klasörler</TableCell>
+                      </TableRow>
+                    )}
+                    {currentFolders.map((folder) => (
+                      <TableRow
+                        key={`f-${folder.kind}-${folder.id}`}
+                        className="align-middle cursor-pointer hover:bg-blue-50 group relative"
+                        onClick={() => {
+                          if (selectedCustomer === 'all') return
+                          if (folder.kind === 'job') {
+                            setSelectedJob(folder.id)
+                            setSelectedStep(null)
+                          } else if (folder.kind === 'step') {
+                            setSelectedStep(folder.id)
+                          }
+                        }}
+                        title="Açmak için tıklayın"
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Folder className="h-4 w-4 text-amber-600" />
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-gray-900" title={folder.label}>
+                                {folder.label}
+                              </p>
+                              {folder.subtitle && (
+                                <p className="text-xs text-gray-500" title={folder.subtitle || undefined}>
+                                  {folder.subtitle}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-gray-500">{selectedCustomer === 'all' ? '-' : ''}</TableCell>
+                        <TableCell className="text-gray-500">{folder.kind === 'job' ? folder.subtitle || '-' : '-'}</TableCell>
+                        <TableCell className="text-gray-500">{folder.kind === 'step' ? folder.subtitle || '-' : '-'}</TableCell>
+                        <TableCell className="text-right text-xs text-gray-600">{folder.count} öğe</TableCell>
+                      </TableRow>
+                    ))}
+
+                    {fileList.length > 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="bg-gray-50 text-xs text-gray-600">Dosyalar</TableCell>
+                      </TableRow>
+                    )}
+                    {fileList.map((file) => (
                     <TableRow
                       key={file.id}
                       className="align-middle cursor-pointer hover:bg-gray-50 group relative"
@@ -701,7 +800,8 @@ export default function FilesExplorerPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))
+                  ))}
+                  </>
                 )}
               </TableBody>
             </Table>
@@ -712,12 +812,51 @@ export default function FilesExplorerPage() {
                 <div className="py-12 text-center text-sm text-gray-500">
                   Dosyalar yükleniyor...
                 </div>
-              ) : fileList.length === 0 ? (
+              ) : (currentFolders.length === 0 && fileList.length === 0) ? (
                 <div className="py-12 text-center text-sm text-gray-500">
-                  Dosya bulunamadı.
+                  İçerik bulunamadı.
                 </div>
               ) : (
-                <div className="grid gap-4 w-full" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                <div className="space-y-6">
+                  {currentFolders.length > 0 && (
+                    <div>
+                      <div className="text-xs text-gray-600 mb-2">Klasörler</div>
+                      <div className="grid gap-4 w-full" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                        {currentFolders.map((folder) => (
+                          <div
+                            key={`fg-${folder.kind}-${folder.id}`}
+                            className="group relative flex flex-col items-center p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-all overflow-hidden"
+                            onClick={() => {
+                              if (selectedCustomer === 'all') return
+                              if (folder.kind === 'job') {
+                                setSelectedJob(folder.id)
+                                setSelectedStep(null)
+                              } else if (folder.kind === 'step') {
+                                setSelectedStep(folder.id)
+                              }
+                            }}
+                            title={folder.label}
+                          >
+                            <Folder className="h-12 w-12 text-amber-600 transition-transform group-hover:scale-110" />
+                            <p className="mt-2 text-center text-xs font-medium text-gray-900 line-clamp-2 w-full break-words">
+                              {folder.label}
+                            </p>
+                            {folder.subtitle && (
+                              <p className="mt-1 text-[10px] text-gray-500 line-clamp-1 w-full break-words">
+                                {folder.subtitle}
+                              </p>
+                            )}
+                            <p className="mt-1 text-[10px] text-gray-500">{folder.count} öğe</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {fileList.length > 0 && (
+                    <div>
+                      <div className="text-xs text-gray-600 mb-2">Dosyalar</div>
+                      <div className="grid gap-4 w-full" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
                   {fileList.map((file) => {
                     const IconComponent = getFileIcon(file.filename, file.content_type)
                     const iconColor = getFileIconColor(file.filename, file.content_type)
@@ -779,6 +918,9 @@ export default function FilesExplorerPage() {
                       </div>
                     )
                   })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

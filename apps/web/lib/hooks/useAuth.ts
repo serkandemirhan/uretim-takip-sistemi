@@ -4,12 +4,21 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { authAPI } from '@/lib/api/client'
 
+interface UserRole {
+  id: string
+  code: string
+  name: string
+  is_primary: boolean
+}
+
 interface User {
   id: string
   username: string
   email: string
   full_name: string
-  role: string
+  role: string // Primary role code (legacy)
+  roles: UserRole[] // All roles
+  primary_role?: UserRole // Primary role object
 }
 
 export function useAuth() {

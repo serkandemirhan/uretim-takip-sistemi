@@ -27,7 +27,11 @@ export default function MachineStatusPage() {
         machinesAPI.getStatus(),
         machinesAPI.getStats(),
       ])
-      setMachines(machinesRes.data || [])
+      const rawMachines = machinesRes.data || []
+      // API'den gelebilecek duplicate kayıtları engellemek için
+      const uniqueMachines = Array.from(new Map(rawMachines.map((m: any) => [m.id, m])).values())
+      setMachines(uniqueMachines)
+
       setStats(statsRes.data || {})
     } catch (error) {
       handleApiError(error, 'Load')

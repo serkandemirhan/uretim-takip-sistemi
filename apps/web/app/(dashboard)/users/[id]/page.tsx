@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -26,7 +26,10 @@ import {
   FileText,
   Mail,
   Star,
+  Upload,
+  Camera,
 } from 'lucide-react'
+import axios from 'axios'
 
 const STATUS_LABELS: Record<string, string> = {
   missing: 'Eksik',
@@ -115,6 +118,8 @@ export default function UserDetailPage() {
   const [loadingDocs, setLoadingDocs] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'hr'>('overview')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (userId) void loadUser()
@@ -186,6 +191,91 @@ export default function UserDetailPage() {
     }
   }
 
+  async function handleAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Lütfen bir resim dosyası seçin')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Dosya boyutu 5MB\'dan küçük olmalıdır')
+      return
+    }
+
+    try {
+      setUploadingAvatar(true)
+
+      // Get upload URL
+      const uploadRes = await filesAPI.getUploadUrl({
+        ref_type: 'user_avatar',
+        ref_id: userId,
+        filename: file.name,
+        content_type: file.type,
+        size: file.size,
+      })
+
+      const uploadData = uploadRes?.data || uploadRes
+      const uploadUrl = uploadData?.upload_url
+      const objectKey = uploadData?.object_key
+      const folderPath = uploadData?.folder_path
+
+      if (!uploadUrl || !objectKey) {
+        throw new Error('Yükleme adresi alınamadı')
+      }
+
+      // Upload file to S3
+      await axios.put(uploadUrl, file, {
+        headers: { 'Content-Type': file.type },
+      })
+
+      // Link file in database
+      const linkRes = await filesAPI.linkFile({
+        object_key: objectKey,
+        filename: file.name,
+        file_size: file.size,
+        content_type: file.type,
+        ref_type: 'user_avatar',
+        ref_id: userId,
+        folder_path: folderPath,
+      })
+
+      const filePayload = linkRes?.data || linkRes
+      const fileId = filePayload?.id
+
+      if (!fileId) {
+        throw new Error('Dosya veritabanına kaydedilemedi')
+      }
+
+      // Update user avatar
+      await usersAPI.update(userId, {
+        avatar_file_id: fileId,
+      })
+
+      toast.success('Profil fotoğrafı güncellendi')
+
+      // Reload user to get new avatar
+      await loadUser()
+
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    } catch (error) {
+      handleError(error, { title: 'Profil fotoğrafı yüklenemedi' })
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
+  function triggerAvatarUpload() {
+    fileInputRef.current?.click()
+  }
+
   const summary = useMemo(() => {
     const total = documents.length
     const pending = documents.filter((doc) => doc.status === 'pending_approval').length
@@ -236,15 +326,37 @@ export default function UserDetailPage() {
     <div className="space-y-8">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-4">
-          <div className="h-16 w-16 overflow-hidden rounded-full bg-gray-100 ring-2 ring-blue-100">
-            {avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatarUrl} alt={user.full_name} className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-xl font-semibold text-gray-500">
-                {user.full_name?.[0] || '?'}
-              </div>
-            )}
+          <div className="relative group">
+            <div className="h-16 w-16 overflow-hidden rounded-full bg-gray-100 ring-2 ring-blue-100">
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarUrl} alt={user.full_name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xl font-semibold text-gray-500">
+                  {user.full_name?.[0] || '?'}
+                </div>
+              )}
+              {uploadingAvatar && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
+                  <Loader2 className="h-6 w-6 animate-spin text-white" />
+                </div>
+              )}
+            </div>
+            <button
+              onClick={triggerAvatarUpload}
+              disabled={uploadingAvatar}
+              className="absolute inset-0 flex items-center justify-center bg-black/60 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-not-allowed"
+              title="Profil fotoğrafını değiştir"
+            >
+              <Camera className="h-6 w-6" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
           </div>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{user.full_name}</h1>

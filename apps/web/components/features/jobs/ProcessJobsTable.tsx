@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Settings2, Eye, EyeOff } from 'lucide-react'
+import { Settings2, Eye, EyeOff, ArrowUp, ArrowDown } from 'lucide-react'
 import { processesAPI } from '@/lib/api/client'
 import { useAuth } from '@/lib/hooks/useAuth'
 import {
@@ -92,6 +92,7 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
   const [processGroups, setProcessGroups] = useState<ProcessGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [columnOrder, setColumnOrder] = useState<string[]>([])
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
 
   // User-specific storage keys - memoized to prevent unnecessary re-creation
   const STORAGE_KEY_WIDTHS = useMemo(() => `processJobsTable_columnWidths_v2_${user?.id || 'guest'}`, [user?.id])
@@ -383,6 +384,66 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
     setColumnWidths(prev => ({ ...prev, [colId]: Math.ceil(maxWidth) }))
   }
 
+  const toggleSort = (key: string) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: 'asc' }
+      if (prev.direction === 'asc') return { key, direction: 'desc' }
+      return null
+    })
+  }
+
+  const getSortIcon = (key: string) => {
+    if (!sortConfig || sortConfig.key !== key) return null
+    return sortConfig.direction === 'asc' ? (
+      <ArrowUp className="w-4 h-4 text-blue-600" />
+    ) : (
+      <ArrowDown className="w-4 h-4 text-blue-600" />
+    )
+  }
+
+  const sortedJobs = useMemo(() => {
+    if (!sortConfig) return jobs
+
+    const getComparable = (job: Job) => {
+      switch (sortConfig.key) {
+        case 'no':
+          return (job.job_number || '').toString().toLowerCase()
+        case 'title':
+          return (job.title || '').toString().toLowerCase()
+        case 'customer':
+          return (job.customer_name || '').toString().toLowerCase()
+        case 'dealer':
+          return (job.dealer_name || '').toString().toLowerCase()
+        case 'delivery': {
+          const d = job.delivery_date
+          return d ? new Date(d).getTime() : null
+        }
+        case 'progress':
+          return typeof job.progress === 'number' ? job.progress : Number(job.progress)
+        default:
+          return null
+      }
+    }
+
+    const arr = [...jobs]
+    arr.sort((a, b) => {
+      const av = getComparable(a) as any
+      const bv = getComparable(b) as any
+      if (av == null && bv == null) return 0
+      if (av == null) return sortConfig.direction === 'asc' ? -1 : 1
+      if (bv == null) return sortConfig.direction === 'asc' ? 1 : -1
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return sortConfig.direction === 'asc' ? av - bv : bv - av
+      }
+      const as = String(av)
+      const bs = String(bv)
+      return sortConfig.direction === 'asc'
+        ? as.localeCompare(bs, 'tr')
+        : bs.localeCompare(as, 'tr')
+    })
+    return arr
+  }, [jobs, sortConfig])
+
   if (loading) {
     return (
       <div className="bg-white rounded-lg border p-8">
@@ -439,7 +500,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       } ${dragOverColumn === 'no' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.no }}
                     >
-                      No
+                      <button
+                        type="button"
+                        onClick={() => toggleSort('no')}
+                        className="inline-flex items-center gap-2 hover:text-gray-900"
+                      >
+                        <span>No</span>
+                        {getSortIcon('no')}
+                      </button>
                       <div
                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'no')}
@@ -467,7 +535,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       } ${dragOverColumn === 'title' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.title }}
                     >
-                      İş Adı
+                      <button
+                        type="button"
+                        onClick={() => toggleSort('title')}
+                        className="inline-flex items-center gap-2 hover:text-gray-900"
+                      >
+                        <span>İş Adı</span>
+                        {getSortIcon('title')}
+                      </button>
                       <div
                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'title')}
@@ -495,7 +570,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       } ${dragOverColumn === 'customer' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.customer }}
                     >
-                      Müşteri
+                      <button
+                        type="button"
+                        onClick={() => toggleSort('customer')}
+                        className="inline-flex items-center gap-2 hover:text-gray-900"
+                      >
+                        <span>Müşteri</span>
+                        {getSortIcon('customer')}
+                      </button>
                       <div
                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'customer')}
@@ -523,7 +605,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       } ${dragOverColumn === 'dealer' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.dealer }}
                     >
-                      Bayi
+                      <button
+                        type="button"
+                        onClick={() => toggleSort('dealer')}
+                        className="inline-flex items-center gap-2 hover:text-gray-900"
+                      >
+                        <span>Bayi</span>
+                        {getSortIcon('dealer')}
+                      </button>
                       <div
                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'dealer')}
@@ -551,7 +640,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       } ${dragOverColumn === 'delivery' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.delivery }}
                     >
-                      Teslim Tarihi
+                      <button
+                        type="button"
+                        onClick={() => toggleSort('delivery')}
+                        className="inline-flex items-center gap-2 hover:text-gray-900"
+                      >
+                        <span>Teslim Tarihi</span>
+                        {getSortIcon('delivery')}
+                      </button>
                       <div
                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'delivery')}
@@ -579,7 +675,14 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
                       } ${dragOverColumn === 'progress' ? 'bg-blue-100' : ''}`}
                       style={{ width: columnWidths.progress }}
                     >
-                      İlerleme
+                      <button
+                        type="button"
+                        onClick={() => toggleSort('progress')}
+                        className="inline-flex items-center gap-2 hover:text-gray-900"
+                      >
+                        <span>İlerleme</span>
+                        {getSortIcon('progress')}
+                      </button>
                       <div
                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent opacity-0 transition-colors group-hover:bg-gray-300 hover:bg-blue-500 hover:opacity-100 group-hover:opacity-100"
                         onMouseDown={(e) => handleMouseDown(e, 'progress')}
@@ -630,7 +733,7 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {jobs.map((job) => {
+            {sortedJobs.map((job) => {
               const jobSteps = job.steps || []
 
               const renderCell = (colId: string) => {
@@ -843,7 +946,7 @@ export function ProcessJobsTable({ jobs, showColumnSettings, setShowColumnSettin
               }
 
               return (
-                <tr key={job.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={job.id} className="hover:bg-blue-100 transition-colors">
                   {columnOrder.filter(colId => columnVisibility[colId] !== false).map((colId) => renderCell(colId))}
                 </tr>
               )

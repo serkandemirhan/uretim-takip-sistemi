@@ -1,4 +1,4 @@
-'use client'
+ 'use client'
 
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import { useParams } from 'next/navigation'

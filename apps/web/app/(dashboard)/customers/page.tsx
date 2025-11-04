@@ -1,17 +1,20 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   Loader2,
   Pencil,
   Plus,
+  RefreshCcw,
+  Settings,
   Trash2,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown, // Keep for a subtle hint on non-active columns
+  ArrowUpDown,
   X,
+  GripVertical,
 } from 'lucide-react'
 
 import { customersAPI } from '@/lib/api/client'
@@ -19,7 +22,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
 import { handleError } from '@/lib/utils/error-handler'
+import { cn } from '@/lib/utils/cn'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 type Customer = {
   id: string
@@ -74,19 +87,28 @@ const EMPTY_FORM: CustomerFormValues = {
   notes: '',
 }
 
-type SortConfig = {
-  key: keyof Customer
-  direction: 'ascending' | 'descending'
+type ColumnConfig = {
+  key: string
+  label: string
+  width?: string
+  type?: 'string' | 'number' | 'date'
+  filterType?: 'text' | 'select'
+  placeholder?: string
+  options?: { value: string; label: string }[]
+  accessor: (customer: Customer) => string | number | null | undefined
+  render?: (customer: Customer) => ReactNode
 }
+
+const STORAGE_KEY_PREFIX = 'customers_table_settings_'
 
 export default function CustomersPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [q, setQ] = useState('')
 
   const [panelOpen, setPanelOpen] = useState(false)
   const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create')
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [panelLoading, setPanelLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [activeCustomerId, setActiveCustomerId] = useState<string | null>(null)
@@ -129,65 +151,142 @@ export default function CustomersPage() {
     }
   }
 
-  const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase()
-    if (!term) return customers
-    return customers.filter((customer) =>
-      [
-        customer.name,
-        customer.short_code,
-        customer.code,
-        customer.contact_person,
-        customer.phone,
-        customer.phone_secondary,
-        customer.gsm,
-        customer.email,
-        customer.city,
-        customer.tax_office,
-        customer.tax_number,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term)),
-    )
-  }, [customers, q])
+  // Table state
+  const [filters, setFilters] = useState<Record<string, string>>({})
+  const [draftFilters, setDraftFilters] = useState<Record<string, string>>({})
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set())
+  const [columnOrder, setColumnOrder] = useState<string[]>([])
+
+  const columnConfigs = useMemo<ColumnConfig[]>(() => [
+    { key: 'name', label: 'Ad', width: 'w-64', placeholder: 'Ad ara', accessor: c => c.name },
+    { key: 'short_code', label: 'Kısa Kod', width: 'w-32', placeholder: 'Kod ara', accessor: c => c.short_code, render: c => <Badge variant="outline">{c.short_code || c.code || '—'}</Badge> },
+    { key: 'contact_person', label: 'Yetkili', width: 'w-48', placeholder: 'Yetkili ara', accessor: c => c.contact_person },
+    { key: 'phone', label: 'Telefon', width: 'w-48', placeholder: 'Telefon ara', accessor: c => [c.phone, c.phone_secondary, c.gsm].filter(Boolean).join(' / ') },
+    { key: 'email', label: 'E-posta', width: 'w-64', placeholder: 'E-posta ara', accessor: c => c.email },
+    { key: 'city', label: 'Şehir', width: 'w-40', placeholder: 'Şehir ara', accessor: c => c.city },
+    { key: 'address', label: 'Adres', width: 'w-80', placeholder: 'Adres ara', accessor: c => c.address },
+    { key: 'tax_office', label: 'Vergi Dairesi', width: 'w-40', placeholder: 'Daire ara', accessor: c => c.tax_office },
+    { key: 'tax_number', label: 'Vergi No', width: 'w-40', placeholder: 'No ara', accessor: c => c.tax_number },
+    { key: 'created_at', label: 'Oluşturma Tarihi', width: 'w-44', type: 'date', accessor: c => c.created_at, render: c => c.created_at ? new Date(c.created_at).toLocaleDateString('tr-TR') : '—' },
+  ], [])
+
+  const getUserStorageKey = () => {
+    if (typeof window === 'undefined') return null
+    const user = localStorage.getItem('user')
+    if (!user) return null
+    try {
+      const userData = JSON.parse(user)
+      return `${STORAGE_KEY_PREFIX}${userData.id || 'default'}`
+    } catch {
+      return `${STORAGE_KEY_PREFIX}default`
+    }
+  }
+
+  useEffect(() => {
+    const storageKey = getUserStorageKey()
+    if (!storageKey) {
+      setVisibleColumns(new Set(columnConfigs.map(c => c.key)))
+      setColumnOrder(columnConfigs.map(c => c.key))
+      return
+    }
+
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        const settings = JSON.parse(saved)
+        if (settings.columnWidths) setColumnWidths(settings.columnWidths)
+        if (settings.visibleColumns) setVisibleColumns(new Set(settings.visibleColumns))
+        else setVisibleColumns(new Set(columnConfigs.map(c => c.key)))
+        if (settings.order) setColumnOrder(settings.order)
+        else setColumnOrder(columnConfigs.map(c => c.key))
+      } else {
+        setVisibleColumns(new Set(columnConfigs.map(c => c.key)))
+        setColumnOrder(columnConfigs.map(c => c.key))
+      }
+    } catch (error) {
+      console.error('Failed to load table settings:', error)
+      setVisibleColumns(new Set(columnConfigs.map(c => c.key)))
+      setColumnOrder(columnConfigs.map(c => c.key))
+    }
+  }, [columnConfigs])
+
+  useEffect(() => {
+    const storageKey = getUserStorageKey()
+    if (!storageKey) return
+
+    const settings = {
+      columnWidths,
+      visibleColumns: Array.from(visibleColumns),
+      order: columnOrder,
+    }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(settings))
+    } catch (error) {
+      console.error('Failed to save table settings:', error)
+    }
+  }, [columnWidths, visibleColumns, columnOrder])
+
+  useEffect(() => {
+    const h = setTimeout(() => setFilters(draftFilters), 250)
+    return () => clearTimeout(h)
+  }, [draftFilters])
+
+  const filteredCustomers = useMemo(() => {
+    return customers.filter(customer => {
+      return columnConfigs.every(column => {
+        const filterValue = filters[column.key]
+        if (!filterValue) return true
+
+        const rawValue = column.accessor(customer)
+        if (rawValue == null) return false
+
+        const normalizedFilter = filterValue.trim().toLowerCase()
+        if (column.filterType === 'select') return String(rawValue).toLowerCase() === normalizedFilter
+        if (column.type === 'date') return new Date(rawValue as string).toLocaleDateString('tr-TR').includes(normalizedFilter)
+        return String(rawValue).toLowerCase().includes(normalizedFilter)
+      })
+    })
+  }, [customers, filters, columnConfigs])
 
   const sortedCustomers = useMemo(() => {
-    const sortableItems = [...filtered]
-    if (sortConfig !== null) {
-      sortableItems.sort((a, b) => {
-        const aValue = a[sortConfig.key] ?? ''
-        const bValue = b[sortConfig.key] ?? ''
+    if (!sortConfig) return filteredCustomers
 
-        if (aValue < bValue) {
-          return sortConfig.direction === 'ascending' ? -1 : 1
-        }
-        if (aValue > bValue) {
-          return sortConfig.direction === 'ascending' ? 1 : -1
-        }
-        return 0
-      })
-    }
-    return sortableItems
-  }, [filtered, sortConfig])
+    const column = columnConfigs.find(col => col.key === sortConfig.key)
+    if (!column) return filteredCustomers
 
-  const requestSort = (key: keyof Customer) => {
-    let direction: 'ascending' | 'descending' = 'ascending'
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
-      direction = 'descending'
+    const getComparable = (customer: Customer) => {
+      const value = column.accessor(customer)
+      if (value == null) return null
+      if (column.type === 'number') return Number(value)
+      if (column.type === 'date') return value ? new Date(value as string).getTime() : null
+      return String(value).toLowerCase()
     }
-    setSortConfig({ key, direction })
-  }
 
-  const getSortIcon = (key: keyof Customer) => {
-    if (sortConfig?.key !== key) {
-      // Aktif olmayan kolonlar için daha belirsiz bir ikon
-      return <ArrowUpDown className="h-3 w-3 text-gray-400" />
-    }
-    if (sortConfig.direction === 'ascending') {
-      return <ArrowUp className="h-4 w-4 text-blue-600" />
-    }
-    return <ArrowDown className="h-4 w-4 text-blue-600" />
-  }
+    return [...filteredCustomers].sort((a, b) => {
+      const aValue = getComparable(a)
+      const bValue = getComparable(b)
+
+      if (aValue == null) return sortConfig.direction === 'asc' ? -1 : 1
+      if (bValue == null) return sortConfig.direction === 'asc' ? 1 : -1
+
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue
+      }
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortConfig.direction === 'asc' ? aValue.localeCompare(bValue, 'tr') : bValue.localeCompare(aValue, 'tr')
+      }
+      return 0
+    })
+  }, [filteredCustomers, sortConfig, columnConfigs])
+
+  const visibleColumnConfigs = useMemo(() => {
+    const orderIndex: Record<string, number> = {}
+    columnOrder.forEach((k, i) => { orderIndex[k] = i })
+    return columnConfigs
+      .filter(col => visibleColumns.has(col.key))
+      .sort((a, b) => (orderIndex[a.key] ?? 99) - (orderIndex[b.key] ?? 99))
+  }, [columnConfigs, visibleColumns, columnOrder])
 
   const openCreatePanel = () => {
     setPanelMode('create')
@@ -297,6 +396,71 @@ export default function CustomersPage() {
       handleError(error)
       toast.error('Müşteri silinemedi')
     }
+  }
+
+  function toggleSort(key: string) {
+    setSortConfig(prev => {
+      if (!prev || prev.key !== key) return { key, direction: 'asc' }
+      if (prev.direction === 'asc') return { key, direction: 'desc' }
+      return null
+    })
+  }
+
+  function getSortIcon(colKey: string) {
+    if (!sortConfig || sortConfig.key !== colKey) return <ArrowUpDown className="h-4 w-4 text-gray-400" />
+    return sortConfig.direction === 'asc' ? <ArrowUp className="h-4 w-4 text-blue-600" /> : <ArrowDown className="h-4 w-4 text-blue-600" />
+  }
+
+  function resetFilters() {
+    setDraftFilters({})
+    setFilters({})
+    setSortConfig(null)
+  }
+
+  function handleResizeStart(e: React.MouseEvent, columnKey: string) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = columnWidths[columnKey] || 200
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - startX
+      setColumnWidths(prev => ({ ...prev, [columnKey]: Math.max(80, startWidth + diff) }))
+    }
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  function toggleColumnVisibility(columnKey: string) {
+    setVisibleColumns(prev => {
+      const next = new Set(prev)
+      if (next.has(columnKey)) next.delete(columnKey)
+      else next.add(columnKey)
+      return next
+    })
+  }
+
+  function moveColumn(key: string, direction: 'up' | 'down') {
+    setColumnOrder(prev => {
+      const idx = prev.indexOf(key)
+      if (idx === -1) return prev
+      const newIndex = direction === 'up' ? idx - 1 : idx + 1
+      if (newIndex < 0 || newIndex >= prev.length) return prev
+      const next = [...prev]
+      next.splice(idx, 1)
+      next.splice(newIndex, 0, key)
+      return next
+    })
+  }
+
+  function resetTableSettings() {
+    setColumnWidths({})
+    setVisibleColumns(new Set(columnConfigs.map(c => c.key)))
+    setColumnOrder(columnConfigs.map(c => c.key))
+    toast.success('Tablo ayarları sıfırlandı')
   }
 
   const renderPanelContent = () => {
@@ -466,154 +630,160 @@ export default function CustomersPage() {
             Bayileri listeler, ararsınız. Yeni bayiler ekleyip mevcut kayıtları düzenleyebilirsiniz.
           </p>
         </div>
-        <Button onClick={openCreatePanel} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Yeni Müşteri
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Input
-          placeholder="Ara: ad, kod, kişi, telefon, e-posta…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          className="max-w-md"
-        />
-        <span className="text-sm text-gray-500">Toplam: {sortedCustomers.length}</span>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setSettingsDialogOpen(true)} className="gap-2">
+            <Settings className="h-4 w-4" />
+            Tablo Ayarları
+          </Button>
+          <Button variant="outline" size="sm" onClick={resetFilters} className="gap-2">
+            <X className="h-4 w-4" />
+            Filtreleri Sıfırla
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadCustomers} disabled={loading}>
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            Yenile
+          </Button>
+          <Button onClick={openCreatePanel} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Yeni Müşteri
+          </Button>
+        </div>
       </div>
 
       <Card>
-              <CardContent>
+        <CardContent className="pt-6">
           {loading ? (
             <div className="flex items-center justify-center py-10 text-sm text-gray-500">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Yükleniyor…
             </div>
+          ) : sortedCustomers.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Filtrelerle eşleşen müşteri kaydı bulunamadı.
+            </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full table-fixed text-left text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="w-[18%] px-3 py-3">
-                      <button onClick={() => requestSort('name')} className="flex items-center gap-2">
-                        Ad {getSortIcon('name')}
-                      </button>
-                    </th>
-                    <th className="w-[10%] px-3 py-3">
-                      <button onClick={() => requestSort('short_code')} className="flex items-center gap-2">
-                        Kod {getSortIcon('short_code')}
-                      </button>
-                    </th>
-                    <th className="w-[14%] px-3 py-3">
-                      <button onClick={() => requestSort('contact_person')} className="flex items-center gap-2">
-                        Yetkili {getSortIcon('contact_person')}
-                      </button>
-                    </th>
-                    <th className="w-[14%] px-3 py-3">Telefon</th>
-                    <th className="w-[16%] px-3 py-3">
-                      <button onClick={() => requestSort('email')} className="flex items-center gap-2">
-                        E-posta {getSortIcon('email')}
-                      </button>
-                    </th>
-                    <th className="w-[12%] px-3 py-3">
-                      <button onClick={() => requestSort('city')} className="flex items-center gap-2">
-                        Şehir {getSortIcon('city')}
-                      </button>
-                    </th>
-                    <th className="w-[18%] px-3 py-3">Adres</th>
-                    <th className="w-[8%] px-3 py-3 text-right">İşlem</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedCustomers.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="py-8 text-center text-sm text-gray-500"
-                      >
-                        Kayıt bulunamadı
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedCustomers.map((customer) => {
-                      const phones = [customer.phone, customer.phone_secondary, customer.gsm]
-                        .filter(Boolean)
-                        .join(' / ')
-                      return (
-                        <tr
-                          key={customer.id}
-                          className="border-b transition-colors hover:bg-gray-50"
-                          onClick={() => router.push(`/customers/${customer.id}`)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              router.push(`/customers/${customer.id}`)
-                            }
-                          }}
-                          aria-label={`Müşteri detayını aç: ${customer.name}`}
-                        >
-                          <td className="px-3 py-3 font-medium text-gray-900">
-                            {customer.name}
-                          </td>
-                          <td className="px-3 py-3">
-                            <span className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-600">
-                              {customer.short_code || customer.code || '—'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3 text-gray-700">
-                            {customer.contact_person || '—'}
-                          </td>
-                          <td className="px-3 py-3 text-gray-700">
-                            {phones || '—'}
-                          </td>
-                          <td className="px-3 py-3 text-gray-700">
-                            {customer.email || '—'}
-                          </td>
-                          <td className="px-3 py-3 text-gray-700">
-                            {customer.city || '—'}
-                          </td>
-                          <td className="px-3 py-3 text-gray-700">
-                            {customer.address || '—'}
-                          </td>
-                          <td className="px-3 py-3">
-                            <div className="flex justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 px-2 text-gray-600 hover:text-gray-900"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  openEditPanel(customer.id)
-                                }}
-                                aria-label="Müşteriyi düzenle"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  handleDelete(customer.id)
-                                }}
-                                aria-label="Müşteriyi sil"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
+              <Table className="min-w-full">
+                <TableHeader>
+                  <TableRow className="bg-gray-50 hover:bg-gray-50">
+                    {visibleColumnConfigs.map(column => (
+                      <TableHead key={column.key} className="group relative px-3 py-2" style={{ width: columnWidths[column.key] || 'auto' }}>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => toggleSort(column.key)} className="flex items-center gap-2 font-semibold text-gray-700">
+                            {column.label}
+                            {getSortIcon(column.key)}
+                          </button>
+                        </div>
+                        <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent group-hover:bg-gray-300" onMouseDown={e => handleResizeStart(e, column.key)} />
+                      </TableHead>
+                    ))}
+                    <TableHead className="w-40 text-right px-3 py-2 font-semibold text-gray-700">İşlemler</TableHead>
+                  </TableRow>
+                  <TableRow className="bg-gray-50">
+                    {visibleColumnConfigs.map(column => (
+                      <TableCell key={`${column.key}-filter`} className="p-1" style={{ width: columnWidths[column.key] || 'auto' }}>
+                        <Input value={draftFilters[column.key] || ''} onChange={e => setDraftFilters(prev => ({ ...prev, [column.key]: e.target.value }))} placeholder={column.placeholder} className="h-8 text-xs" />
+                      </TableCell>
+                    ))}
+                    <TableCell className="p-1" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedCustomers.map((customer) => (
+                    <TableRow
+                      key={customer.id}
+                      className="border-b transition-colors hover:bg-gray-50 cursor-pointer"
+                      onClick={() => router.push(`/customers/${customer.id}`)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          router.push(`/customers/${customer.id}`)
+                        }
+                      }}
+                      aria-label={`Müşteri detayını aç: ${customer.name}`}
+                    >
+                      {visibleColumnConfigs.map(column => (
+                        <TableCell key={column.key} className="px-3 py-2 text-sm" style={{ width: columnWidths[column.key] || 'auto' }}>
+                          {column.render ? column.render(customer) : String(column.accessor(customer) ?? '—')}
+                        </TableCell>
+                      ))}
+                      <TableCell className="px-3 py-2">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-gray-600 hover:text-gray-900"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              openEditPanel(customer.id)
+                            }}
+                            aria-label="Müşteriyi düzenle"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleDelete(customer.id)
+                            }}
+                            aria-label="Müşteriyi sil"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Settings Dialog */}
+      <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Tablo Ayarları</DialogTitle>
+            <DialogDescription>Sütunların görünürlüğünü ve sırasını yönetin.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <h4 className="text-sm font-medium">Sütun Sırası ve Görünürlüğü</h4>
+            <div className="space-y-2 rounded-md border p-2 max-h-[400px] overflow-y-auto">
+              {columnOrder.map(key => {
+                const column = columnConfigs.find(c => c.key === key)
+                if (!column) return null
+                return (
+                  <div key={key} className="flex items-center justify-between rounded-md p-2 hover:bg-gray-50">
+                    <div className="flex items-center gap-2">
+                      <GripVertical className="h-5 w-5 cursor-grab text-gray-400" />
+                      <label htmlFor={`vis-${key}`} className="text-sm font-medium">{column.label}</label>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => moveColumn(key, 'up')}><ArrowUp className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => moveColumn(key, 'down')}><ArrowDown className="h-4 w-4" /></Button>
+                      </div>
+                      <input type="checkbox" id={`vis-${key}`} checked={visibleColumns.has(key)} onChange={() => toggleColumnVisibility(key)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <div className="flex justify-between items-center mt-6">
+            <Button variant="outline" onClick={resetTableSettings}>Ayarları Sıfırla</Button>
+            <Button onClick={() => setSettingsDialogOpen(false)}>
+              Kapat
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {panelOpen && (
         <div className="fixed inset-0 z-40 flex">

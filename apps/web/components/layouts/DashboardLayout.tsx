@@ -4,14 +4,14 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { Activity ,Shield,Bell,TrendingUp} from 'lucide-react'
+import { Activity ,Shield,Bell,TrendingUp,FileText,Package,ShoppingCart} from 'lucide-react'
 import { NotificationsDropdown } from '@/components/layouts/NotificationsDropdown'
-import { 
-  LayoutDashboard, 
-  Briefcase, 
-  CheckSquare, 
-  Users, 
-  Cpu, 
+import {
+  LayoutDashboard,
+  Briefcase,
+  CheckSquare,
+  Users,
+  Cpu,
   Building2,
   Workflow,
   Settings,
@@ -47,10 +47,14 @@ export function DashboardLayout({ children, userRole }: DashboardLayoutProps) {
         { name: 'Müşteriler', href: '/customers', icon: Building2 },
         { name: 'Operasyonlar', href: '/processes', icon: Workflow },
         { name: 'Makineler', href: '/machines', icon: Cpu },
-        { name: 'Makine Durumu', href: '/machines/status', icon: Cpu }, // ← YENİ
+        { name: 'Makine Durumu', href: '/machines/status', icon: Cpu },
+        { name: 'Satın Alma', href: '/procurement/requests', icon: ShoppingCart },
+        { name: 'Stok Yönetimi', href: '/stocks/inventory', icon: Package },
+        { name: 'İnsan Kaynakları', href: '/hr/documents', icon: FileText },
         { name: 'Kullanıcılar', href: '/users', icon: Users },
-        { name: 'Roller', href: '/roles', icon: Shield }, // ← YENİ
-        { name: 'Bildirimler', href: '/notifications', icon: Bell }, // ← YENİ
+        { name: 'Roller', href: '/roles', icon: Shield },
+        { name: 'Ayarlar', href: '/settings', icon: Settings },
+        { name: 'Bildirimler', href: '/notifications', icon: Bell },
       ]
 
   function isActive(href: string) {

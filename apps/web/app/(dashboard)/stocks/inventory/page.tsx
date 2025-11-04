@@ -1544,7 +1544,7 @@ export default function StocksInventoryPage() {
               Stok Hareketleri
             </Button>
           </Link>
-          <Link href="/stocks/purchase-orders">
+          <Link href="/procurement/purchase-orders">
             <Button variant="outline" className="gap-2">
               <ShoppingCart className="w-4 h-4" />
               Satın Alma Emirleri
